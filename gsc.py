@@ -1,0 +1,178 @@
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+from datetime import datetime
+from auth import is_authenticated, refresh_token_if_needed
+from config import CLIENT_ID, CLIENT_SECRET, SCOPES
+
+def get_gsc_sites(session):
+    if not is_authenticated() or not refresh_token_if_needed():
+        return []
+
+    try:
+        credentials = Credentials(
+            token=session['access_token'],
+            refresh_token=session['refresh_token'],
+            token_uri='https://oauth2.googleapis.com/token',
+            client_id=CLIENT_ID,
+            client_secret=CLIENT_SECRET,
+            scopes=SCOPES
+        )
+
+        webmasters_service = build('searchconsole', 'v1', credentials=credentials)
+        sites = webmasters_service.sites().list().execute()
+
+        sites_list = []
+        for site in sites.get('siteEntry', []):
+            sites_list.append({
+                'site_url': site['siteUrl'],
+                'permission_level': site.get('permissionLevel', 'Unknown')
+            })
+
+        return sites_list
+    except Exception as e:
+        print(f"Error fetching GSC sites: {e}")
+        return []
+
+def get_gsc_detailed_data(credentials, site_url, start_date, end_date):
+    """
+    Get detailed Google Search Console data including date metrics, top queries,
+    top pages, country data, and device data.
+    """
+    try:
+        webmasters_service = build('searchconsole', 'v1', credentials=credentials)
+
+        # Query for date-based metrics
+        date_request = {
+            'startDate': start_date.strftime('%Y-%m-%d'),
+            'endDate': end_date.strftime('%Y-%m-%d'),
+            'dimensions': ['date'],
+            'rowLimit': 50
+        }
+        date_response = webmasters_service.searchanalytics().query(
+            siteUrl=site_url, body=date_request).execute()
+
+        # Query for top queries
+        top_queries_request = {
+            'startDate': start_date.strftime('%Y-%m-%d'),
+            'endDate': end_date.strftime('%Y-%m-%d'),
+            'dimensions': ['query'],
+            'rowLimit': 10,
+            'orderBy': [
+                {'dimension': None, 'field': 'clicks', 'sortOrder': 'DESCENDING'}
+            ]
+        }
+        top_queries_response = webmasters_service.searchanalytics().query(
+            siteUrl=site_url, body=top_queries_request).execute()
+
+        # Query for top pages
+        top_pages_request = {
+            'startDate': start_date.strftime('%Y-%m-%d'),
+            'endDate': end_date.strftime('%Y-%m-%d'),
+            'dimensions': ['page'],
+            'rowLimit': 10,
+            'orderBy': [
+                {'dimension': None, 'field': 'clicks', 'sortOrder': 'DESCENDING'}
+            ]
+        }
+        top_pages_response = webmasters_service.searchanalytics().query(
+            siteUrl=site_url, body=top_pages_request).execute()
+
+        # Query for country data
+        country_request = {
+            'startDate': start_date.strftime('%Y-%m-%d'),
+            'endDate': end_date.strftime('%Y-%m-%d'),
+            'dimensions': ['country'],
+            'rowLimit': 200,
+            'orderBy': [
+                {'dimension': None, 'field': 'clicks', 'sortOrder': 'DESCENDING'}
+            ]
+        }
+        country_response = webmasters_service.searchanalytics().query(
+            siteUrl=site_url, body=country_request).execute()
+
+        # Query for device data
+        device_request = {
+            'startDate': start_date.strftime('%Y-%m-%d'),
+            'endDate': end_date.strftime('%Y-%m-%d'),
+            'dimensions': ['device'],
+            'rowLimit': 10,
+            'orderBy': [
+                {'dimension': None, 'field': 'clicks', 'sortOrder': 'DESCENDING'}
+            ]
+        }
+        device_response = webmasters_service.searchanalytics().query(
+            siteUrl=site_url, body=device_request).execute()
+
+        # Process the responses
+        rows = date_response.get('rows', [])
+
+        # Calculate summary statistics
+        total_clicks = sum(row['clicks'] for row in rows)
+        total_impressions = sum(row['impressions'] for row in rows)
+        average_ctr = (total_clicks / total_impressions * 100) if total_impressions > 0 else 0
+        average_position = sum(row['position'] for row in rows) / len(rows) if rows else 0
+
+        processed_data = {
+            'daily_metrics': {
+                'headers': ['Date', 'Clicks', 'Impressions', 'CTR', 'Position'],
+                'rows': [[
+                    datetime.strptime(row['keys'][0], '%Y-%m-%d').strftime('%Y-%m-%d'),
+                    int(row['clicks']),
+                    int(row['impressions']),
+                    f"{(row['clicks'] / row['impressions'] * 100):.2f}%" if row['impressions'] > 0 else "0%",
+                    f"{row['position']:.1f}"
+                ] for row in rows]
+            },
+            'top_queries': {
+                'headers': ['Query', 'Clicks', 'Impressions', 'CTR', 'Position'],
+                'rows': [[
+                    row['keys'][0],
+                    int(row['clicks']),
+                    int(row['impressions']),
+                    f"{(row['clicks'] / row['impressions'] * 100):.2f}%" if row['impressions'] > 0 else "0%",
+                    f"{row['position']:.1f}"
+                ] for row in top_queries_response.get('rows', [])]
+            },
+            'top_pages': {
+                'headers': ['Page', 'Clicks', 'Impressions', 'CTR', 'Position'],
+                'rows': [[
+                    row['keys'][0],
+                    int(row['clicks']),
+                    int(row['impressions']),
+                    f"{(row['clicks'] / row['impressions'] * 100):.2f}%" if row['impressions'] > 0 else "0%",
+                    f"{row['position']:.1f}"
+                ] for row in top_pages_response.get('rows', [])]
+            },
+            'country_data': {
+                'headers': ['Country', 'Clicks', 'Impressions', 'CTR', 'Position'],
+                'rows': [[
+                    row['keys'][0],
+                    int(row['clicks']),
+                    int(row['impressions']),
+                    f"{(row['clicks'] / row['impressions'] * 100):.2f}%" if row['impressions'] > 0 else "0%",
+                    f"{row['position']:.1f}"
+                ] for row in country_response.get('rows', [])]
+            },
+            'device_data': {
+                'headers': ['Device', 'Clicks', 'Impressions', 'CTR', 'Position'],
+                'rows': [[
+                    row['keys'][0],
+                    int(row['clicks']),
+                    int(row['impressions']),
+                    f"{(row['clicks'] / row['impressions'] * 100):.2f}%" if row['impressions'] > 0 else "0%",
+                    f"{row['position']:.1f}"
+                ] for row in device_response.get('rows', [])]
+            },
+            'summary': {
+                'total_clicks': total_clicks,
+                'total_impressions': total_impressions,
+                'average_ctr': f"{average_ctr:.2f}%",
+                'average_position': f"{average_position:.1f}"
+            }
+        }
+
+        return processed_data
+
+    except Exception as e:
+        print(f"Error fetching GSC detailed data: {e}")
+        return None

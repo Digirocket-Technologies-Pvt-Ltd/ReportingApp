@@ -1,0 +1,15 @@
+Flask
+Flask-WTF
+Flask-Session
+python-dotenv
+requests
+google-auth
+google-auth-oauthlib
+google-api-python-client
+google-generativeai
+Pillow
+PyPDF2
+reportlab
+PyMuPDF
+moviepy
+deepgram-sdk
