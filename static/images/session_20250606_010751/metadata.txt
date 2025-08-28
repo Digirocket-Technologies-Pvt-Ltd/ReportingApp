@@ -1,0 +1,18 @@
+Screenshot session: 20250606_010751
+User: Unknown
+Number of screenshots: 13
+
+Files:
+- 01-analytics-intelligence-overview.png
+- 02-daily-chart.png
+- 03-ga4-top-pages-analysis.png
+- 04-ga4-daily-analytics-data.png
+- 05-ga4-geographic-distribution.png
+- 06-ga4-top-events.png
+- 07-ga4-acquisition-channels.png
+- 08-gsc-overview.png
+- 09-gsc-top-landing-pages.png
+- 10-gsc-daily-search-performance.png
+- 11-gsc-top-search-queries.png
+- 12-gsc-country-performance.png
+- 13-gsc-device-performance.png

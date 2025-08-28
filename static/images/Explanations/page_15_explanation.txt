@@ -1,0 +1,3 @@
+The image shows a report titled "Gsc-Device-Performance" with a black square in the middle. This could indicate a severe error or failure to load performance data.
+
+To improve this report, ensure data connectivity and proper configuration of data sources.  Consider adding placeholders or error messages instead of a black square to give more context.

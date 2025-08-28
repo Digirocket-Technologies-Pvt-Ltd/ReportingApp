@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Video Report - Analytics Intelligence</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #667eea 100%);
+            background-size: 200% 200%;
+            animation: gradientShift 8s ease infinite;
+        }
+        
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        
+        .video-container {
+            position: relative;
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            border-radius: 24px;
+            padding: 24px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        .video-player {
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 12px 24px rgba(0,0,0,0.15);
+            background: #000;
+            position: relative;
+        }
+        
+        .video-player video {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        
+        .floating-element {
+            animation: float 6s ease-in-out infinite;
+        }
+        
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-15px); }
+        }
+        
+        .glass-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+        
+        .feature-badge {
+            background: linear-gradient(45deg, #f59e0b, #f97316);
+            color: white;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            box-shadow: 0 2px 10px rgba(245, 158, 11, 0.3);
+        }
+        
+        .action-button {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .action-button::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            transition: left 0.5s;
+        }
+        
+        .action-button:hover::before {
+            left: 100%;
+        }
+        
+        .action-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        .stats-card {
+            background: white;
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            border: 1px solid rgba(0,0,0,0.05);
+            transition: all 0.3s ease;
+        }
+        
+        .stats-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+        }
+        
+        .pulse-dot {
+            position: relative;
+        }
+        
+        .pulse-dot::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 100%;
+            height: 100%;
+            border: 2px solid currentColor;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+            opacity: 0.3;
+        }
+        
+        @keyframes pulse {
+            0% { transform: translate(-50%, -50%) scale(1); opacity: 0.3; }
+            70% { transform: translate(-50%, -50%) scale(1.4); opacity: 0; }
+            100% { transform: translate(-50%, -50%) scale(1.4); opacity: 0; }
+        }
+        
+        .celebration-animation {
+            animation: celebrate 1s ease-out;
+        }
+        
+        @keyframes celebrate {
+            0% { transform: scale(1) rotate(0deg); }
+            50% { transform: scale(1.1) rotate(5deg); }
+            100% { transform: scale(1) rotate(0deg); }
+        }
+        
+        .loading-shimmer {
+            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+            background-size: 200% 100%;
+            animation: shimmer 2s infinite;
+        }
+        
+        @keyframes shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+        
+        .video-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0.7);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            border-radius: 16px;
+        }
+        
+        .video-player:hover .video-overlay {
+            opacity: 1;
+        }
+        
+        .play-button {
+            width: 80px;
+            height: 80px;
+            background: rgba(255,255,255,0.9);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: #4f46e5;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .play-button:hover {
+            background: white;
+            transform: scale(1.1);
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 min-h-screen">
+    <!-- Header -->
+    <header class="gradient-bg shadow-2xl">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-20">
+                <div class="flex items-center space-x-4">
+                    <div class="relative">
+                        <div class="w-12 h-12 bg-white bg-opacity-20 rounded-xl flex items-center justify-center floating-element">
+                            <i class="fas fa-video text-white text-xl"></i>
+                        </div>
+                        <div class="absolute -top-1 -right-1 w-4 h-4 bg-green-400 rounded-full pulse-dot"></div>
+                    </div>
+                    <div>
+                        <h1 class="text-white text-2xl font-bold">AI Video Report</h1>
+                        <div class="flex items-center space-x-2 mt-1">
+                            <span class="feature-badge">AI Generated</span>
+                            <span class="text-white text-xs opacity-75">Ready to view</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex items-center space-x-4">
+                    <div class="hidden md:flex items-center space-x-2 glass-card rounded-full px-4 py-2">
+                        <div class="w-2 h-2 bg-green-500 rounded-full pulse-dot"></div>
+                        <span class="text-sm font-medium text-gray-700">Video Ready</span>
+                    </div>
+                    <a href="{{ url_for('index') }}" class="text-white hover:text-gray-200 transition-all duration-300 p-2 rounded-lg hover:bg-white hover:bg-opacity-10">
+                        <i class="fas fa-home mr-2"></i>Home
+                    </a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <!-- Success Banner -->
+        <div class="glass-card rounded-2xl p-6 mb-12 celebration-animation">
+            <div class="text-center">
+                <div class="w-16 h-16 bg-gradient-to-r from-green-500 to-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-check text-white text-2xl"></i>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-800 mb-2">🎉 Your AI Video Report is Ready!</h2>
+                <p class="text-gray-600 text-lg">We've successfully transformed your analytics data into an engaging video presentation.</p>
+            </div>
+        </div>
+
+        <!-- Video Player Section -->
+        <div class="video-container mb-12">
+            <div class="text-center mb-8">
+                <h3 class="text-3xl font-bold text-gray-800 mb-3">📊 Analytics Intelligence Video Report</h3>
+                <p class="text-gray-600 text-lg">Watch your data come to life with AI-powered insights and narration</p>
+            </div>
+            
+            <div class="video-player relative">
+                <video id="videoPlayer" controls class="w-full" preload="metadata" poster="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 675'%3E%3Crect width='1200' height='675' fill='%23000'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='white' font-size='48' font-family='Arial'%3EAnalytics Video Report%3C/text%3E%3C/svg%3E">
+                    <source src="{{ video_url }}" type="video/mp4">
+                    Your browser does not support the video tag.
+                </video>
+                
+                <!-- Custom Play Overlay -->
+                <div class="video-overlay" id="videoOverlay">
+                    <div class="play-button" id="playButton">
+                        <i class="fas fa-play"></i>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Video Controls -->
+            <div class="flex flex-wrap justify-center gap-4 mt-6">
+                <button id="playPauseBtn" class="action-button bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl font-semibold shadow-lg">
+                    <i class="fas fa-play mr-2"></i>Play
+                </button>
+                <button id="fullscreenBtn" class="action-button bg-gray-800 text-white px-6 py-3 rounded-xl font-semibold shadow-lg">
+                    <i class="fas fa-expand mr-2"></i>Fullscreen
+                </button>
+                <button id="downloadBtn" class="action-button bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-3 rounded-xl font-semibold shadow-lg">
+                    <i class="fas fa-download mr-2"></i>Download
+                </button>
+            </div>
+        </div>
+
+        <!-- Video Statistics -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
+            <div class="stats-card text-center">
+                <div class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mx-auto mb-3">
+                    <i class="fas fa-film text-blue-600 text-xl"></i>
+                </div>
+                <h4 class="font-semibold text-gray-800 mb-1">Video Duration</h4>
+                <p class="text-2xl font-bold text-blue-600" id="videoDuration">--:--</p>
+            </div>
+            
+            <div class="stats-card text-center">
+                <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center mx-auto mb-3">
+                    <i class="fas fa-chart-bar text-green-600 text-xl"></i>
+                </div>
+                <h4 class="font-semibold text-gray-800 mb-1">Data Points</h4>
+                <p class="text-2xl font-bold text-green-600">13</p>
+            </div>
+            
+            <div class="stats-card text-center">
+                <div class="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center mx-auto mb-3">
+                    <i class="fas fa-brain text-purple-600 text-xl"></i>
+                </div>
+                <h4 class="font-semibold text-gray-800 mb-1">AI Insights</h4>
+                <p class="text-2xl font-bold text-purple-600">Generated</p>
+            </div>
+            
+            <div class="stats-card text-center">
+                <div class="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center mx-auto mb-3">
+                    <i class="fas fa-star text-orange-600 text-xl"></i>
+                </div>
+                <h4 class="font-semibold text-gray-800 mb-1">Quality</h4>
+                <p class="text-2xl font-bold text-orange-600">HD</p>
+            </div>
+        </div>
+
+        <!-- Action Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+            <!-- Share Card -->
+            <div class="glass-card rounded-2xl p-8">
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                        <i class="fas fa-share-alt text-white text-2xl"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-3">Share Your Insights</h3>
+                    <p class="text-gray-600 mb-6">Share this AI-generated video report with your team or stakeholders</p>
+                    <div class="flex justify-center space-x-3">
+                        <button class="action-button bg-blue-600 text-white px-4 py-2 rounded-lg font-medium">
+                            <i class="fab fa-twitter mr-2"></i>Twitter
+                        </button>
+                        <button class="action-button bg-blue-800 text-white px-4 py-2 rounded-lg font-medium">
+                            <i class="fab fa-linkedin mr-2"></i>LinkedIn
+                        </button>
+                        <button class="action-button bg-gray-600 text-white px-4 py-2 rounded-lg font-medium">
+                            <i class="fas fa-link mr-2"></i>Copy Link
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Generate New Report Card -->
+            <div class="glass-card rounded-2xl p-8">
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                        <i class="fas fa-plus-circle text-white text-2xl"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-3">Generate New Report</h3>
+                    <p class="text-gray-600 mb-6">Create another AI video report with different date ranges or properties</p>
+                    <a href="{{ url_for('dashboard') }}" class="action-button bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-3 rounded-xl font-semibold inline-flex items-center">
+                        <i class="fas fa-chart-line mr-2"></i>Back to Dashboard
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Features Showcase -->
+        <div class="glass-card rounded-2xl p-8 mb-12">
+            <div class="text-center mb-8">
+                <h3 class="text-2xl font-bold text-gray-800 mb-3">🚀 What Makes This Special?</h3>
+                <p class="text-gray-600">Your video report includes advanced AI-powered features</p>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="text-center p-6 bg-white rounded-xl shadow-sm border border-gray-100">
+                    <div class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mx-auto mb-4">
+                        <i class="fas fa-microphone text-blue-600 text-xl"></i>
+                    </div>
+                    <h4 class="font-semibold text-gray-800 mb-2">AI Narration</h4>
+                    <p class="text-sm text-gray-600">Professional AI-generated voice explanations for each chart and metric</p>
+                </div>
+                
+                <div class="text-center p-6 bg-white rounded-xl shadow-sm border border-gray-100">
+                    <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center mx-auto mb-4">
+                        <i class="fas fa-eye text-green-600 text-xl"></i>
+                    </div>
+                    <h4 class="font-semibold text-gray-800 mb-2">Visual Transitions</h4>
+                    <p class="text-sm text-gray-600">Smooth animations and transitions between different data visualizations</p>
+                </div>
+                
+                <div class="text-center p-6 bg-white rounded-xl shadow-sm border border-gray-100">
+                    <div class="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center mx-auto mb-4">
+                        <i class="fas fa-lightbulb text-purple-600 text-xl"></i>
+                    </div>
+                    <h4 class="font-semibold text-gray-800 mb-2">Smart Insights</h4>
+                    <p class="text-sm text-gray-600">AI-powered analysis highlighting trends, opportunities, and recommendations</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Call to Action -->
+        <div class="text-center">
+            <div class="glass-card rounded-2xl p-8 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white relative overflow-hidden">
+                <div class="absolute inset-0 bg-black bg-opacity-20"></div>
+                <div class="relative z-10">
+                    <h3 class="text-2xl font-bold mb-4">💡 Ready for More Insights?</h3>
+                    <p class="text-lg mb-6 opacity-90">Explore more features and create additional reports to maximize your analytics potential</p>
+                    <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                        <a href="{{ url_for('dashboard') }}" class="action-button bg-white text-indigo-600 px-8 py-3 rounded-xl font-bold hover:bg-gray-100">
+                            <i class="fas fa-chart-bar mr-2"></i>Create New Report
+                        </a>
+                        <a href="{{ url_for('index') }}" class="action-button bg-transparent border-2 border-white text-white px-8 py-3 rounded-xl font-bold hover:bg-white hover:text-indigo-600">
+                            <i class="fas fa-home mr-2"></i>Back to Home
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-900 text-white py-12 mt-16">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 text-center md:text-left">
+                <div>
+                    <div class="flex items-center justify-center md:justify-start space-x-3 mb-4">
+                        <div class="w-10 h-10 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-video text-white"></i>
+                        </div>
+                        <span class="text-xl font-bold">Analytics Intelligence</span>
+                    </div>
+                    <p class="text-gray-400">AI-powered video analytics reports that transform your data into compelling visual stories.</p>
+                </div>
+                
+                <div>
+                    <h4 class="text-lg font-semibold mb-4">Quick Links</h4>
+                    <ul class="space-y-2">
+                        <li><a href="{{ url_for('dashboard') }}" class="text-gray-400 hover:text-white transition-colors">Dashboard</a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-white transition-colors">Features</a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-white transition-colors">Support</a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-white transition-colors">API Docs</a></li>
+                    </ul>
+                </div>
+                
+                <div>
+                    <h4 class="text-lg font-semibold mb-4">Connect</h4>
+                    <div class="flex justify-center md:justify-start space-x-4">
+                        <a href="#" class="w-10 h-10 bg-gray-800 rounded-lg flex items-center justify-center hover:bg-gray-700 transition-colors">
+                            <i class="fab fa-twitter"></i>
+                        </a>
+                        <a href="#" class="w-10 h-10 bg-gray-800 rounded-lg flex items-center justify-center hover:bg-gray-700 transition-colors">
+                            <i class="fab fa-linkedin-in"></i>
+                        </a>
+                        <a href="#" class="w-10 h-10 bg-gray-800 rounded-lg flex items-center justify-center hover:bg-gray-700 transition-colors">
+                            <i class="fab fa-youtube"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="border-t border-gray-800 mt-8 pt-8 text-center">
+                <p class="text-gray-400">&copy; 2024 Analytics Intelligence. All rights reserved. Made with ❤️ for data-driven decisions.</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Success Toast -->
+    <div id="successToast" class="fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-xl shadow-lg transform translate-x-full transition-transform duration-300 z-50">
+        <div class="flex items-center">
+            <i class="fas fa-check-circle mr-2"></i>
+            <span>Link copied to clipboard!</span>
+        </div>
+    </div>
+
+    <script>
+        // Video player functionality
+        const video = document.getElementById('videoPlayer');
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const playButton = document.getElementById('playButton');
+        const videoOverlay = document.getElementById('videoOverlay');
+        const videoDuration = document.getElementById('videoDuration');
+
+        // Update video duration when metadata loads
+        video.addEventListener('loadedmetadata', function() {
+            const duration = Math.floor(video.duration);
+            const minutes = Math.floor(duration / 60);
+            const seconds = duration % 60;
+            videoDuration.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        });
+
+        // Play/Pause functionality
+        function togglePlayPause() {
+            if (video.paused) {
+                video.play();
+                playPauseBtn.innerHTML = '<i class="fas fa-pause mr-2"></i>Pause';
+                videoOverlay.style.opacity = '0';
+            } else {
+                video.pause();
+                playPauseBtn.innerHTML = '<i class="fas fa-play mr-2"></i>Play';
+            }
+        }
+
+        playPauseBtn.addEventListener('click', togglePlayPause);
+        playButton.addEventListener('click', togglePlayPause);
+        video.addEventListener('click', togglePlayPause);
+
+        // Update play button when video ends
+        video.addEventListener('ended', function() {
+            playPauseBtn.innerHTML = '<i class="fas fa-replay mr-2"></i>Replay';
+            videoOverlay.style.opacity = '1';
+        });
+
+        // Fullscreen functionality
+        fullscreenBtn.addEventListener('click', function() {
+            if (video.requestFullscreen) {
+                video.requestFullscreen();
+            } else if (video.webkitRequestFullscreen) {
+                video.webkitRequestFullscreen();
+            } else if (video.mozRequestFullScreen) {
+                video.mozRequestFullScreen();
+            }
+        });
+
+        // Download functionality
+        downloadBtn.addEventListener('click', function() {
+            const link = document.createElement('a');
+            link.href = video.src;
+            link.download = 'analytics-video-report.mp4';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            // Show success message
+            showToast('Download started!');
+        });
+
+        // Share functionality
+        document.querySelectorAll('.action-button').forEach(button => {
+            if (button.textContent.includes('Copy Link')) {
+                button.addEventListener('click', function() {
+                    navigator.clipboard.writeText(window.location.href).then(function() {
+                        showToast('Link copied to clipboard!');
+                    });
+                });
+            }
+        });
+
+        // Toast notification
+        function showToast(message) {
+            const toast = document.getElementById('successToast');
+            toast.querySelector('span').textContent = message;
+            toast.classList.remove('translate-x-full');
+            
+            setTimeout(() => {
+                toast.classList.add('translate-x-full');
+            }, 3000);
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            if (e.code === 'Space' && e.target.tagName !== 'BUTTON') {
+                e.preventDefault();
+                togglePlayPause();
+            } else if (e.code === 'KeyF') {
+                e.preventDefault();
+                fullscreenBtn.click();
+            }
+        });
+
+        // Auto-play on page load (with user interaction)
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add a subtle entrance animation
+            setTimeout(() => {
+                document.querySelector('.video-container').style.opacity = '1';
+                document.querySelector('.video-container').style.transform = 'translateY(0)';
+            }, 500);
+        });
+
+        // Add entrance animation styles
+        document.querySelector('.video-container').style.opacity = '0';
+        document.querySelector('.video-container').style.transform = 'translateY(20px)';
+        document.querySelector('.video-container').style.transition = 'opacity 0.8s ease, transform 0.8s ease';
+
+        // Video progress tracking
+        video.addEventListener('timeupdate', function() {
+            const progress = (video.currentTime / video.duration) * 100;
+            // You can add a progress bar here if needed
+        });
+
+        // Enhanced video controls
+        video.addEventListener('play', function() {
+            playPauseBtn.innerHTML = '<i class="fas fa-pause mr-2"></i>Pause';
+        });
+
+        video.addEventListener('pause', function() {
+            playPauseBtn.innerHTML = '<i class="fas fa-play mr-2"></i>Play';
+        });
+
+        // Smooth scrolling for any anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth' });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

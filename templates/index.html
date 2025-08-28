@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AnalyticsPro - Next-Gen Data Intelligence</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#0F172A',
+                        secondary: '#1E293B',
+                        accent: '#3B82F6',
+                        highlight: '#06B6D4',
+                        success: '#10B981',
+                        warning: '#F59E0B',
+                    },
+                    fontFamily: {
+                        sans: ['SF Pro Display', 'system-ui', 'sans-serif'],
+                    },
+                    animation: {
+                        'slide-up': 'slideUp 0.8s ease-out',
+                        'fade-in': 'fadeIn 1s ease-out',
+                        'bounce-slow': 'bounce 3s infinite',
+                        'pulse-slow': 'pulse 3s infinite',
+                        'float': 'float 6s ease-in-out infinite',
+                        'glow': 'glow 2s ease-in-out infinite alternate',
+                        'rotate-slow': 'rotate 20s linear infinite',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@300;400;500;600;700;800;900&display=swap');
+        
+        @keyframes slideUp {
+            from { transform: translateY(100px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes float {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            33% { transform: translateY(-30px) rotate(1deg); }
+            66% { transform: translateY(-10px) rotate(-1deg); }
+        }
+        
+        @keyframes glow {
+            0% { box-shadow: 0 0 20px rgba(59, 130, 246, 0.3); }
+            100% { box-shadow: 0 0 40px rgba(59, 130, 246, 0.6); }
+        }
+        
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        .dark-mode {
+            background: linear-gradient(135deg, #0F172A 0%, #1E293B 50%, #334155 100%);
+        }
+        
+        .glass-morphism {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .neon-text {
+            text-shadow: 0 0 10px rgba(59, 130, 246, 0.5),
+                         0 0 20px rgba(59, 130, 246, 0.3),
+                         0 0 30px rgba(59, 130, 246, 0.2);
+        }
+        
+        .cyber-grid {
+            background-image: 
+                linear-gradient(rgba(59, 130, 246, 0.1) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(59, 130, 246, 0.1) 1px, transparent 1px);
+            background-size: 50px 50px;
+        }
+        
+        .hover-scale {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .hover-scale:hover {
+            transform: scale(1.05) translateY(-5px);
+        }
+        
+        .text-gradient {
+            background: linear-gradient(135deg, #3B82F6, #06B6D4, #10B981);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: #3B82F6;
+            border-radius: 50%;
+            animation: float 8s infinite ease-in-out;
+        }
+        
+        .card-3d {
+            transform-style: preserve-3d;
+            transition: transform 0.3s ease;
+        }
+        
+        .card-3d:hover {
+            transform: rotateY(5deg) rotateX(5deg) translateZ(20px);
+        }
+        
+        .hero-pattern {
+            background-image: 
+                radial-gradient(circle at 25% 25%, rgba(59, 130, 246, 0.2) 0%, transparent 50%),
+                radial-gradient(circle at 75% 75%, rgba(6, 182, 212, 0.2) 0%, transparent 50%),
+                radial-gradient(circle at 50% 50%, rgba(16, 185, 129, 0.1) 0%, transparent 50%);
+        }
+        
+        .neo-brutalism {
+            box-shadow: 8px 8px 0px #3B82F6;
+            border: 3px solid #0F172A;
+        }
+        
+        .typing-animation {
+            border-right: 2px solid #3B82F6;
+            animation: blink 1s infinite;
+        }
+        
+        @keyframes blink {
+            0%, 50% { border-right-color: #3B82F6; }
+            51%, 100% { border-right-color: transparent; }
+        }
+    </style>
+</head>
+<body class="dark-mode text-white overflow-x-hidden">
+    <!-- Animated Background -->
+    <div class="fixed inset-0 cyber-grid opacity-30"></div>
+    <div class="fixed inset-0 hero-pattern"></div>
+    
+    <!-- Floating Particles -->
+    <div class="fixed inset-0 pointer-events-none">
+        <div class="particle" style="top: 20%; left: 10%; animation-delay: 0s;"></div>
+        <div class="particle" style="top: 60%; left: 80%; animation-delay: 2s;"></div>
+        <div class="particle" style="top: 30%; left: 60%; animation-delay: 4s;"></div>
+        <div class="particle" style="top: 80%; left: 20%; animation-delay: 6s;"></div>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="fixed w-full z-50 glass-morphism">
+        <div class="max-w-7xl mx-auto px-6 py-4">
+            <div class="flex justify-between items-center">
+                <div class="flex items-center space-x-4 animate-slide-up">
+                    <div class="relative">
+                        <div class="w-12 h-12 bg-gradient-to-r from-accent to-highlight rounded-xl flex items-center justify-center animate-glow">
+                            <i class="fas fa-cube text-white text-xl animate-rotate-slow"></i>
+                        </div>
+                    </div>
+                    <div>
+                        <span class="text-2xl font-black neon-text">AnalyticsPro</span>
+                        <div class="text-xs text-highlight font-semibold">NEXT-GEN AI</div>
+                    </div>
+                </div>
+                
+                <div class="hidden lg:flex items-center space-x-8 animate-fade-in">
+                    <a href="#features" class="text-gray-300 hover:text-highlight transition-all duration-300 font-medium relative group">
+                        Features
+                        <span class="absolute -bottom-1 left-0 w-0 h-0.5 bg-highlight transition-all duration-300 group-hover:w-full"></span>
+                    </a>
+                    <a href="#demo" class="text-gray-300 hover:text-highlight transition-all duration-300 font-medium relative group">
+                        Live Demo
+                        <span class="absolute -bottom-1 left-0 w-0 h-0.5 bg-highlight transition-all duration-300 group-hover:w-full"></span>
+                    </a>
+                    <a href="#pricing" class="text-gray-300 hover:text-highlight transition-all duration-300 font-medium relative group">
+                        Pricing
+                        <span class="absolute -bottom-1 left-0 w-0 h-0.5 bg-highlight transition-all duration-300 group-hover:w-full"></span>
+                    </a>
+                </div>
+                
+                <div class="flex items-center space-x-4 animate-slide-up">
+                    <a href="/login" class="glass-morphism text-white px-6 py-3 rounded-xl hover:bg-accent hover:bg-opacity-20 transition-all duration-300 font-semibold">
+                        <i class="fas fa-sign-in-alt mr-2"></i>Login
+                    </a>
+                    <button class="lg:hidden text-white text-xl">
+                        <i class="fas fa-bars"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="min-h-screen flex items-center justify-center relative pt-20">
+        <div class="max-w-7xl mx-auto px-6 text-center relative z-10">
+            <div class="animate-slide-up">
+                <div class="inline-flex items-center space-x-2 bg-gradient-to-r from-accent to-highlight rounded-full px-6 py-2 mb-8 glass-morphism">
+                    <i class="fas fa-rocket text-sm"></i>
+                    <span class="text-sm font-semibold">Introducing AI-Powered Analytics</span>
+                </div>
+                
+                <h1 class="text-6xl lg:text-8xl font-black mb-8 leading-tight">
+                    <span class="text-gradient">Future of</span><br>
+                    <span class="neon-text typing-animation">Data Intelligence</span>
+                </h1>
+                
+                <p class="text-xl lg:text-2xl text-gray-300 mb-12 max-w-4xl mx-auto leading-relaxed">
+                    Transform your raw data into <span class="text-highlight font-semibold">actionable insights</span> with our 
+                    next-generation AI platform. Experience real-time analytics like never before.
+                </p>
+                
+                <div class="flex flex-col sm:flex-row gap-6 justify-center items-center mb-16">
+                    <a href="/signup" class="group neo-brutalism bg-accent text-white px-10 py-5 rounded-2xl font-bold text-lg hover:transform hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all duration-300">
+                        <span class="flex items-center">
+                            Start Free Trial
+                            <i class="fas fa-arrow-right ml-3 group-hover:translate-x-2 transition-transform duration-300"></i>
+                        </span>
+                    </a>
+                    <a href="#demo" class="group glass-morphism text-white px-10 py-5 rounded-2xl font-bold text-lg hover-scale border border-gray-600">
+                        <i class="fas fa-play mr-3 group-hover:text-accent transition-colors"></i>
+                        Watch Demo
+                    </a>
+                </div>
+                
+                <!-- Stats Bar -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto">
+                    <div class="glass-morphism rounded-2xl p-6 hover-scale">
+                        <div class="text-3xl font-bold text-accent mb-2">50K+</div>
+                        <div class="text-gray-400">Active Users</div>
+                    </div>
+                    <div class="glass-morphism rounded-2xl p-6 hover-scale">
+                        <div class="text-3xl font-bold text-highlight mb-2">99.9%</div>
+                        <div class="text-gray-400">Uptime SLA</div>
+                    </div>
+                    <div class="glass-morphism rounded-2xl p-6 hover-scale">
+                        <div class="text-3xl font-bold text-success mb-2">2.5M+</div>
+                        <div class="text-gray-400">Reports Generated</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Floating Dashboard Preview -->
+        <div class="absolute right-10 top-1/2 transform -translate-y-1/2 hidden xl:block animate-float">
+            <div class="glass-morphism rounded-3xl p-8 w-96">
+                <div class="flex items-center justify-between mb-6">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-3 h-3 bg-red-500 rounded-full"></div>
+                        <div class="w-3 h-3 bg-warning rounded-full"></div>
+                        <div class="w-3 h-3 bg-success rounded-full"></div>
+                    </div>
+                    <span class="text-xs text-gray-400">Live Preview</span>
+                </div>
+                <div class="space-y-4">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm text-gray-300">Revenue</span>
+                        <span class="text-success font-semibold">+24.5%</span>
+                    </div>
+                    <div class="w-full bg-gray-700 rounded-full h-2">
+                        <div class="bg-gradient-to-r from-accent to-highlight h-2 rounded-full w-3/4 animate-pulse-slow"></div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4 mt-6">
+                        <div class="bg-secondary rounded-xl p-4">
+                            <div class="text-2xl font-bold text-accent">847</div>
+                            <div class="text-xs text-gray-400">Active Users</div>
+                        </div>
+                        <div class="bg-secondary rounded-xl p-4">
+                            <div class="text-2xl font-bold text-highlight">12.4K</div>
+                            <div class="text-xs text-gray-400">Page Views</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="py-32 relative">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-20 animate-fade-in">
+                <div class="inline-flex items-center space-x-2 bg-secondary rounded-full px-6 py-2 mb-6">
+                    <i class="fas fa-star text-warning"></i>
+                    <span class="text-sm font-semibold text-gray-300">Premium Features</span>
+                </div>
+                <h2 class="text-5xl lg:text-6xl font-black mb-6">
+                    <span class="text-gradient">Revolutionary</span> Capabilities
+                </h2>
+                <p class="text-xl text-gray-300 max-w-3xl mx-auto">
+                    Discover cutting-edge features designed to transform how you interact with data
+                </p>
+            </div>
+            
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <!-- AI Analytics -->
+                <div class="card-3d glass-morphism rounded-3xl p-8 hover-scale group">
+                    <div class="w-16 h-16 bg-gradient-to-r from-accent to-highlight rounded-2xl flex items-center justify-center mb-6 group-hover:animate-glow">
+                        <i class="fas fa-brain text-white text-2xl"></i>
+                    </div>
+                    <h3 class="text-2xl font-bold mb-4 group-hover:text-accent transition-colors">AI-Powered Insights</h3>
+                    <p class="text-gray-300 leading-relaxed mb-6">Advanced machine learning algorithms automatically detect patterns, anomalies, and opportunities in your data streams.</p>
+                    <div class="space-y-2">
+                        <div class="flex items-center text-sm text-gray-400">
+                            <i class="fas fa-check text-success mr-2"></i>
+                            Predictive Analytics
+                        </div>
+                        <div class="flex items-center text-sm text-gray-400">
+                            <i class="fas fa-check text-success mr-2"></i>
+                            Anomaly Detection
+                        </div>
+                        <div class="flex items-center text-sm text-gray-400">
+                            <i class="fas fa-check text-success mr-2"></i>
+                            Smart Recommendations
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Real-time Processing -->
+                <div class="card-3d glass-morphism rounded-3xl p-8 hover-scale group">
+                    <div class="w-16 h-16 bg-gradient-to-r from-highlight to-success rounded-2xl flex items-center justify-center mb-6 group-hover:animate-glow">
+                        <i class="fas fa-bolt text-white text-2xl"></i>
+                    </div>
+                    <h3 class="text-2xl font-bold mb-4 group-hover:text-highlight transition-colors">Real-time Processing</h3>
+                    <p class="text-gray-300 leading-relaxed mb-6">Process millions of data points per second with our distributed computing infrastructure and edge processing capabilities.</p>
+                    <div class="space-y-2">
+                        <div class="flex items-center text-sm text-gray-400">
+                            <i class="fas fa-check text-success mr-2"></i>
+                            Sub-second Latency
+                        </div>
+                        <div class="flex items-center text-sm text-gray-400">
+                            <i class="fas fa-check text-success mr-2"></i>
+                            Auto-scaling Infrastructure
+                        </div>
+                        <div class="flex items-center text-sm text-gray-400">
+                            <i class="fas fa-check text-success mr-2"></i>
+                            Global Edge Network
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Video Intelligence -->
+                <div class="card-3d glass-morphism rounded-3xl p-8 hover-scale group">
+                    <div class="w-16 h-16 bg-gradient-to-r from-success to-warning rounded-2xl flex items-center justify-center mb-6 group-hover:animate-glow">
+                        <i class="fas fa-video text-white text-2xl"></i>
+                    </div>
+                    <h3 class="text-2xl font-bold mb-4 group-hover:text-success transition-colors">AI Video Reports</h3>
+                    <p class="text-gray-300 leading-relaxed mb-6">Transform complex datasets into engaging video presentations with AI-generated narrations and dynamic visualizations.</p>
+                    <div class="space-y-2">
+                        <div class="flex items-center text-sm text-gray-400">
+                            <i class="fas fa-check text-success mr-2"></i>
+                            Auto-generated Narratives
+                        </div>
+                        <div class="flex items-center text-sm text-gray-400">
+                            <i class="fas fa-check text-success mr-2"></i>
+                            Dynamic Visualizations
+                        </div>
+                        <div class="flex items-center text-sm text-gray-400">
+                            <i class="fas fa-check text-success mr-2"></i>
+                            Custom Branding
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Technology Stack -->
+            <div class="mt-20 glass-morphism rounded-3xl p-8">
+                <div class="text-center mb-12">
+                    <h3 class="text-3xl font-bold mb-4">Powered by Cutting-Edge Technology</h3>
+                    <p class="text-gray-300">Built on enterprise-grade infrastructure with the latest AI advancements</p>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-8">
+                    <div class="text-center group">
+                        <div class="w-16 h-16 bg-secondary rounded-xl flex items-center justify-center mx-auto mb-3 group-hover:bg-accent transition-colors">
+                            <i class="fab fa-python text-2xl"></i>
+                        </div>
+                        <span class="text-sm text-gray-400">Python ML</span>
+                    </div>
+                    <div class="text-center group">
+                        <div class="w-16 h-16 bg-secondary rounded-xl flex items-center justify-center mx-auto mb-3 group-hover:bg-accent transition-colors">
+                            <i class="fab fa-aws text-2xl"></i>
+                        </div>
+                        <span class="text-sm text-gray-400">AWS Cloud</span>
+                    </div>
+                    <div class="text-center group">
+                        <div class="w-16 h-16 bg-secondary rounded-xl flex items-center justify-center mx-auto mb-3 group-hover:bg-accent transition-colors">
+                            <i class="fas fa-database text-2xl"></i>
+                        </div>
+                        <span class="text-sm text-gray-400">Big Data</span>
+                    </div>
+                    <div class="text-center group">
+                        <div class="w-16 h-16 bg-secondary rounded-xl flex items-center justify-center mx-auto mb-3 group-hover:bg-accent transition-colors">
+                            <i class="fas fa-chart-line text-2xl"></i>
+                        </div>
+                        <span class="text-sm text-gray-400">Analytics</span>
+                    </div>
+                    <div class="text-center group">
+                        <div class="w-16 h-16 bg-secondary rounded-xl flex items-center justify-center mx-auto mb-3 group-hover:bg-accent transition-colors">
+                            <i class="fas fa-shield-alt text-2xl"></i>
+                        </div>
+                        <span class="text-sm text-gray-400">Security</span>
+                    </div>
+                    <div class="text-center group">
+                        <div class="w-16 h-16 bg-secondary rounded-xl flex items-center justify-center mx-auto mb-3 group-hover:bg-accent transition-colors">
+                            <i class="fas fa-rocket text-2xl"></i>
+                        </div>
+                        <span class="text-sm text-gray-400">Performance</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="py-32 relative">
+        <div class="max-w-4xl mx-auto px-6 text-center">
+            <div class="glass-morphism rounded-3xl p-12 neo-brutalism">
+                <div class="animate-bounce-slow mb-8">
+                    <i class="fas fa-rocket text-6xl text-accent"></i>
+                </div>
+                <h2 class="text-5xl font-black mb-6 neon-text">Ready to Transform Your Data?</h2>
+                <p class="text-xl text-gray-300 mb-12 leading-relaxed">
+                    Join thousands of forward-thinking companies already using AnalyticsPro to drive 
+                    <span class="text-success font-semibold">exponential growth</span> and make 
+                    <span class="text-highlight font-semibold">data-driven decisions</span> at the speed of thought.
+                </p>
+                
+                <div class="flex flex-col sm:flex-row gap-6 justify-center mb-12">
+                    <a href="/signup" class="group bg-gradient-to-r from-accent to-highlight text-white px-12 py-5 rounded-2xl font-bold text-xl hover-scale">
+                        <span class="flex items-center justify-center">
+                            <i class="fas fa-star mr-3 group-hover:animate-pulse-slow"></i>
+                            Start Free Trial
+                            <i class="fas fa-arrow-right ml-3 group-hover:translate-x-2 transition-transform duration-300"></i>
+                        </span>
+                    </a>
+                    <a href="/demo" class="group glass-morphism text-white px-12 py-5 rounded-2xl font-bold text-xl hover-scale border border-gray-600">
+                        <i class="fas fa-calendar mr-3 group-hover:text-accent transition-colors"></i>
+                        Book a Demo
+                    </a>
+                </div>
+                
+                <!-- Trust Indicators -->
+                <div class="flex flex-wrap justify-center items-center gap-8 text-gray-400">
+                    <div class="flex items-center space-x-2">
+                        <i class="fas fa-star text-warning"></i>
+                        <span class="text-sm font-medium">4.9/5 Rating</span>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <i class="fas fa-shield-alt text-success"></i>
+                        <span class="text-sm font-medium">SOC 2 Certified</span>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <i class="fas fa-users text-highlight"></i>
+                        <span class="text-sm font-medium">50,000+ Users</span>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <i class="fas fa-clock text-accent"></i>
+                        <span class="text-sm font-medium">24/7 Support</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-secondary py-16">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
+                <div class="md:col-span-2">
+                    <div class="flex items-center space-x-4 mb-6">
+                        <div class="w-12 h-12 bg-gradient-to-r from-accent to-highlight rounded-xl flex items-center justify-center">
+                            <i class="fas fa-cube text-white"></i>
+                        </div>
+                        <div>
+                            <span class="text-2xl font-bold neon-text">AnalyticsPro</span>
+                            <div class="text-xs text-highlight font-semibold">NEXT-GEN AI</div>
+                        </div>
+                    </div>
+                    <p class="text-gray-400 mb-6 max-w-md leading-relaxed">
+                        Revolutionizing data analytics with artificial intelligence. Transform your business with insights that matter.
+                    </p>
+                    <div class="flex space-x-4">
+                        <a href="#" class="w-12 h-12 glass-morphism rounded-xl flex items-center justify-center hover:bg-accent transition-colors">
+                            <i class="fab fa-twitter"></i>
+                        </a>
+                        <a href="#" class="w-12 h-12 glass-morphism rounded-xl flex items-center justify-center hover:bg-accent transition-colors">
+                            <i class="fab fa-linkedin-in"></i>
+                        </a>
+                        <a href="#" class="w-12 h-12 glass-morphism rounded-xl flex items-center justify-center hover:bg-accent transition-colors">
+                            <i class="fab fa-github"></i>
+                        </a>
+                        <a href="#" class="w-12 h-12 glass-morphism rounded-xl flex items-center justify-center hover:bg-accent transition-colors">
+                            <i class="fab fa-discord"></i>
+                        </a>
+                    </div>
+                </div>
+                
+                <div>
+                    <h4 class="text-lg font-bold mb-6 text-white">Product</h4>
+                    <ul class="space-y-3">
+                        <li><a href="#" class="text-gray-400 hover:text-accent transition-colors">Features</a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-accent transition-colors">Pricing</a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-accent transition-colors">API</a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-accent transition-colors">Integrations</a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-accent transition-colors">Security</a></li>
+                    </ul>
+                </div>
+                
+                <div>
+                    <h4 class="text-lg font-bold mb-6 text-white">Company</h4>
+                    <ul class="space-y-3">
+                        <li><a href="#" class="text-gray-400 hover:text-accent transition-colors">About Us</a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-accent transition-colors">Careers</a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-accent transition-colors">Press</a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-accent transition-colors">Partners</a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-accent transition-colors">Contact</a></li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="border-t border-gray-700 pt-8">
+                <div class="flex flex-col md:flex-row justify-between items-center">
+                    <p class="text-gray-400 mb-4 md:mb-0">&copy; 2024 AnalyticsPro. All rights reserved. Built with ❤️ for data-driven innovation.</p>
+                    <div class="flex space-x-6">
+                        <a href="#" class="text-gray-400 hover:text-accent transition-colors text-sm">Privacy Policy</a>
+                        <a href="#" class="text-gray-400 hover:text-accent transition-colors text-sm">Terms of Service</a>
+                        <a href="#" class="text-gray-400 hover:text-accent transition-colors text-sm">Cookie Policy</a>
+                        <a href="#" class="text-gray-400 hover:text-accent transition-colors text-sm">GDPR</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Scroll to Top Button -->
+    <button id="scrollToTop" class="fixed bottom-8 right-8 w-14 h-14 bg-gradient-to-r from-accent to-highlight rounded-full shadow-lg hover:shadow-xl transition-all duration-300 opacity-0 invisible z-50 flex items-center justify-center group">
+        <i class="fas fa-arrow-up text-white group-hover:animate-bounce-slow"></i>
+    </button>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-primary bg-opacity-90 backdrop-blur-sm z-50 hidden flex items-center justify-center">
+        <div class="text-center">
+            <div class="relative">
+                <div class="w-20 h-20 border-4 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
+                <div class="absolute inset-0 w-20 h-20 border-4 border-highlight border-b-transparent rounded-full animate-spin animate-reverse mx-auto"></div>
+            </div>
+            <h3 class="text-2xl font-bold text-white mb-2">Initializing AnalyticsPro</h3>
+            <p class="text-gray-300">Preparing your intelligent analytics experience...</p>
+        </div>
+    </div>
+
+    <script>
+        // Scroll to top functionality
+        const scrollToTopBtn = document.getElementById('scrollToTop');
+        
+        window.addEventListener('scroll', () => {
+            if (window.pageYOffset > 500) {
+                scrollToTopBtn.classList.remove('opacity-0', 'invisible');
+            } else {
+                scrollToTopBtn.classList.add('opacity-0', 'invisible');
+            }
+        });
+        
+        scrollToTopBtn.addEventListener('click', () => {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+
+        // Smooth scrolling for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ 
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+
+        // Typing animation for hero text
+        function typeWriter(element, text, speed = 100) {
+            let i = 0;
+            element.innerHTML = '';
+            element.classList.add('typing-animation');
+            
+            function type() {
+                if (i < text.length) {
+                    element.innerHTML += text.charAt(i);
+                    i++;
+                    setTimeout(type, speed);
+                } else {
+                    element.classList.remove('typing-animation');
+                }
+            }
+            type();
+        }
+
+        // Initialize typing animation
+        document.addEventListener('DOMContentLoaded', function() {
+            const typingElement = document.querySelector('.typing-animation');
+            if (typingElement) {
+                const originalText = typingElement.textContent;
+                setTimeout(() => {
+                    typeWriter(typingElement, originalText, 150);
+                }, 1000);
+            }
+        });
+
+        // Intersection Observer for animations
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.style.opacity = '1';
+                    entry.target.style.transform = 'translateY(0)';
+                    
+                    // Add special effects for cards
+                    if (entry.target.classList.contains('card-3d')) {
+                        entry.target.style.animationDelay = Math.random() * 0.5 + 's';
+                        entry.target.classList.add('animate-slide-up');
+                    }
+                }
+            });
+        }, observerOptions);
+
+        // Observe elements for animation
+        document.querySelectorAll('.card-3d, .hover-scale').forEach(el => {
+            el.style.opacity = '0';
+            el.style.transform = 'translateY(30px)';
+            el.style.transition = 'opacity 0.8s ease, transform 0.8s ease';
+            observer.observe(el);
+        });
+
+        // Parallax effect for floating elements
+        window.addEventListener('scroll', () => {
+            const scrolled = window.pageYOffset;
+            const parallaxElements = document.querySelectorAll('.animate-float');
+            
+            parallaxElements.forEach(el => {
+                const speed = 0.5;
+                const yPos = -(scrolled * speed);
+                el.style.transform = `translateY(${yPos}px)`;
+            });
+        });
+
+        // Mobile menu toggle
+        const mobileMenuBtn = document.querySelector('.lg\\:hidden');
+        const mobileMenu = document.createElement('div');
+        mobileMenu.className = 'lg:hidden fixed inset-0 z-50 bg-primary bg-opacity-95 backdrop-blur-sm hidden';
+        mobileMenu.innerHTML = `
+            <div class="flex flex-col items-center justify-center h-full space-y-8">
+                <a href="#features" class="text-2xl text-white hover:text-accent transition-colors">Features</a>
+                <a href="#demo" class="text-2xl text-white hover:text-accent transition-colors">Live Demo</a>
+                <a href="#pricing" class="text-2xl text-white hover:text-accent transition-colors">Pricing</a>
+                <a href="/login" class="glass-morphism text-white px-8 py-4 rounded-xl font-semibold">Login</a>
+                <button class="absolute top-6 right-6 text-white text-2xl" onclick="this.parentElement.parentElement.classList.add('hidden')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        `;
+        document.body.appendChild(mobileMenu);
+
+        mobileMenuBtn?.addEventListener('click', () => {
+            mobileMenu.classList.toggle('hidden');
+        });
+
+        // Close mobile menu when clicking on links
+        mobileMenu.querySelectorAll('a').forEach(link => {
+            link.addEventListener('click', () => {
+                mobileMenu.classList.add('hidden');
+            });
+        });
+
+        // Dynamic particle generation
+        function createParticle() {
+            const particle = document.createElement('div');
+            particle.className = 'particle';
+            particle.style.left = Math.random() * 100 + '%';
+            particle.style.top = Math.random() * 100 + '%';
+            particle.style.animationDelay = Math.random() * 8 + 's';
+            particle.style.animationDuration = (Math.random() * 4 + 4) + 's';
+            
+            document.querySelector('.fixed.inset-0.pointer-events-none').appendChild(particle);
+            
+            // Remove particle after animation
+            setTimeout(() => {
+                if (particle.parentNode) {
+                    particle.parentNode.removeChild(particle);
+                }
+            }, 12000);
+        }
+
+        // Create particles periodically
+        setInterval(createParticle, 3000);
+
+        // Enhanced loading states for CTAs
+        document.querySelectorAll('a[href="/signup"], a[href="/login"]').forEach(button => {
+            button.addEventListener('click', function(e) {
+                if (this.href.includes('/signup') || this.href.includes('/login')) {
+                    e.preventDefault();
+                    
+                    // Show loading overlay
+                    document.getElementById('loadingOverlay').classList.remove('hidden');
+                    
+                    // Simulate loading and redirect
+                    setTimeout(() => {
+                        window.location.href = this.href;
+                    }, 2000);
+                }
+            });
+        });
+
+        // Easter egg: Konami code
+        let konamiCode = [];
+        const konami = [38, 38, 40, 40, 37, 39, 37, 39, 66, 65]; // ↑↑↓↓←→←→BA
+
+        document.addEventListener('keydown', function(e) {
+            konamiCode.push(e.keyCode);
+            if (konamiCode.length > konami.length) {
+                konamiCode.shift();
+            }
+            
+            if (konamiCode.join(',') === konami.join(',')) {
+                // Easter egg activated
+                document.body.style.filter = 'hue-rotate(180deg)';
+                setTimeout(() => {
+                    document.body.style.filter = '';
+                }, 3000);
+                
+                // Show special message
+                const message = document.createElement('div');
+                message.className = 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-gradient-to-r from-accent to-highlight text-white px-8 py-4 rounded-xl font-bold text-2xl z-50 animate-bounce-slow';
+                message.textContent = '🚀 You found the secret! 🎉';
+                document.body.appendChild(message);
+                
+                setTimeout(() => {
+                    document.body.removeChild(message);
+                }, 3000);
+                
+                konamiCode = [];
+            }
+        });
+
+        // Performance optimization: Debounced scroll events
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        // Optimize scroll events
+        const debouncedScroll = debounce(() => {
+            // Scroll-related animations here
+        }, 16); // ~60fps
+
+        window.addEventListener('scroll', debouncedScroll);
+
+        // Preload critical images
+        const criticalImages = [
+            // Add any critical image URLs here
+        ];
+
+        criticalImages.forEach(src => {
+            const img = new Image();
+            img.src = src;
+        });
+
+        // Add loading states to all interactive elements
+        document.querySelectorAll('button, a').forEach(element => {
+            element.addEventListener('click', function() {
+                if (!this.classList.contains('loading')) {
+                    const originalContent = this.innerHTML;
+                    this.classList.add('loading');
+                    this.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Loading...';
+                    
+                    setTimeout(() => {
+                        this.classList.remove('loading');
+                        this.innerHTML = originalContent;
+                    }, 1000);
+                }
+            });
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,1 @@
+The image is a placeholder for a "Ga4-Top-Events" report but contains no actual data. Ensure data collection is properly configured in GA4 and that the report is correctly generated to display meaningful insights.
