@@ -1,1 +1,0 @@
-The image displays a title indicating 'Gsc-Daily-Search-Performance,' but the data visualization area is obscured. To improve performance reporting, ensure that data is visible and easily interpretable.

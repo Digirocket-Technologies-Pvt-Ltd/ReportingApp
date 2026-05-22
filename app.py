@@ -1,11 +1,13 @@
 from flask import Flask
 import os
 from dotenv import load_dotenv
+
+# Load .env BEFORE importing routes/config so module-level os.getenv() calls work
+load_dotenv()
+
 from routes import init_routes
 import requests
 from datetime import timedelta
-
-load_dotenv()
 
 app = Flask(__name__)
 

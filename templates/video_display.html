@@ -173,10 +173,17 @@
             opacity: 0;
             transition: opacity 0.3s ease;
             border-radius: 16px;
+            /* Let clicks pass through to the native video controls underneath */
+            pointer-events: none;
         }
-        
+
         .video-player:hover .video-overlay {
             opacity: 1;
+        }
+
+        /* But the play button itself stays clickable */
+        .video-overlay .play-button {
+            pointer-events: auto;
         }
         
         .play-button {

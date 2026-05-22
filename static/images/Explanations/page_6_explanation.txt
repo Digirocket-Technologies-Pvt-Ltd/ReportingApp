@@ -1,3 +1,0 @@
-The image displays a title "Ga4-Daily-Analytics-Data" above a black rectangle, suggesting a report placeholder.
-
-To improve performance, ensure the data population is automated, and the report is easily accessible and understandable for all stakeholders.

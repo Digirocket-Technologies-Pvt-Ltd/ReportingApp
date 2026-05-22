@@ -1,3 +1,0 @@
-The agenda covers a comprehensive analysis of website performance using Google Analytics 4 (GA4) and Google Search Console (GSC).
-
-Focus on actionable insights from GA4 acquisition channels and GSC search queries to optimize content and improve user engagement based on device and geographic performance.

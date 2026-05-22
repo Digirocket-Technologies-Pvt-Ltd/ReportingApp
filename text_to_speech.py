@@ -1,7 +1,7 @@
 import os
 from deepgram import DeepgramClient, SpeakOptions
 
-DEEPGRAM_API_KEY = "dc7ec702a531c88144479248a00c382b71fd4b6f"
+DEEPGRAM_API_KEY = os.getenv('DEEPGRAM_API_KEY')
 
 def convert_text_to_speech(text_file_path, output_audio_dir):
     """Convert text from a file to speech using Deepgram API and save it as an audio file."""

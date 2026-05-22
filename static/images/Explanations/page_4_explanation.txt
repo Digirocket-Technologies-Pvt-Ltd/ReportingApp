@@ -1,1 +1,0 @@
-The image displays a template for a "Daily-Chart" with a white background and a dark blue border, including a thick black line at the bottom. To improve performance, it would be beneficial to add labels, axes, and data points to make the chart informative and user-friendly.

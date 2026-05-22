@@ -1,0 +1,30 @@
+# Environment / secrets
+.env
+.env.*
+
+# Python
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.Python
+
+# Logs
+server.log
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Generated output (videos, audio, rendered images, screenshot sessions)
+static/images/AIVideo/
+static/images/AudioExplanations/
+static/images/Explanations/
+static/images/session_*/
+static/images/*.mp4
+static/AudioExplanations/
+
+# Temporary diagnostic scripts
+_check_*.py
+_*_test.*

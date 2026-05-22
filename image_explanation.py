@@ -1,36 +1,30 @@
-# AIzaSyCZ93grMLfPnzsygsXrW9I54pDn40cIUmU
 import os
-import google.generativeai as genai
-from PIL import Image
+from ai_vision import explain_image
 
-# Configure Gemini API
-GOOGLE_API_KEY = "AIzaSyCZ93grMLfPnzsygsXrW9I54pDn40cIUmU"
-genai.configure(api_key=GOOGLE_API_KEY)
+
 def explain_image_with_gemini(image_path, explanations_dir):
-    """Generate a concise, expert-level explanation for an image using Gemini and save it as a text file."""
+    """Generate a concise, expert-level explanation for an image using Kimi AI and save it as a text file.
+
+    (Function name kept for backwards compatibility; now powered by Kimi, not Gemini.)
+    """
     try:
         # Ensure the explanations directory exists
         if not os.path.exists(explanations_dir):
             os.makedirs(explanations_dir)
 
-        # Load the image
-        image = Image.open(image_path)
-
-        # Initialize the Gemini model
-        model = genai.GenerativeModel('gemini-2.0-flash')
-
-        # Generate explanation with a precise, focused prompt
-        response = model.generate_content(
-            ["You are expert data analyst who can explain reports and narrate it also given calculated opinion on how to imporve the performance. `Only 2 line explanation`", image]
+        prompt = (
+            "You are an expert data analyst who can explain reports and narrate them, "
+            "and also give a calculated opinion on how to improve the performance. "
+            "Only 2 line explanation."
         )
-        explanation = response.text.strip()
+        explanation = explain_image(image_path, prompt)
 
         # Define the output text file path
         base_filename = os.path.splitext(os.path.basename(image_path))[0]
         output_text_path = os.path.join(explanations_dir, f"{base_filename}_explanation.txt")
 
         # Save the explanation to a text file
-        with open(output_text_path, 'w') as f:
+        with open(output_text_path, 'w', encoding='utf-8') as f:
             f.write(explanation)
 
         print(f"Explanation saved to {output_text_path}")

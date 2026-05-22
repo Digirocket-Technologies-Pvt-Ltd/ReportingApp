@@ -1,4 +1,3 @@
-# DEEPGRAM_API_KEY = "78a09f34ec35a20e35da5e6edd720bafa149dbef"
 from flask import Flask, render_template, redirect, url_for, request, jsonify, session, flash
 from auth import is_authenticated, refresh_token_if_needed, logout_user, get_user_info, get_session_info
 from ga4 import get_ga4_properties, get_ga4_data, get_property_name
@@ -24,7 +23,7 @@ import time
 
 app = Flask(__name__, static_folder='static')
 
-DEEPGRAM_API_KEY = "dc7ec702a531c88144479248a00c382b71fd4b6f"
+DEEPGRAM_API_KEY = os.getenv('DEEPGRAM_API_KEY')
 
 def extract_page_number(filename):
     # Extract the page number from the filename using regex
@@ -98,13 +97,31 @@ def create_video_from_images_and_audio(image_folder, audio_folder, output_video)
 
     # Write the final video to a file
     print(f"Writing final video to {output_video}...")
-    final_video.write_videofile(output_video, codec='libx264', fps=24)
+    final_video.write_videofile(
+        output_video,
+        codec='libx264',
+        fps=24,
+        audio_codec='aac',
+        preset='veryfast',         # much faster encoding, same visual quality at CRF
+        threads=4,                 # use multiple CPU cores
+        # -crf 20 = HD quality; yuv420p = max player compatibility
+        ffmpeg_params=['-crf', '20', '-pix_fmt', 'yuv420p'],
+    )
 
     end_time = time.time()
     elapsed_time = end_time - start_time
     print(f"Fade-only video creation completed in {elapsed_time:.2f} seconds")
 
 def init_routes(app):
+    @app.after_request
+    def add_no_cache_headers(response):
+        """Disable browser caching during development so every page reload
+        actually hits the server (and prints fresh diagnostics in the terminal)."""
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        return response
+
     @app.route('/')
     def index():
         if is_authenticated():
@@ -114,15 +131,18 @@ def init_routes(app):
     @app.route('/login')
     def login():
         session.clear()
-        auth_url = (
-            "https://accounts.google.com/o/oauth2/auth"
-            f"?client_id={CLIENT_ID}"
-            f"&redirect_uri={REDIRECT_URI}"
-            "&response_type=code"
-            f"&scope={' '.join(SCOPES)}"
-            "&access_type=offline"
-            "&prompt=consent"
-        )
+        from urllib.parse import urlencode
+        params = {
+            'client_id': CLIENT_ID,
+            'redirect_uri': REDIRECT_URI,
+            'response_type': 'code',
+            'scope': ' '.join(SCOPES),
+            'access_type': 'offline',
+            # select_account = Google account chooser dikhao (taaki sahi account chun sako)
+            # consent = naye permissions ke liye dobara poocho
+            'prompt': 'select_account consent',
+        }
+        auth_url = 'https://accounts.google.com/o/oauth2/auth?' + urlencode(params)
         return redirect(auth_url)
 
     @app.route('/logout')
@@ -181,7 +201,7 @@ def init_routes(app):
         try:
             ga4_properties, error = get_ga4_properties(session)
             gsc_sites = get_gsc_sites(session)
-            
+
             # Get session info for display
             session_info = get_session_info()
 
@@ -195,6 +215,89 @@ def init_routes(app):
         except Exception as e:
             flash(f'Error loading dashboard: {str(e)}', 'error')
             return redirect(url_for('index'))
+
+    @app.route('/find-ga4-data')
+    def find_ga4_data():
+        """Scan ALL GA4 properties the user can access and report which ones
+        actually have data (last 90 days). Saves trial-and-error."""
+        if not is_authenticated() or not refresh_token_if_needed():
+            return redirect(url_for('login'))
+
+        from datetime import datetime as _dt, timedelta as _td
+        token = session['access_token']
+        headers = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+
+        # 1) Get all properties
+        try:
+            summaries = requests.get(
+                'https://analyticsadmin.googleapis.com/v1beta/accountSummaries',
+                headers=headers).json()
+        except Exception as e:
+            return f"<pre>Error getting properties: {e}</pre>"
+
+        props = []
+        for account in summaries.get('accountSummaries', []):
+            for p in account.get('propertySummaries', []):
+                props.append({
+                    'id': p['property'].split('/')[-1],
+                    'name': p.get('displayName', 'Unnamed'),
+                })
+
+        # 2) Check each property for data in the last 90 days
+        end = _dt.now().strftime('%Y-%m-%d')
+        start = (_dt.now() - _td(days=90)).strftime('%Y-%m-%d')
+        with_data, empty = [], []
+        for prop in props:
+            url = f"https://analyticsdata.googleapis.com/v1beta/properties/{prop['id']}:runReport"
+            body = {
+                "metrics": [{"name": "activeUsers"}, {"name": "screenPageViews"}],
+                "dateRanges": [{"startDate": start, "endDate": end}],
+            }
+            try:
+                r = requests.post(url, headers=headers, json=body, timeout=20)
+                if r.status_code == 200:
+                    rows = r.json().get('rows', [])
+                    if rows:
+                        users = int(rows[0]['metricValues'][0]['value'])
+                        views = int(rows[0]['metricValues'][1]['value'])
+                        if users > 0 or views > 0:
+                            with_data.append({**prop, 'users': users, 'views': views})
+                        else:
+                            empty.append(prop)
+                    else:
+                        empty.append(prop)
+            except Exception:
+                pass
+
+        with_data.sort(key=lambda x: x['users'], reverse=True)
+
+        # 3) Build a simple HTML report
+        html = """
+        <html><head><title>GA4 Properties With Data</title>
+        <style>
+            body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; }
+            h1 { color: #4f46e5; }
+            .ok { background:#ecfdf5; border:1px solid #10b981; border-radius:10px; padding:14px 18px; margin:10px 0; }
+            .ok b { font-size:16px; color:#065f46; }
+            .id { color:#6b7280; font-size:13px; }
+            .stats { color:#047857; font-weight:600; }
+            .empty { color:#9ca3af; }
+            a.btn { display:inline-block; background:#4f46e5; color:#fff; padding:10px 18px;
+                    border-radius:8px; text-decoration:none; margin-top:20px; }
+        </style></head><body>
+        """
+        html += f"<h1>✅ {len(with_data)} properties have data (last 90 days)</h1>"
+        html += "<p>Inhe dashboard ki GA4 dropdown mein select karo (Property ID se pehchaano):</p>"
+        for p in with_data:
+            html += (f"<div class='ok'><b>{p['name']}</b><br>"
+                     f"<span class='id'>Property ID: {p['id']}</span><br>"
+                     f"<span class='stats'>{p['users']:,} users &nbsp;|&nbsp; {p['views']:,} page views</span></div>")
+        if not with_data:
+            html += "<p>⚠️ Kisi bhi property mein last 90 days ka data nahi mila.</p>"
+        html += f"<p class='empty'>({len(empty)} properties khaali hain - inme tracking data nahi aa raha)</p>"
+        html += "<a class='btn' href='/dashboard'>← Back to Dashboard</a>"
+        html += "</body></html>"
+        return html
 
     @app.route('/view_combined_data')
     def view_combined_data():

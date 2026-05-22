@@ -1,1 +1,0 @@
-It seems the image for geographic distribution is missing or corrupted. Consider checking data source connection or regenerate the graph.

@@ -1,3 +1,0 @@
-The image shows a title "Gsc-Top-Landing-Pages," indicating a report about top landing pages. However, the main data area is blacked out, making it impossible to analyze the actual landing page data.
-
-To improve performance, the report needs to display the data on top landing pages, including metrics like impressions, clicks, and conversion rates, so that actionable insights can be derived.

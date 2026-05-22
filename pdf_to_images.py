@@ -11,10 +11,12 @@ def convert_pdf_to_images(pdf_path, output_dir):
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
-        # Convert each page to an image
+        # Convert each page to an image at 2x resolution (HD) for a crisp video.
+        # Default get_pixmap() is ~96 DPI which looks blurry; Matrix(2, 2) ~= 192 DPI.
+        zoom_matrix = fitz.Matrix(2, 2)
         for page_number in range(len(pdf_document)):
             page = pdf_document.load_page(page_number)
-            pix = page.get_pixmap()
+            pix = page.get_pixmap(matrix=zoom_matrix)
             img_filename = os.path.join(output_dir, f"page_{page_number + 1}.png")
             pix.save(img_filename)
 

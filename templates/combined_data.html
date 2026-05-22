@@ -470,19 +470,22 @@
             let skippedElements = [];
 
             try {
-                // Show loading state
-                const exportBtn = document.getElementById('exportPDF');
-                exportBtn.innerHTML = `
-                    <div class="flex items-center">
-                        <div style="border: 2px solid #f3f3f3; border-top: 2px solid #3498db; border-radius: 50%; width: 20px; height: 20px; margin-right: 12px;" class="spinner"></div>
-                        <span>Creating Magic...</span>
-                    </div>
-                `;
-                exportBtn.disabled = true;
+                // Show a clear full-screen loading overlay (works for BOTH buttons)
+                showVideoLoadingOverlay();
+                ['exportPDF', 'exportPDF2'].forEach(function (id) {
+                    var b = document.getElementById(id);
+                    if (b) { b.disabled = true; b.style.opacity = '0.6'; }
+                });
 
                 for (const element of elementsToCapture) {
                     const elem = document.getElementById(element.id);
                     if (elem) {
+                        // Scroll the element into view and wait so the browser fully
+                        // renders it before capture. Without this, some slides (esp.
+                        // ones lower on the page) captured blank/empty.
+                        elem.scrollIntoView({ block: 'center' });
+                        await new Promise(function (r) { setTimeout(r, 350); });
+
                         // Add enhanced styling for capture
                         const originalBg = elem.style.background;
                         const originalShadow = elem.style.boxShadow;
@@ -494,10 +497,14 @@
                                 scale: 2,
                                 useCORS: true,
                                 logging: false,
+                                scrollX: -window.scrollX,
                                 scrollY: -window.scrollY,
                                 backgroundColor: '#ffffff',
-                                foreignObjectRendering: true,
-                                allowTaint: true
+                                // foreignObjectRendering:true caused all-black images in Chrome.
+                                // Default (false) renders charts/tables correctly.
+                                foreignObjectRendering: false,
+                                allowTaint: false,
+                                removeContainer: true
                             });
 
                             // Restore original styling
@@ -549,17 +556,35 @@
                 }
             } catch (error) {
                 console.error('❌ Error taking screenshots:', error);
+                hideVideoLoadingOverlay();
                 showNotification('error', 'Error creating video. Please try again.');
             } finally {
-                // Reset button state
-                setTimeout(() => {
-                    const exportBtn = document.getElementById('exportPDF');
-                    exportBtn.innerHTML = `
-                        <i class="fas fa-video mr-2"></i>Create AI Video
-                    `;
-                    exportBtn.disabled = false;
-                }, 2000);
+                // Re-enable both buttons (null-safe)
+                ['exportPDF', 'exportPDF2'].forEach(function (id) {
+                    var b = document.getElementById(id);
+                    if (b) { b.disabled = false; b.style.opacity = '1'; }
+                });
             }
+        }
+
+        // Full-screen loading overlay shown while the AI video is being generated
+        function showVideoLoadingOverlay() {
+            if (document.getElementById('videoLoadingOverlay')) return;
+            const o = document.createElement('div');
+            o.id = 'videoLoadingOverlay';
+            o.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(17,24,39,0.92);' +
+                'display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;text-align:center;padding:20px;';
+            o.innerHTML =
+                '<div style="border:6px solid rgba(255,255,255,0.2);border-top:6px solid #818cf8;border-radius:50%;width:64px;height:64px;animation:spin 1s linear infinite;"></div>' +
+                '<h2 style="font-size:24px;font-weight:700;margin-top:24px;">🎬 Creating your AI Video Report...</h2>' +
+                '<p style="font-size:16px;opacity:0.85;margin-top:10px;max-width:480px;">Isme 2-5 minute lagenge. Page band mat karo. AI har section ka explanation + voice bana raha hai.</p>' +
+                '<style>@keyframes spin{to{transform:rotate(360deg);}}</style>';
+            document.body.appendChild(o);
+        }
+
+        function hideVideoLoadingOverlay() {
+            const o = document.getElementById('videoLoadingOverlay');
+            if (o) o.remove();
         }
 
         function showNotification(type, message) {
@@ -827,12 +852,10 @@
                             </div>
                             <div class="absolute -top-1 -right-1 w-4 h-4 bg-green-400 rounded-full"></div>
                         </div>
-                        <div>
-                            <span class="text-white text-2xl font-bold">Analytics Intelligence</span>
-                            <div class="flex items-center space-x-2 mt-1">
-                                <span class="enhanced-badge">AI Powered</span>
-                                <span class="text-white text-xs opacity-75">v2.0</span>
-                            </div>
+                        <div class="flex items-center space-x-3">
+                            <span class="text-white text-2xl font-bold whitespace-nowrap">Analytics Intelligence</span>
+                            <span class="enhanced-badge">AI Powered</span>
+                            <span class="text-white text-xs opacity-75">v2.0</span>
                         </div>
                     </div>
                     <div class="hidden md:flex space-x-6">
@@ -915,10 +938,20 @@
                         <h2 class="text-3xl font-bold text-gray-800 mb-2">📊 Analytics Intelligence Overview</h2>
                         <p class="text-gray-600">Comprehensive insights from your digital properties</p>
                     </div>
-                    <form id="dateRangeForm" action="{{ url_for('view_combined_data') }}" method="GET" class="flex items-center space-x-4 bg-gray-50 p-4 rounded-xl">
+                    <form id="dateRangeForm" action="{{ url_for('view_combined_data') }}" method="GET" class="flex flex-col space-y-3 bg-gray-50 p-4 rounded-xl">
                         <input type="hidden" name="ga4_property" value="{{ request.args.get('ga4_property') }}">
                         <input type="hidden" name="gsc_site" value="{{ request.args.get('gsc_site') }}">
+                        <!-- Quick preset ranges (like Google Search Console) -->
+                        <div class="flex items-center flex-wrap gap-2">
+                            <span class="text-xs font-semibold text-gray-500 mr-1">Quick range:</span>
+                            <button type="button" onclick="setDatePreset(7)" class="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-indigo-50 hover:border-indigo-400 hover:text-indigo-700 transition">7 Days</button>
+                            <button type="button" onclick="setDatePreset(28)" class="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-indigo-50 hover:border-indigo-400 hover:text-indigo-700 transition">28 Days</button>
+                            <button type="button" onclick="setDatePreset(90)" class="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-indigo-50 hover:border-indigo-400 hover:text-indigo-700 transition">3 Months</button>
+                            <button type="button" onclick="setDatePreset(365)" class="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-indigo-50 hover:border-indigo-400 hover:text-indigo-700 transition">1 Year</button>
+                        </div>
+                        <!-- Custom date range -->
                         <div class="flex items-center space-x-3">
+                            <span class="text-xs font-semibold text-gray-500 mr-1">Custom:</span>
                             <div class="flex items-center space-x-2">
                                 <i class="fas fa-calendar-alt text-indigo-600"></i>
                                 <input type="date" id="start_date" name="start_date" value="{{ start_date }}"
@@ -927,12 +960,24 @@
                             <span class="text-gray-400 font-medium">to</span>
                             <input type="date" id="end_date" name="end_date" value="{{ end_date }}"
                                    class="rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 text-sm">
-                            <button type="submit" 
+                            <button type="submit"
                                     class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 shadow-md hover:shadow-lg">
                                 <i class="fas fa-sync-alt mr-2"></i>Update
                             </button>
                         </div>
                     </form>
+                    <script>
+                        // Quick date presets: set the custom date inputs and reload with real data
+                        function setDatePreset(days) {
+                            var end = new Date();
+                            var start = new Date();
+                            start.setDate(start.getDate() - days);
+                            var fmt = function (d) { return d.toISOString().split('T')[0]; };
+                            document.getElementById('start_date').value = fmt(start);
+                            document.getElementById('end_date').value = fmt(end);
+                            document.getElementById('dateRangeForm').submit();
+                        }
+                    </script>
                 </div>
 
                 <!-- Property Info -->
@@ -1139,7 +1184,7 @@
                             Daily Analytics Data
                         </h2>
                         <span class="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
-                            Last 30 Days
+                            <i class="fas fa-calendar-alt mr-1"></i>{{ start_date }} → {{ end_date }}
                         </span>
                     </div>
                     {% if ga4_data and ga4_data.rows %}

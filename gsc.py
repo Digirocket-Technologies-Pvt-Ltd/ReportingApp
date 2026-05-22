@@ -42,11 +42,13 @@ def get_gsc_detailed_data(credentials, site_url, start_date, end_date):
         webmasters_service = build('searchconsole', 'v1', credentials=credentials)
 
         # Query for date-based metrics
+        # rowLimit must be large enough to cover long ranges (e.g. 3 months = ~92 days),
+        # otherwise the totals get truncated and under-count. 50 was a bug for long ranges.
         date_request = {
             'startDate': start_date.strftime('%Y-%m-%d'),
             'endDate': end_date.strftime('%Y-%m-%d'),
             'dimensions': ['date'],
-            'rowLimit': 50
+            'rowLimit': 1000
         }
         date_response = webmasters_service.searchanalytics().query(
             siteUrl=site_url, body=date_request).execute()

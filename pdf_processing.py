@@ -8,11 +8,7 @@ from reportlab.lib.colors import Color, HexColor
 from reportlab.lib.pagesizes import landscape, A4
 from PIL import Image
 import io
-import google.generativeai as genai
-
-# Configure Gemini API
-GOOGLE_API_KEY = ""
-genai.configure(api_key=GOOGLE_API_KEY)
+from ai_vision import explain_image
 
 font_heading = "Helvetica-Bold"
 font_description = "Helvetica"
@@ -29,11 +25,12 @@ def clean_title(filename):
     return title
 
 def get_image_description(image_path):
-    """Generate image description using Gemini."""
-    model = genai.GenerativeModel('gemini-1.5-flash')
-    image = Image.open(image_path)
-    response = model.generate_content(["Generate a one-line explanation of this image.", image])
-    return response.text
+    """Generate a one-line image description using Kimi AI."""
+    try:
+        return explain_image(image_path, "Generate a one-line explanation of this image.")
+    except Exception as e:
+        print(f"Error getting image description: {e}")
+        return ""
 
 def process_pdf(template_pdf_path, images_folder, output_pdf_path, start_page):
     """Process PDF and add images starting from specified page."""
