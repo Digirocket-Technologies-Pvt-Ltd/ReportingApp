@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Report - Analytics Intelligence</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="/static/css/brand-theme.css" rel="stylesheet">
+    <link href="/static/css/dark-theme.css" rel="stylesheet">
+    <script src="/static/js/theme-toggle.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #14181a 0%, #0a0d0e 100%); }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-50 via-blue-50 to-teal-50 min-h-screen">
+    <!-- Header -->
+    <header class="gradient-bg shadow-2xl">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-20">
+                <div class="flex items-center space-x-4">
+                    <div class="w-12 h-12 bg-white bg-opacity-20 rounded-xl flex items-center justify-center">
+                        <i class="fas fa-file-pdf text-white text-xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-white text-2xl font-bold">PDF Report</h1>
+                        <span class="text-white text-xs opacity-75">AI Generated &bull; Ready to download</span>
+                    </div>
+                </div>
+                <a href="{{ url_for('dashboard') }}" class="text-white hover:text-gray-200 p-2 rounded-lg hover:bg-white hover:bg-opacity-10">
+                    <i class="fas fa-home mr-2"></i>Dashboard
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        <!-- Success + Download -->
+        <div class="bg-white rounded-2xl shadow-lg p-8 mb-8 text-center">
+            <div class="w-16 h-16 bg-gradient-to-r from-green-500 to-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i class="fas fa-check text-white text-2xl"></i>
+            </div>
+            <h2 class="text-2xl font-bold text-gray-800 mb-2">🎉 Your PDF Report is Ready!</h2>
+            <p class="text-gray-600 mb-6">Aapki analytics report PDF mein taiyaar hai. Download karo ya niche preview dekho.</p>
+            <a href="{{ pdf_url }}" download="analytics-report.pdf"
+               class="inline-flex items-center bg-gradient-to-r from-red-600 to-rose-600 text-white px-8 py-4 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl transition">
+                <i class="fas fa-download mr-3"></i>Download PDF
+            </a>
+        </div>
+
+        <!-- Preview -->
+        <div class="bg-white rounded-2xl shadow-lg p-4 mb-8">
+            <iframe src="{{ pdf_url }}" class="w-full rounded-xl" style="height: 80vh; border: none;"></iframe>
+        </div>
+
+        <!-- Generate another -->
+        <div class="text-center">
+            <a href="{{ url_for('dashboard') }}" class="inline-flex items-center bg-teal-600 hover:bg-teal-700 text-white px-6 py-3 rounded-xl font-semibold shadow">
+                <i class="fas fa-arrow-left mr-2"></i>Generate Another Report
+            </a>
+        </div>
+    </main>
+</body>
+</html>
