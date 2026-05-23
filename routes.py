@@ -578,6 +578,33 @@ def init_routes(app):
                                pdf_url=url_for('static', filename='images/analytics_report.pdf'),
                                session_info=get_session_info())
 
+    @app.route('/send-report-email', methods=['POST'])
+    def send_report_email_route():
+        """Email the generated PDF report to a client."""
+        if not is_authenticated():
+            return jsonify({'success': False, 'message': 'Please log in.'}), 401
+        try:
+            data = request.get_json() or {}
+            to_email = (data.get('to_email') or '').strip()
+            subject = (data.get('subject') or '').strip()
+            message = (data.get('message') or '').strip()
+            reply_to = (data.get('from_email') or '').strip() or None
+
+            if not to_email:
+                return jsonify({'success': False, 'message': 'Client email is required.'}), 400
+
+            pdf_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                    'static', 'images', 'analytics_report.pdf')
+            if not os.path.exists(pdf_path):
+                return jsonify({'success': False, 'message': 'No report found. Generate one first.'}), 404
+
+            from email_sender import send_report_email
+            send_report_email(to_email, subject, message, pdf_path, reply_to=reply_to)
+            return jsonify({'success': True, 'message': f'Report sent to {to_email}'})
+        except Exception as e:
+            print(f'Error sending report email: {e}')
+            return jsonify({'success': False, 'message': str(e)}), 500
+
 # Initialize the Flask app with routes
 init_routes(app)
 
