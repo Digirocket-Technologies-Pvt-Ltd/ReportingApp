@@ -10,3 +10,4 @@ Pillow
 PyPDF2
 reportlab
 PyMuPDF
+gunicorn
