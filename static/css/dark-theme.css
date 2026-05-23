@@ -41,6 +41,11 @@ body.dark-mode .text-gray-400 { color: #a8b3bd !important; }
 body.dark-mode .text-black { color: #e2e8f0 !important; }
 /* metric card icons (incl. the lime card whose icon got forced dark) -> light */
 body.dark-mode .metric-card i { color: #e2e8f0 !important; }
+/* metric card labels: opacity-75 made the black text dim/gray on dark cards -> brighten */
+body.dark-mode .metric-card .opacity-75 { opacity: 1 !important; color: #cbd5e1 !important; }
+/* "Trending" / "Live Data" sub-labels were too dim -> clear bright green */
+body.dark-mode .metric-card .text-green-300 { color: #86efac !important; }
+body.dark-mode .metric-card i.text-green-300 { color: #86efac !important; }
 
 /* Inputs / selects */
 body.dark-mode input,
