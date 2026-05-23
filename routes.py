@@ -14,103 +14,9 @@ import requests
 from pdf_processing import build_slide_images, build_pdf_from_images
 import shutil
 from image_explanation import explain_image_with_gemini
-from text_to_speech import convert_text_to_speech
-from sync_media import create_video_from_images_and_audio
-from deepgram import DeepgramClient, SpeakOptions
-from moviepy.editor import ImageSequenceClip, AudioFileClip, concatenate_videoclips
-import re
-import time
 
 app = Flask(__name__, static_folder='static')
 
-DEEPGRAM_API_KEY = os.getenv('DEEPGRAM_API_KEY')
-
-def extract_page_number(filename):
-    # Extract the page number from the filename using regex
-    match = re.search(r'page_(\d+)', filename)
-    return int(match.group(1)) if match else None
-
-def create_video_from_images_and_audio(image_folder, audio_folder, output_video):
-    print("Starting fade-only video creation process...")
-    start_time = time.time()
-
-    # Get list of image and audio files
-    print("Scanning directories for image and audio files...")
-    print(f"Looking in image folder: {image_folder}")
-    print(f"Looking in audio folder: {audio_folder}")
-
-    image_files = [f for f in os.listdir(image_folder) if f.endswith(('.png', '.jpg', '.jpeg'))]
-    audio_files = [f for f in os.listdir(audio_folder) if f.endswith(('.mp3', '.wav'))]
-
-    print(f"Found {len(image_files)} image files and {len(audio_files)} audio files")
-
-    # Ensure there is at least one image and one audio file
-    if not image_files or not audio_files:
-        raise ValueError("No images or audio files found in the specified directories.")
-
-    # Sort files based on the extracted page number
-    print("Sorting files by page number...")
-    image_files.sort(key=lambda x: extract_page_number(x))
-    audio_files.sort(key=lambda x: extract_page_number(x))
-
-    # Create a list to hold video clips
-    video_clips = []
-
-    # Loop through images and corresponding audio files
-    print("\nStarting to process individual slides:")
-    for i, (image_file, audio_file) in enumerate(zip(image_files, audio_files)):
-        print(f"Processing slide {i+1}/{len(image_files)}: {image_file}")
-
-        image_path = os.path.join(image_folder, image_file)
-        audio_path = os.path.join(audio_folder, audio_file)
-
-        print(f"  Loading image: {image_path}")
-        # Load the image and audio
-        image_clip = ImageSequenceClip([image_path], durations=[5])
-
-        print(f"  Loading audio: {audio_path}")
-        audio_clip = AudioFileClip(audio_path)
-        print(f"  Audio duration: {audio_clip.duration:.2f} seconds")
-
-        # Set the duration of the image clip to match the audio clip
-        print("  Setting image duration to match audio...")
-        image_clip = image_clip.set_duration(audio_clip.duration)
-
-        # Only add fade effects
-        print("  Adding fade effects...")
-        image_clip = image_clip.fadein(0.5).fadeout(0.5)
-
-        # Combine the image and audio into a video clip
-        print("  Combining image and audio...")
-        video_clip = image_clip.set_audio(audio_clip)
-
-        video_clips.append(video_clip)
-        print(f"  Completed processing slide {i+1}\n")
-
-    # Concatenate all video clips into a single video
-    print("Concatenating all video clips...")
-    final_video = concatenate_videoclips(video_clips, method="compose")
-
-    # Calculate total duration
-    total_duration = sum(clip.duration for clip in video_clips)
-    print(f"Total video duration: {total_duration:.2f} seconds")
-
-    # Write the final video to a file
-    print(f"Writing final video to {output_video}...")
-    final_video.write_videofile(
-        output_video,
-        codec='libx264',
-        fps=24,
-        audio_codec='aac',
-        preset='veryfast',         # much faster encoding, same visual quality at CRF
-        threads=4,                 # use multiple CPU cores
-        # -crf 20 = HD quality; yuv420p = max player compatibility
-        ffmpeg_params=['-crf', '20', '-pix_fmt', 'yuv420p'],
-    )
-
-    end_time = time.time()
-    elapsed_time = end_time - start_time
-    print(f"Fade-only video creation completed in {elapsed_time:.2f} seconds")
 
 def init_routes(app):
     @app.after_request
@@ -497,49 +403,6 @@ def init_routes(app):
             return jsonify({
                 'success': False,
                 'message': 'Error listing sessions',
-                'error': str(e)
-            }), 500
-
-    @app.route('/convert-text-to-speech', methods=['POST'])
-    def convert_text_to_speech_route():
-        if not is_authenticated():
-            return jsonify({
-                'success': False,
-                'message': 'Authentication required'
-            }), 401
-
-        try:
-            data = request.get_json()
-            text = data.get('text')
-            filename = data.get('filename', 'audio.mp3')
-
-            if not text:
-                return jsonify({
-                    'success': False,
-                    'message': 'Text is required'
-                }), 400
-
-            deepgram = DeepgramClient(DEEPGRAM_API_KEY)
-            options = SpeakOptions(model="aura-asteria-en")
-
-            audio_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'AudioExplanations')
-            if not os.path.exists(audio_dir):
-                os.makedirs(audio_dir)
-
-            filepath = os.path.join(audio_dir, filename)
-            response = deepgram.speak.v("1").save(filepath, {"text": text}, options)
-
-            return jsonify({
-                'success': True,
-                'message': 'Text converted to speech successfully',
-                'filepath': filepath
-            })
-
-        except Exception as e:
-            print(f'Error converting text to speech: {str(e)}')
-            return jsonify({
-                'success': False,
-                'message': 'Error converting text to speech',
                 'error': str(e)
             }), 500
 
