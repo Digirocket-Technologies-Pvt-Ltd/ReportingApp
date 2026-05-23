@@ -23,6 +23,7 @@ static/images/AudioExplanations/
 static/images/Explanations/
 static/images/session_*/
 static/images/*.mp4
+static/images/*.pdf
 static/AudioExplanations/
 
 # Temporary diagnostic scripts

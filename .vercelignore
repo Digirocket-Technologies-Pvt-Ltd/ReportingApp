@@ -1,0 +1,12 @@
+venv/
+__pycache__/
+*.pyc
+.env
+static/images/AIVideo/
+static/images/AudioExplanations/
+static/images/Explanations/
+static/images/session_*/
+static/images/*.mp4
+static/images/*.pdf
+.git/
+.DS_Store

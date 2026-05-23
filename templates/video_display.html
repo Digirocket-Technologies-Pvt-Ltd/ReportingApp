@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Video Report - Analytics Intelligence</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="/static/css/brand-theme.css" rel="stylesheet">
+    <link href="/static/css/dark-theme.css" rel="stylesheet">
+    <script src="/static/js/theme-toggle.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     
@@ -14,7 +17,7 @@
         }
         
         .gradient-bg {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #667eea 100%);
+            background: linear-gradient(135deg, #14181a 0%, #0a0d0e 100%);
             background-size: 200% 200%;
             animation: gradientShift 8s ease infinite;
         }
@@ -195,7 +198,7 @@
             align-items: center;
             justify-content: center;
             font-size: 24px;
-            color: #4f46e5;
+            color: #00AEAF;
             cursor: pointer;
             transition: all 0.3s ease;
         }
@@ -206,7 +209,7 @@
         }
     </style>
 </head>
-<body class="bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 min-h-screen">
+<body class="bg-gradient-to-br from-slate-50 via-blue-50 to-teal-50 min-h-screen">
     <!-- Header -->
     <header class="gradient-bg shadow-2xl">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -276,15 +279,19 @@
             
             <!-- Video Controls -->
             <div class="flex flex-wrap justify-center gap-4 mt-6">
-                <button id="playPauseBtn" class="action-button bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl font-semibold shadow-lg">
+                <button id="playPauseBtn" class="action-button bg-gradient-to-r from-teal-600 to-teal-600 text-white px-6 py-3 rounded-xl font-semibold shadow-lg">
                     <i class="fas fa-play mr-2"></i>Play
                 </button>
                 <button id="fullscreenBtn" class="action-button bg-gray-800 text-white px-6 py-3 rounded-xl font-semibold shadow-lg">
                     <i class="fas fa-expand mr-2"></i>Fullscreen
                 </button>
                 <button id="downloadBtn" class="action-button bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-3 rounded-xl font-semibold shadow-lg">
-                    <i class="fas fa-download mr-2"></i>Download
+                    <i class="fas fa-download mr-2"></i>Download Video
                 </button>
+                <a href="{{ url_for('static', filename='images/analytics_report.pdf') }}" download="analytics-report.pdf"
+                   class="action-button bg-gradient-to-r from-red-600 to-rose-600 text-white px-6 py-3 rounded-xl font-semibold shadow-lg inline-flex items-center">
+                    <i class="fas fa-file-pdf mr-2"></i>Download PDF
+                </a>
             </div>
         </div>
 
@@ -307,11 +314,11 @@
             </div>
             
             <div class="stats-card text-center">
-                <div class="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center mx-auto mb-3">
-                    <i class="fas fa-brain text-purple-600 text-xl"></i>
+                <div class="w-12 h-12 bg-teal-100 rounded-xl flex items-center justify-center mx-auto mb-3">
+                    <i class="fas fa-brain text-teal-600 text-xl"></i>
                 </div>
                 <h4 class="font-semibold text-gray-800 mb-1">AI Insights</h4>
-                <p class="text-2xl font-bold text-purple-600">Generated</p>
+                <p class="text-2xl font-bold text-teal-600">Generated</p>
             </div>
             
             <div class="stats-card text-center">
@@ -328,7 +335,7 @@
             <!-- Share Card -->
             <div class="glass-card rounded-2xl p-8">
                 <div class="text-center">
-                    <div class="w-16 h-16 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                    <div class="w-16 h-16 bg-gradient-to-r from-blue-500 to-teal-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
                         <i class="fas fa-share-alt text-white text-2xl"></i>
                     </div>
                     <h3 class="text-xl font-bold text-gray-800 mb-3">Share Your Insights</h3>
@@ -387,8 +394,8 @@
                 </div>
                 
                 <div class="text-center p-6 bg-white rounded-xl shadow-sm border border-gray-100">
-                    <div class="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center mx-auto mb-4">
-                        <i class="fas fa-lightbulb text-purple-600 text-xl"></i>
+                    <div class="w-12 h-12 bg-teal-100 rounded-xl flex items-center justify-center mx-auto mb-4">
+                        <i class="fas fa-lightbulb text-teal-600 text-xl"></i>
                     </div>
                     <h4 class="font-semibold text-gray-800 mb-2">Smart Insights</h4>
                     <p class="text-sm text-gray-600">AI-powered analysis highlighting trends, opportunities, and recommendations</p>
@@ -398,16 +405,16 @@
 
         <!-- Call to Action -->
         <div class="text-center">
-            <div class="glass-card rounded-2xl p-8 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white relative overflow-hidden">
+            <div class="glass-card rounded-2xl p-8 bg-gradient-to-r from-teal-600 via-teal-600 to-cyan-600 text-white relative overflow-hidden">
                 <div class="absolute inset-0 bg-black bg-opacity-20"></div>
                 <div class="relative z-10">
                     <h3 class="text-2xl font-bold mb-4">💡 Ready for More Insights?</h3>
                     <p class="text-lg mb-6 opacity-90">Explore more features and create additional reports to maximize your analytics potential</p>
                     <div class="flex flex-col sm:flex-row gap-4 justify-center">
-                        <a href="{{ url_for('dashboard') }}" class="action-button bg-white text-indigo-600 px-8 py-3 rounded-xl font-bold hover:bg-gray-100">
+                        <a href="{{ url_for('dashboard') }}" class="action-button bg-white text-teal-600 px-8 py-3 rounded-xl font-bold hover:bg-gray-100">
                             <i class="fas fa-chart-bar mr-2"></i>Create New Report
                         </a>
-                        <a href="{{ url_for('index') }}" class="action-button bg-transparent border-2 border-white text-white px-8 py-3 rounded-xl font-bold hover:bg-white hover:text-indigo-600">
+                        <a href="{{ url_for('index') }}" class="action-button bg-transparent border-2 border-white text-white px-8 py-3 rounded-xl font-bold hover:bg-white hover:text-teal-600">
                             <i class="fas fa-home mr-2"></i>Back to Home
                         </a>
                     </div>
@@ -422,7 +429,7 @@
             <div class="grid grid-cols-1 md:grid-cols-3 gap-8 text-center md:text-left">
                 <div>
                     <div class="flex items-center justify-center md:justify-start space-x-3 mb-4">
-                        <div class="w-10 h-10 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">
+                        <div class="w-10 h-10 bg-gradient-to-r from-teal-500 to-teal-600 rounded-xl flex items-center justify-center">
                             <i class="fas fa-video text-white"></i>
                         </div>
                         <span class="text-xl font-bold">Analytics Intelligence</span>

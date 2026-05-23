@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Report - Analytics Intelligence</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="/static/css/brand-theme.css" rel="stylesheet">
+    <link href="/static/css/dark-theme.css" rel="stylesheet">
+    <script src="/static/js/theme-toggle.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #14181a 0%, #0a0d0e 100%); }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-50 via-blue-50 to-teal-50 min-h-screen">
+    <!-- Header -->
+    <header class="gradient-bg shadow-2xl">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-20">
+                <div class="flex items-center space-x-4">
+                    <div class="w-12 h-12 bg-white bg-opacity-20 rounded-xl flex items-center justify-center">
+                        <i class="fas fa-file-pdf text-white text-xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-white text-2xl font-bold">PDF Report</h1>
+                        <span class="text-white text-xs opacity-75">AI Generated &bull; Ready to download</span>
+                    </div>
+                </div>
+                <a href="{{ url_for('dashboard') }}" class="text-white hover:text-gray-200 p-2 rounded-lg hover:bg-white hover:bg-opacity-10">
+                    <i class="fas fa-home mr-2"></i>Dashboard
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        <!-- Success + Download -->
+        <div class="bg-white rounded-2xl shadow-lg p-8 mb-8 text-center">
+            <div class="w-16 h-16 bg-gradient-to-r from-green-500 to-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i class="fas fa-check text-white text-2xl"></i>
+            </div>
+            <h2 class="text-2xl font-bold text-gray-800 mb-2">🎉 Your PDF Report is Ready!</h2>
+            <p class="text-gray-600 mb-6">Aapki analytics report PDF mein taiyaar hai. Download karo ya niche preview dekho.</p>
+            <div class="flex flex-wrap gap-3 justify-center">
+                <a href="{{ pdf_url }}" download="analytics-report.pdf"
+                   class="inline-flex items-center bg-gradient-to-r from-red-600 to-rose-600 text-white px-8 py-4 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl transition">
+                    <i class="fas fa-download mr-3"></i>Download PDF
+                </a>
+                <button type="button" onclick="openEmailModal()"
+                        class="inline-flex items-center bg-teal-600 px-8 py-4 rounded-xl font-bold text-lg shadow-lg hover:opacity-90 transition">
+                    <i class="fas fa-paper-plane mr-3"></i>Send via Email
+                </button>
+            </div>
+        </div>
+
+        <!-- Preview -->
+        <div class="bg-white rounded-2xl shadow-lg p-4 mb-8">
+            <iframe src="{{ pdf_url }}" class="w-full rounded-xl" style="height: 80vh; border: none;"></iframe>
+        </div>
+
+        <!-- Generate another -->
+        <div class="text-center">
+            <a href="{{ url_for('dashboard') }}" class="inline-flex items-center bg-teal-600 hover:bg-teal-700 text-white px-6 py-3 rounded-xl font-semibold shadow">
+                <i class="fas fa-arrow-left mr-2"></i>Generate Another Report
+            </a>
+        </div>
+    </main>
+
+    <!-- Email Compose Modal -->
+    <div id="emailModal" style="display:none; position:fixed; inset:0; z-index:9998; background:rgba(0,0,0,0.6); align-items:center; justify-content:center; padding:16px;">
+        <div class="bg-white rounded-2xl shadow-2xl w-full" style="max-width:560px;">
+            <div class="gradient-bg rounded-t-2xl px-6 py-4 flex items-center justify-between">
+                <h3 class="text-white text-lg font-bold"><i class="fas fa-envelope mr-2"></i>Send Report via Email</h3>
+                <button type="button" onclick="closeEmailModal()" class="text-white hover:text-gray-200 text-2xl leading-none">&times;</button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Your email (Reply-to)</label>
+                    <input id="emFrom" type="email" placeholder="you@example.com"
+                           class="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-teal-500 focus:ring-2 focus:ring-teal-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Client email <span class="text-red-500">*</span></label>
+                    <input id="emTo" type="email" placeholder="client@example.com" required
+                           class="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-teal-500 focus:ring-2 focus:ring-teal-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Subject</label>
+                    <input id="emSubject" type="text" value="Your Analytics Report"
+                           class="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-teal-500 focus:ring-2 focus:ring-teal-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Message</label>
+                    <textarea id="emMessage" rows="4" placeholder="Hi, please find your analytics report attached."
+                              class="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-teal-500 focus:ring-2 focus:ring-teal-500 outline-none"></textarea>
+                </div>
+                <div class="flex items-center text-sm text-gray-500">
+                    <i class="fas fa-paperclip mr-2"></i> analytics_report.pdf (auto-attached)
+                </div>
+                <div id="emStatus" class="text-sm font-medium"></div>
+            </div>
+            <div class="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+                <button type="button" onclick="closeEmailModal()" class="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50">Cancel</button>
+                <button type="button" id="emSendBtn" onclick="sendReportEmail()" class="px-6 py-2 rounded-lg bg-teal-600 font-bold hover:opacity-90">
+                    <i class="fas fa-paper-plane mr-2"></i>Send
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function openEmailModal() { document.getElementById('emailModal').style.display = 'flex'; }
+        function closeEmailModal() { document.getElementById('emailModal').style.display = 'none'; }
+
+        // Floating toast notification (top-center)
+        function showToast(message, ok) {
+            var t = document.createElement('div');
+            t.style.cssText = 'position:fixed;top:24px;left:50%;z-index:99999;padding:16px 30px;' +
+                'border-radius:12px;color:#fff;font-weight:700;font-size:16px;' +
+                'box-shadow:0 10px 30px rgba(0,0,0,0.35);opacity:0;transition:all .35s ease;' +
+                'transform:translateX(-50%) translateY(-20px);' +
+                'background:' + (ok ? '#16a34a' : '#dc2626') + ';';
+            t.innerHTML = (ok ? '✅ ' : '❌ ') + message;
+            document.body.appendChild(t);
+            requestAnimationFrame(function () {
+                t.style.opacity = '1';
+                t.style.transform = 'translateX(-50%) translateY(0)';
+            });
+            setTimeout(function () {
+                t.style.opacity = '0';
+                t.style.transform = 'translateX(-50%) translateY(-20px)';
+                setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 400);
+            }, 3800);
+        }
+
+        async function sendReportEmail() {
+            var to = document.getElementById('emTo').value.trim();
+            var status = document.getElementById('emStatus');
+            if (!to) { status.innerHTML = '<span style="color:#dc2626">Client email zaroori hai.</span>'; return; }
+
+            var btn = document.getElementById('emSendBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Sending...';
+            status.innerHTML = '<span style="color:#6b7280">Bhej rahe hain...</span>';
+
+            try {
+                var res = await fetch('/send-report-email', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        from_email: document.getElementById('emFrom').value.trim(),
+                        to_email: to,
+                        subject: document.getElementById('emSubject').value.trim(),
+                        message: document.getElementById('emMessage').value.trim()
+                    })
+                });
+                var data = await res.json();
+                if (res.ok && data.success) {
+                    closeEmailModal();
+                    showToast('Email successfully sent to client! 📧', true);
+                } else {
+                    status.innerHTML = '<span style="color:#dc2626">❌ ' + (data.message || 'Failed to send') + '</span>';
+                    showToast(data.message || 'Failed to send email', false);
+                }
+            } catch (e) {
+                status.innerHTML = '<span style="color:#dc2626">❌ Error: ' + e + '</span>';
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i>Send';
+            }
+        }
+    </script>
+</body>
+</html>

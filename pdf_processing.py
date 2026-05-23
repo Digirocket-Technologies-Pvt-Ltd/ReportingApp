@@ -8,6 +8,7 @@ from reportlab.lib.colors import Color, HexColor
 from reportlab.lib.pagesizes import landscape, A4
 from PIL import Image
 import io
+import fitz  # PyMuPDF - render each reportlab page straight to an image (no PyPDF2 merge)
 from ai_vision import explain_image
 
 font_heading = "Helvetica-Bold"
@@ -191,3 +192,82 @@ def add_image_to_pdf(packet, image_path, description, template_page, image_index
         text_y -= 30  # Increased spacing between lines
 
     can.save()
+
+
+def build_slide_images(template_pdf_path, images_folder, output_dir, start_page, zoom=2):
+    """Build the slide images for the video WITHOUT merging PDFs.
+
+    The old approach merged many reportlab pages into one PDF with PyPDF2, which
+    dropped image XObjects on some pages (-> blank slides + 'cannot find XObject'
+    MuPDF errors). Here each reportlab page is rendered straight to an image with
+    PyMuPDF, so nothing is merged and no image is ever lost. Also faster.
+
+    Output: page_1.png, page_2.png, ... in `output_dir` (HD via `zoom`).
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    template = fitz.open(template_pdf_path)
+    template_page_ref = PdfReader(template_pdf_path).pages[0]  # only for dimensions
+    matrix = fitz.Matrix(zoom, zoom)
+    page_num = 0
+
+    def save_pixmap(pix):
+        nonlocal page_num
+        page_num += 1
+        pix.save(os.path.join(output_dir, f"page_{page_num}.png"))
+
+    # 1) Template cover pages (rendered directly from the template - no merge)
+    cover_count = min(start_page, len(template))
+    for i in range(cover_count):
+        save_pixmap(template[i].get_pixmap(matrix=matrix))
+
+    # 2) Data slides: build each reportlab page, render it straight to an image
+    images = sorted([f for f in os.listdir(images_folder)
+                     if f.lower().endswith(('.png', '.jpg', '.jpeg'))])
+    for idx, image in enumerate(images, start=1):
+        image_path = os.path.join(images_folder, image)
+        try:
+            description = get_image_description(image_path)
+        except Exception as e:
+            print(f"  (description failed for {image}: {e})")
+            description = ""
+        packet = io.BytesIO()
+        add_image_to_pdf(packet, image_path, description, template_page_ref, idx)
+        packet.seek(0)
+        single = fitz.open(stream=packet.read(), filetype='pdf')
+        save_pixmap(single[0].get_pixmap(matrix=matrix))
+        single.close()
+
+    # 3) Remaining template pages (Thank You etc.)
+    for i in range(start_page, len(template)):
+        save_pixmap(template[i].get_pixmap(matrix=matrix))
+
+    template.close()
+    print(f"Built {page_num} slide images in {output_dir} (no-merge, HD)")
+    return page_num
+
+
+def build_pdf_from_images(images_dir, output_pdf):
+    """Combine the slide images (page_1.png ...) into one downloadable PDF report.
+
+    Uses PyMuPDF to insert each image as a page - reliable, no XObject merge bug.
+    """
+    def _page_num(name):
+        m = re.search(r'page_(\d+)', name)
+        return int(m.group(1)) if m else 0
+
+    images = sorted(
+        [f for f in os.listdir(images_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg'))],
+        key=_page_num,
+    )
+    doc = fitz.open()
+    for name in images:
+        imgdoc = fitz.open(os.path.join(images_dir, name))
+        pdfbytes = imgdoc.convert_to_pdf()
+        imgdoc.close()
+        imgpdf = fitz.open("pdf", pdfbytes)
+        doc.insert_pdf(imgpdf)
+        imgpdf.close()
+    doc.save(output_pdf)
+    doc.close()
+    print(f"PDF report saved: {output_pdf} ({len(images)} pages)")
+    return output_pdf

@@ -11,8 +11,8 @@ from PIL import Image
 import io
 from datetime import datetime
 import requests
-from pdf_processing import process_pdf
-from pdf_to_images import convert_pdf_to_images
+from pdf_processing import build_slide_images, build_pdf_from_images
+import shutil
 from image_explanation import explain_image_with_gemini
 from text_to_speech import convert_text_to_speech
 from sync_media import create_video_from_images_and_audio
@@ -429,47 +429,26 @@ def init_routes(app):
                 for file in saved_files:
                     f.write(f'- {os.path.basename(file)}\n')
 
-            # Trigger PDF processing
+            # Build slide images directly (no PyPDF2 merge -> no blank slides)
             script_dir = os.path.dirname(os.path.abspath(__file__))
             TEMPLATE_PDF = os.path.join(script_dir, 'Template.pdf')
+            START_PAGE = 2  # first 2 template pages are the cover
 
-            OUTPUT_PDF = os.path.join(session_dir, "output_with_images.pdf")
-            START_PAGE = 2  # Index 2 means starting from page 3 (0-based indexing)
-            process_pdf(TEMPLATE_PDF, session_dir, OUTPUT_PDF, START_PAGE)
-
-            # Convert PDF to images and save in AIVideo folder
+            # Clear old slides so nothing stale leaks into the report
             aivideo_dir = os.path.join(image_dir, 'AIVideo')
-            if not os.path.exists(aivideo_dir):
-                os.makedirs(aivideo_dir)
-            convert_pdf_to_images(OUTPUT_PDF, aivideo_dir)
+            if os.path.exists(aivideo_dir):
+                shutil.rmtree(aivideo_dir)
+            os.makedirs(aivideo_dir)
 
-            # Define a single explanations directory
-            explanations_dir = os.path.join(image_dir, 'Explanations')
-            if not os.path.exists(explanations_dir):
-                os.makedirs(explanations_dir)
+            # Render each slide straight to an image (HD, reliable)
+            build_slide_images(TEMPLATE_PDF, session_dir, aivideo_dir, START_PAGE)
 
-            # Explain each image and save the narration
-            for image_file in os.listdir(aivideo_dir):
-                if image_file.endswith('.png'):
-                    image_path = os.path.join(aivideo_dir, image_file)
-                    explain_image_with_gemini(image_path, explanations_dir)
+            # Build the downloadable PDF report from the slides
+            report_pdf = os.path.join(image_dir, "analytics_report.pdf")
+            build_pdf_from_images(aivideo_dir, report_pdf)
 
-            # Convert explanations to speech
-            audio_dir = os.path.join(image_dir, 'AudioExplanations')
-            if not os.path.exists(audio_dir):
-                os.makedirs(audio_dir)
-            for explanation_file in os.listdir(explanations_dir):
-                if explanation_file.endswith('.txt'):
-                    explanation_path = os.path.join(explanations_dir, explanation_file)
-                    convert_text_to_speech(explanation_path, audio_dir)
-
-            # Create video from images and audio
-            output_video = os.path.join(image_dir, "output_video_fade_only.mp4")
-            create_video_from_images_and_audio(aivideo_dir, audio_dir, output_video)
-
-            # Redirect to the video display page
-            video_filename = "output_video_fade_only.mp4"
-            return redirect(url_for('display_video', filename=video_filename))
+            # Show the PDF report page (video/voice removed)
+            return jsonify({'success': True, 'redirect': url_for('display_report')})
 
         except Exception as e:
             # Log the error (you should configure proper logging)
@@ -578,9 +557,53 @@ def init_routes(app):
         # Get session info for display
         session_info = get_session_info()
         
-        return render_template('video_display.html', 
+        return render_template('video_display.html',
                              video_url=url_for('static', filename=f'images/{filename}'),
                              session_info=session_info)
+
+    @app.route('/report')
+    def display_report():
+        """Show the generated PDF report (download + preview)."""
+        if not is_authenticated():
+            flash('Please log in to view the report.', 'warning')
+            return redirect(url_for('login'))
+
+        pdf_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                'static', 'images', 'analytics_report.pdf')
+        if not os.path.exists(pdf_path):
+            flash('No report found. Please generate one first.', 'error')
+            return redirect(url_for('dashboard'))
+
+        return render_template('report_display.html',
+                               pdf_url=url_for('static', filename='images/analytics_report.pdf'),
+                               session_info=get_session_info())
+
+    @app.route('/send-report-email', methods=['POST'])
+    def send_report_email_route():
+        """Email the generated PDF report to a client."""
+        if not is_authenticated():
+            return jsonify({'success': False, 'message': 'Please log in.'}), 401
+        try:
+            data = request.get_json() or {}
+            to_email = (data.get('to_email') or '').strip()
+            subject = (data.get('subject') or '').strip()
+            message = (data.get('message') or '').strip()
+            reply_to = (data.get('from_email') or '').strip() or None
+
+            if not to_email:
+                return jsonify({'success': False, 'message': 'Client email is required.'}), 400
+
+            pdf_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                    'static', 'images', 'analytics_report.pdf')
+            if not os.path.exists(pdf_path):
+                return jsonify({'success': False, 'message': 'No report found. Generate one first.'}), 404
+
+            from email_sender import send_report_email
+            send_report_email(to_email, subject, message, pdf_path, reply_to=reply_to)
+            return jsonify({'success': True, 'message': f'Report sent to {to_email}'})
+        except Exception as e:
+            print(f'Error sending report email: {e}')
+            return jsonify({'success': False, 'message': str(e)}), 500
 
 # Initialize the Flask app with routes
 init_routes(app)

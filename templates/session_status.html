@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Session Status - Analytics Intelligence</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="/static/css/brand-theme.css" rel="stylesheet">
+    <link href="/static/css/dark-theme.css" rel="stylesheet">
+    <script src="/static/js/theme-toggle.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
@@ -13,7 +16,7 @@
         }
         
         .gradient-bg {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #14181a 0%, #0a0d0e 100%);
         }
         
         .glass-card {
@@ -34,7 +37,7 @@
         }
     </style>
 </head>
-<body class="bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 min-h-screen">
+<body class="bg-gradient-to-br from-slate-50 via-blue-50 to-teal-50 min-h-screen">
     <!-- Header -->
     <header class="gradient-bg shadow-lg">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -55,7 +58,7 @@
     <div class="max-w-4xl mx-auto py-12 px-4">
         <div class="glass-card rounded-2xl p-8">
             <div class="text-center mb-8">
-                <div class="w-16 h-16 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4 pulse-animation">
+                <div class="w-16 h-16 bg-gradient-to-r from-teal-500 to-teal-600 rounded-full flex items-center justify-center mx-auto mb-4 pulse-animation">
                     <i class="fas fa-shield-check text-white text-2xl"></i>
                 </div>
                 <h1 class="text-3xl font-bold text-gray-800 mb-2">Session Information</h1>
@@ -74,7 +77,7 @@
                     <p class="text-green-700 font-medium" id="authStatus">Authenticated ✓</p>
                 </div>
 
-                <div class="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
+                <div class="bg-gradient-to-r from-blue-50 to-teal-50 rounded-xl p-6 border border-blue-200">
                     <div class="flex items-center mb-4">
                         <div class="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center mr-3">
                             <i class="fas fa-clock text-white"></i>
@@ -89,7 +92,7 @@
             <div class="space-y-6">
                 <div class="bg-gray-50 rounded-xl p-6">
                     <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
-                        <i class="fas fa-user mr-2 text-indigo-600"></i>
+                        <i class="fas fa-user mr-2 text-teal-600"></i>
                         User Information
                     </h3>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -111,7 +114,7 @@
                 <!-- Session Details -->
                 <div class="bg-gray-50 rounded-xl p-6">
                     <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
-                        <i class="fas fa-cog mr-2 text-purple-600"></i>
+                        <i class="fas fa-cog mr-2 text-teal-600"></i>
                         Session Details
                     </h3>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -159,7 +162,7 @@
                         Session Actions
                     </h3>
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <button onclick="refreshSession()" class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-4 py-3 rounded-xl font-semibold hover:shadow-lg transition-all duration-300 flex items-center justify-center">
+                        <button onclick="refreshSession()" class="bg-gradient-to-r from-teal-600 to-teal-600 text-white px-4 py-3 rounded-xl font-semibold hover:shadow-lg transition-all duration-300 flex items-center justify-center">
                             <i class="fas fa-sync-alt mr-2"></i>Refresh Session
                         </button>
                         <button onclick="checkTokenStatus()" class="bg-gradient-to-r from-blue-600 to-cyan-600 text-white px-4 py-3 rounded-xl font-semibold hover:shadow-lg transition-all duration-300 flex items-center justify-center">
@@ -187,7 +190,7 @@
     <!-- Loading Overlay -->
     <div id="loadingOverlay" class="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50 hidden flex items-center justify-center">
         <div class="bg-white rounded-2xl p-8 text-center max-w-sm mx-4">
-            <div class="animate-spin rounded-full h-12 w-12 border-b-4 border-indigo-600 mx-auto mb-4"></div>
+            <div class="animate-spin rounded-full h-12 w-12 border-b-4 border-teal-600 mx-auto mb-4"></div>
             <h3 class="text-lg font-bold text-gray-800 mb-2">Processing...</h3>
             <p class="text-gray-600">Please wait a moment</p>
         </div>

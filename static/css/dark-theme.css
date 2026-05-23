@@ -1,0 +1,96 @@
+/* DigiRocket dark mode - "light black" / charcoal background + lime accents.
+   Activated by `body.dark-mode`. */
+
+/* `background` shorthand also removes the light gradient IMAGE on <body> */
+body.dark-mode { background: #1b1e20 !important; color: #e2e8f0; }
+body.dark-mode.bg-gradient-to-br { background: #1b1e20 !important; }
+
+/* Page background gradients on inner elements -> light black */
+body.dark-mode .bg-gradient-to-br { background: #1b1e20 !important; }
+
+/* Headers -> slightly darker charcoal gradient */
+body.dark-mode .gradient-bg,
+body.dark-mode .custom-gradient {
+    background: linear-gradient(135deg, #2a2e31 0%, #1b1e20 100%) !important;
+}
+
+/* Cards / panels -> charcoal (a bit lighter than page to stand out) */
+body.dark-mode .bg-white,
+body.dark-mode .section-card,
+body.dark-mode .glass-card,
+body.dark-mode .stats-card,
+body.dark-mode .glass-effect,
+body.dark-mode .metric-card,
+body.dark-mode .chart-container,
+body.dark-mode .table-container {
+    background-color: #25282b !important;
+    border-color: #3a4045 !important;
+}
+body.dark-mode .bg-gray-50,
+body.dark-mode .bg-gray-100,
+body.dark-mode .bg-slate-50 { background-color: #2a2e31 !important; }
+
+/* Text */
+body.dark-mode .text-gray-900,
+body.dark-mode .text-gray-800,
+body.dark-mode .text-gray-700 { color: #f1f5f9 !important; }
+body.dark-mode .text-gray-600,
+body.dark-mode .text-gray-500,
+body.dark-mode .text-gray-400 { color: #a8b3bd !important; }
+/* metric cards use text-black -> make icons + labels light in dark mode */
+body.dark-mode .text-black { color: #e2e8f0 !important; }
+/* metric card icons (incl. the lime card whose icon got forced dark) -> light */
+body.dark-mode .metric-card i { color: #e2e8f0 !important; }
+
+/* Inputs / selects */
+body.dark-mode input,
+body.dark-mode select,
+body.dark-mode textarea {
+    background-color: #2a2e31 !important;
+    color: #f1f5f9 !important;
+    border-color: #3a4045 !important;
+}
+
+/* Tables */
+body.dark-mode .enhanced-table thead th,
+body.dark-mode thead.bg-gradient-to-r {
+    background: #2a2e31 !important;
+    color: #cbd5e1 !important;
+    border-color: #3a4045 !important;
+}
+body.dark-mode .enhanced-table tbody tr:hover,
+body.dark-mode tbody tr:hover { background: #30353a !important; }
+body.dark-mode table td, body.dark-mode table th { color: #e2e8f0; border-color: #3a4045 !important; }
+
+/* Borders / dividers */
+body.dark-mode [class*="border-gray"],
+body.dark-mode .border { border-color: #3a4045 !important; }
+body.dark-mode .divide-y > :not([hidden]) ~ :not([hidden]) { border-color: #3a4045 !important; }
+
+/* Dim glaring light badge tints */
+body.dark-mode .bg-blue-100,
+body.dark-mode .bg-green-100,
+body.dark-mode .bg-purple-100,
+body.dark-mode .bg-orange-100 { filter: brightness(0.6) saturate(1.15); }
+
+/* Dropdown menus */
+body.dark-mode .dropdown-content { background-color: #25282b !important; border-color: #3a4045 !important; }
+body.dark-mode .dropdown-item { color: #e2e8f0 !important; }
+body.dark-mode .dropdown-item:hover { background-color: #30353a !important; }
+
+/* Form labels (hardcoded dark gray in <style>) -> light */
+body.dark-mode .form-group label { color: #cbd5e1 !important; }
+body.dark-mode label { color: #cbd5e1 !important; }
+
+/* Native date-picker calendar icon is dark by default -> make it white in dark mode */
+body.dark-mode input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(1) brightness(1.8);
+    cursor: pointer;
+}
+
+/* Light gradient header strips inside cards (from-gray-50 ...) -> dark.
+   Targets bg-gradient-to-r ONLY (not the page body which is bg-gradient-to-br). */
+body.dark-mode .bg-gradient-to-r.from-gray-50 {
+    background-image: none !important;
+    background-color: #2a2e31 !important;
+}

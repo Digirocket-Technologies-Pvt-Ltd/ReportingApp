@@ -3,6 +3,9 @@
 <head>
     <title>Combined GA4 & GSC Data</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="/static/css/brand-theme.css" rel="stylesheet">
+    <link href="/static/css/dark-theme.css" rel="stylesheet">
+    <script src="/static/js/theme-toggle.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
@@ -40,7 +43,7 @@
         .trend-down { color: #EF4444; }
         
         .custom-gradient {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #667eea 100%);
+            background: linear-gradient(135deg, #14181a 0%, #0a0d0e 100%);
         }
         
         .chart-container {
@@ -123,7 +126,7 @@
         }
         
         .stat-number {
-            background: linear-gradient(135deg, #667eea, #764ba2);
+            background: linear-gradient(135deg, #00AEAF, #7CC92A);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
@@ -131,13 +134,14 @@
         }
         
         .capture-button {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #C4F82A 0%, #A6D81C 100%);
+            color: #0c1206;
             position: relative;
             overflow: hidden;
         }
-        
+
         .capture-button:hover {
-            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 10px 30px rgba(196, 248, 42, 0.4);
         }
         
         .enhanced-badge {
@@ -162,7 +166,7 @@
             left: 0;
             width: 0;
             height: 2px;
-            background: linear-gradient(135deg, #667eea, #764ba2);
+            background: linear-gradient(135deg, #00AEAF, #7CC92A);
         }
         
         .nav-item:hover::after {
@@ -201,7 +205,7 @@
         
         .dropdown-item:hover {
             background-color: #f3f4f6;
-            color: #4f46e5;
+            color: #00AEAF;
         }
         
         .dropdown-item:first-child {
@@ -253,7 +257,7 @@
         }
 
         .gsc-metric-card.purple {
-            background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+            background: linear-gradient(135deg, #017A82, #022831);
         }
 
         .gsc-metric-card.green {
@@ -477,53 +481,71 @@
                     if (b) { b.disabled = true; b.style.opacity = '0.6'; }
                 });
 
+                // Make sure web fonts are fully loaded so text renders in captures
+                if (document.fonts && document.fonts.ready) {
+                    try { await document.fonts.ready; } catch (e) {}
+                }
+
+                const captureOptions = {
+                    scale: 2,
+                    useCORS: true,
+                    logging: false,
+                    backgroundColor: '#ffffff',
+                    // foreignObjectRendering:true caused all-black images in Chrome.
+                    foreignObjectRendering: false,
+                    allowTaint: false,
+                    removeContainer: true
+                };
+
                 for (const element of elementsToCapture) {
                     const elem = document.getElementById(element.id);
-                    if (elem) {
-                        // Scroll the element into view and wait so the browser fully
-                        // renders it before capture. Without this, some slides (esp.
-                        // ones lower on the page) captured blank/empty.
-                        elem.scrollIntoView({ block: 'center' });
-                        await new Promise(function (r) { setTimeout(r, 350); });
-
-                        // Add enhanced styling for capture
-                        const originalBg = elem.style.background;
-                        const originalShadow = elem.style.boxShadow;
-                        elem.style.background = 'white';
-                        elem.style.boxShadow = '0 4px 25px rgba(0,0,0,0.1)';
-
-                        try {
-                            const canvas = await html2canvas(elem, {
-                                scale: 2,
-                                useCORS: true,
-                                logging: false,
-                                scrollX: -window.scrollX,
-                                scrollY: -window.scrollY,
-                                backgroundColor: '#ffffff',
-                                // foreignObjectRendering:true caused all-black images in Chrome.
-                                // Default (false) renders charts/tables correctly.
-                                foreignObjectRendering: false,
-                                allowTaint: false,
-                                removeContainer: true
-                            });
-
-                            // Restore original styling
-                            elem.style.background = originalBg;
-                            elem.style.boxShadow = originalShadow;
-
-                            const image = canvas.toDataURL('image/png', 0.95);
-                            screenshots.push({
-                                name: element.name,
-                                type: element.type,
-                                title: element.title,
-                                data: image
-                            });
-                        } catch (err) {
-                            console.error(`Error capturing ${element.id}:`, err);
-                            skippedElements.push(element.id);
-                        }
-                    } else {
+                    if (!elem) {
                         console.warn(`Element not found: ${element.id}`);
+                        skippedElements.push(element.id);
+                        continue;
+                    }
+
+                    // Enhanced styling for capture
+                    const originalBg = elem.style.background;
+                    const originalShadow = elem.style.boxShadow;
+                    elem.style.background = 'white';
+                    elem.style.boxShadow = '0 4px 25px rgba(0,0,0,0.1)';
+
+                    // Capture with retry: if the result is blank, scroll + wait + try again
+                    let goodCanvas = null;
+                    for (let attempt = 1; attempt <= 3; attempt++) {
+                        elem.scrollIntoView({ block: 'center' });
+                        await new Promise(function (r) { setTimeout(r, 400); });
+                        try {
+                            const canvas = await html2canvas(elem, Object.assign({}, captureOptions, {
+                                scrollX: -window.scrollX,
+                                scrollY: -window.scrollY
+                            }));
+                            if (!isCanvasBlank(canvas) || attempt === 3) {
+                                goodCanvas = canvas;
+                                if (isCanvasBlank(canvas)) {
+                                    console.warn(`⚠️ ${element.id} still blank after ${attempt} attempts`);
+                                }
+                                break;
+                            }
+                            console.warn(`↻ ${element.id} captured blank (attempt ${attempt}), retrying...`);
+                        } catch (err) {
+                            console.error(`Error capturing ${element.id} (attempt ${attempt}):`, err);
+                        }
+                    }
+
+                    // Restore original styling
+                    elem.style.background = originalBg;
+                    elem.style.boxShadow = originalShadow;
+
+                    if (goodCanvas) {
+                        screenshots.push({
+                            name: element.name,
+                            type: element.type,
+                            title: element.title,
+                            data: goodCanvas.toDataURL('image/png', 0.95)
+                        });
+                    } else {
                         skippedElements.push(element.id);
                     }
                 }
@@ -544,15 +566,13 @@
                 });
 
                 if (response.ok) {
-                    // Show success message
-                    showNotification('success', `🎉 Screenshots captured successfully! (${screenshots.length} of ${elementsToCapture.length})`);
-                    
-                    // Redirect
+                    const data = await response.json();
+                    showNotification('success', '🎉 PDF report ready!');
                     setTimeout(() => {
-                        window.location.href = '/display_video/output_video_fade_only.mp4';
-                    }, 1500);
+                        window.location.href = (data && data.redirect) ? data.redirect : '/report';
+                    }, 1200);
                 } else {
-                    throw new Error('Failed to save screenshots');
+                    throw new Error('Failed to generate report');
                 }
             } catch (error) {
                 console.error('❌ Error taking screenshots:', error);
@@ -567,6 +587,29 @@
             }
         }
 
+        // Returns true if the canvas is essentially one flat color (a failed/blank capture)
+        function isCanvasBlank(canvas) {
+            try {
+                const w = canvas.width, h = canvas.height;
+                if (!w || !h) return true;
+                const ctx = canvas.getContext('2d');
+                const data = ctx.getImageData(0, 0, w, h).data;
+                let first = null;
+                const stepPx = Math.max(1, Math.floor((w * h) / 3000)); // sample ~3000 pixels
+                for (let p = 0; p < w * h; p += stepPx) {
+                    const i = p * 4;
+                    const r = data[i], g = data[i + 1], b = data[i + 2];
+                    if (first === null) { first = [r, g, b]; continue; }
+                    if (Math.abs(r - first[0]) > 12 || Math.abs(g - first[1]) > 12 || Math.abs(b - first[2]) > 12) {
+                        return false; // found variation -> not blank
+                    }
+                }
+                return true; // no variation across the whole canvas -> blank
+            } catch (e) {
+                return false; // if we cannot inspect it, assume it's fine
+            }
+        }
+
         // Full-screen loading overlay shown while the AI video is being generated
         function showVideoLoadingOverlay() {
             if (document.getElementById('videoLoadingOverlay')) return;
@@ -575,9 +618,9 @@
             o.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(17,24,39,0.92);' +
                 'display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;text-align:center;padding:20px;';
             o.innerHTML =
-                '<div style="border:6px solid rgba(255,255,255,0.2);border-top:6px solid #818cf8;border-radius:50%;width:64px;height:64px;animation:spin 1s linear infinite;"></div>' +
-                '<h2 style="font-size:24px;font-weight:700;margin-top:24px;">🎬 Creating your AI Video Report...</h2>' +
-                '<p style="font-size:16px;opacity:0.85;margin-top:10px;max-width:480px;">Isme 2-5 minute lagenge. Page band mat karo. AI har section ka explanation + voice bana raha hai.</p>' +
+                '<div style="border:6px solid rgba(255,255,255,0.2);border-top:6px solid #4FD1D1;border-radius:50%;width:64px;height:64px;animation:spin 1s linear infinite;"></div>' +
+                '<h2 style="font-size:24px;font-weight:700;margin-top:24px;">📄 Creating your PDF Report...</h2>' +
+                '<p style="font-size:16px;opacity:0.85;margin-top:10px;max-width:480px;">Thoda wait karo. Page band mat karo. AI har section ka analysis taiyaar kar raha hai.</p>' +
                 '<style>@keyframes spin{to{transform:rotate(360deg);}}</style>';
             document.body.appendChild(o);
         }
@@ -614,7 +657,7 @@
             // Add event listener to button
             const exportButton = document.getElementById('exportPDF');
             if (exportButton) {
-                exportButton.innerHTML = `<i class="fas fa-video mr-2"></i>Create AI Video`;
+                exportButton.innerHTML = `<i class="fas fa-file-pdf mr-2"></i>Generate PDF Report`;
                 exportButton.addEventListener('click', captureTableScreenshots);
             }
 
@@ -673,12 +716,12 @@
                         {
                             label: 'Active Users',
                             data: users,
-                            borderColor: '#667eea',
+                            borderColor: '#00AEAF',
                             backgroundColor: 'rgba(102, 126, 234, 0.1)',
                             tension: 0.4,
                             fill: true,
                             borderWidth: 3,
-                            pointBackgroundColor: '#667eea',
+                            pointBackgroundColor: '#00AEAF',
                             pointBorderColor: '#ffffff',
                             pointBorderWidth: 3,
                             pointRadius: 6,
@@ -687,12 +730,12 @@
                         {
                             label: 'Page Views',
                             data: pageviews,
-                            borderColor: '#764ba2',
+                            borderColor: '#7CC92A',
                             backgroundColor: 'rgba(118, 75, 162, 0.1)',
                             tension: 0.4,
                             fill: true,
                             borderWidth: 3,
-                            pointBackgroundColor: '#764ba2',
+                            pointBackgroundColor: '#7CC92A',
                             pointBorderColor: '#ffffff',
                             pointBorderWidth: 3,
                             pointRadius: 6,
@@ -817,7 +860,7 @@
         });
     </script>
 </head>
-<body class="bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 min-h-screen">
+<body class="bg-gradient-to-br from-slate-50 via-blue-50 to-teal-50 min-h-screen">
     <!-- Flash Messages -->
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
@@ -883,7 +926,7 @@
                     
                     <div class="flex space-x-3">
                         <button id="exportPDF" class="capture-button text-white px-6 py-3 rounded-xl text-sm font-semibold shadow-lg relative overflow-hidden">
-                            <i class="fas fa-video mr-2"></i>Create AI Video
+                            <i class="fas fa-file-pdf mr-2"></i>Generate PDF Report
                         </button>
                     </div>
                     
@@ -944,24 +987,24 @@
                         <!-- Quick preset ranges (like Google Search Console) -->
                         <div class="flex items-center flex-wrap gap-2">
                             <span class="text-xs font-semibold text-gray-500 mr-1">Quick range:</span>
-                            <button type="button" onclick="setDatePreset(7)" class="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-indigo-50 hover:border-indigo-400 hover:text-indigo-700 transition">7 Days</button>
-                            <button type="button" onclick="setDatePreset(28)" class="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-indigo-50 hover:border-indigo-400 hover:text-indigo-700 transition">28 Days</button>
-                            <button type="button" onclick="setDatePreset(90)" class="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-indigo-50 hover:border-indigo-400 hover:text-indigo-700 transition">3 Months</button>
-                            <button type="button" onclick="setDatePreset(365)" class="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-indigo-50 hover:border-indigo-400 hover:text-indigo-700 transition">1 Year</button>
+                            <button type="button" onclick="setDatePreset(7)" class="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-teal-50 hover:border-teal-400 hover:text-teal-700 transition">7 Days</button>
+                            <button type="button" onclick="setDatePreset(28)" class="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-teal-50 hover:border-teal-400 hover:text-teal-700 transition">28 Days</button>
+                            <button type="button" onclick="setDatePreset(90)" class="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-teal-50 hover:border-teal-400 hover:text-teal-700 transition">3 Months</button>
+                            <button type="button" onclick="setDatePreset(365)" class="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-teal-50 hover:border-teal-400 hover:text-teal-700 transition">1 Year</button>
                         </div>
                         <!-- Custom date range -->
                         <div class="flex items-center space-x-3">
                             <span class="text-xs font-semibold text-gray-500 mr-1">Custom:</span>
                             <div class="flex items-center space-x-2">
-                                <i class="fas fa-calendar-alt text-indigo-600"></i>
+                                <i class="fas fa-calendar-alt text-teal-600"></i>
                                 <input type="date" id="start_date" name="start_date" value="{{ start_date }}"
-                                       class="rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 text-sm">
+                                       class="rounded-lg border-gray-300 shadow-sm focus:border-teal-500 focus:ring-2 focus:ring-teal-500 text-sm">
                             </div>
                             <span class="text-gray-400 font-medium">to</span>
                             <input type="date" id="end_date" name="end_date" value="{{ end_date }}"
-                                   class="rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 text-sm">
+                                   class="rounded-lg border-gray-300 shadow-sm focus:border-teal-500 focus:ring-2 focus:ring-teal-500 text-sm">
                             <button type="submit"
-                                    class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 shadow-md hover:shadow-lg">
+                                    class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 shadow-md hover:shadow-lg">
                                 <i class="fas fa-sync-alt mr-2"></i>Update
                             </button>
                         </div>
@@ -984,7 +1027,7 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                     <div class="glass-card rounded-2xl p-6">
                         <div class="flex items-center">
-                            <div class="w-12 h-12 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center mr-4">
+                            <div class="w-12 h-12 bg-gradient-to-r from-blue-500 to-teal-600 rounded-xl flex items-center justify-center mr-4">
                                 <i class="fas fa-chart-line text-white text-xl"></i>
                             </div>
                             <div>
@@ -1029,7 +1072,7 @@
                     </div>
 
                     <!-- Page Views Card -->
-                    <div class="metric-card bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl p-6 text-black">
+                    <div class="metric-card bg-gradient-to-br from-teal-500 to-teal-600 rounded-2xl p-6 text-black">
                         <div class="flex justify-between items-start">
                             <div>
                                 <p class="text-sm opacity-75 mb-2">Page Views</p>
@@ -1094,7 +1137,7 @@
             <div class="flex items-center justify-between mb-6">
                 <div>
                     <h2 class="text-2xl font-bold text-gray-800 flex items-center">
-                        <i class="fas fa-chart-area mr-3 text-indigo-600"></i>
+                        <i class="fas fa-chart-area mr-3 text-teal-600"></i>
                         Daily Analytics Trends
                     </h2>
                     <p class="text-gray-600 mt-1">Interactive visualization of your key metrics over time</p>
@@ -1290,12 +1333,12 @@
                 {% if ga4_data and ga4_data.channelMetrics %}
                 <div class="section-card rounded-2xl p-8" id="acquisition-channels">
                     <h2 class="text-xl font-bold text-gray-800 flex items-center mb-6">
-                        <i class="fas fa-funnel-dollar mr-3 text-purple-600"></i>
+                        <i class="fas fa-funnel-dollar mr-3 text-teal-600"></i>
                         Acquisition Channels
                     </h2>
                     <div class="table-container rounded-xl overflow-hidden">
                         <table id='acquisition-channels-table' class="enhanced-table min-w-full divide-y divide-gray-200">
-                            <thead class="bg-gradient-to-r from-gray-50 to-purple-50">
+                            <thead class="bg-gradient-to-r from-gray-50 to-teal-50">
                                 <tr>
                                     <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Source</th>
                                     <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">New Users</th>
@@ -1321,7 +1364,7 @@
                                     </td>
                                     <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{{ "{:,}".format(channel.newUsers) }}</td>
                                     <td class="px-4 py-3 whitespace-nowrap">
-                                        <span class="text-sm text-gray-900 bg-purple-100 px-2 py-1 rounded-full">{{ channel.percentage }}</span>
+                                        <span class="text-sm text-gray-900 bg-teal-100 px-2 py-1 rounded-full">{{ channel.percentage }}</span>
                                     </td>
                                     <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{{ channel.avgEngagementTime }}</td>
                                 </tr>
@@ -1402,12 +1445,12 @@
             <!-- Top Landing Pages -->
             <div class="section-card rounded-2xl p-8 mb-8" id="top-landing-pages">
                 <h2 class="text-2xl font-bold text-gray-800 flex items-center mb-6">
-                    <i class="fas fa-external-link-alt mr-3 text-indigo-600"></i>
+                    <i class="fas fa-external-link-alt mr-3 text-teal-600"></i>
                     Top Landing Pages
                 </h2>
                 <div class="table-container rounded-xl overflow-hidden">
                     <table class="enhanced-table min-w-full divide-y divide-gray-200" id="top-landing-pages-table">
-                        <thead class="bg-gradient-to-r from-gray-50 to-indigo-50">
+                        <thead class="bg-gradient-to-r from-gray-50 to-teal-50">
                             <tr>
                                 {% for header in gsc_data.top_pages.headers %}
                                 <th class="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
@@ -1500,12 +1543,12 @@
                 <!-- Country Data -->
                 <div class="section-card rounded-2xl p-8" id="country-data">
                     <h2 class="text-xl font-bold text-gray-800 flex items-center mb-6">
-                        <i class="fas fa-globe mr-3 text-purple-600"></i>
+                        <i class="fas fa-globe mr-3 text-teal-600"></i>
                         Search Performance by Country
                     </h2>
                     <div class="table-container rounded-xl overflow-hidden">
                         <table id="country-data-table" class="enhanced-table min-w-full divide-y divide-gray-200">
-                            <thead class="bg-gradient-to-r from-gray-50 to-purple-50">
+                            <thead class="bg-gradient-to-r from-gray-50 to-teal-50">
                                 <tr>
                                     {% for header in gsc_data.country_data.headers %}
                                     <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
@@ -1564,16 +1607,15 @@
         </section>
 
         <!-- Call to Action Section -->
-        <section class="section-card rounded-3xl p-8 mb-8 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white relative overflow-hidden">
-            <div class="absolute inset-0 bg-black bg-opacity-20"></div>
+        <section class="section-card rounded-3xl p-8 mb-8 relative overflow-hidden">
             <div class="relative z-10 text-center">
-                <h2 class="text-3xl font-bold mb-4">🚀 Ready to Take Action?</h2>
-                <p class="text-xl mb-8 opacity-90">Transform your data into actionable insights with our AI-powered video reports</p>
+                <h2 class="text-3xl font-bold mb-4 text-gray-800">🚀 Ready to Take Action?</h2>
+                <p class="text-xl mb-8 text-gray-600">Transform your data into actionable insights with our AI-powered PDF reports</p>
                 <div class="flex flex-col sm:flex-row gap-4 justify-center">
-                    <button id="exportPDF2" class="capture-button bg-white text-indigo-600 px-8 py-4 rounded-xl font-bold text-lg hover:bg-gray-100 shadow-lg" onclick="captureTableScreenshots()">
-                        <i class="fas fa-video mr-3"></i>Create AI Video Report
+                    <button id="exportPDF2" class="capture-button bg-teal-600 px-8 py-4 rounded-xl font-bold text-lg shadow-lg hover:opacity-90" onclick="captureTableScreenshots()">
+                        <i class="fas fa-file-pdf mr-3"></i>Generate PDF Report
                     </button>
-                    <a href="{{ url_for('dashboard') }}" class="bg-transparent border-2 border-white text-white px-8 py-4 rounded-xl font-bold text-lg hover:bg-white hover:text-indigo-600">
+                    <a href="{{ url_for('dashboard') }}" class="border-2 border-teal-600 text-teal-600 px-8 py-4 rounded-xl font-bold text-lg hover:bg-teal-600 hover:text-gray-900">
                         <i class="fas fa-arrow-left mr-3"></i>Back to Dashboard
                     </a>
                 </div>
@@ -1587,7 +1629,7 @@
             <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
                 <div class="md:col-span-2">
                     <div class="flex items-center space-x-3 mb-4">
-                        <div class="w-10 h-10 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">
+                        <div class="w-10 h-10 bg-gradient-to-r from-teal-500 to-teal-600 rounded-xl flex items-center justify-center">
                             <i class="fas fa-chart-line text-white"></i>
                         </div>
                         <span class="text-xl font-bold">Analytics Intelligence</span>
@@ -1634,7 +1676,7 @@
     </footer>
 
     <!-- Scroll to Top Button -->
-    <button id="scrollToTop" class="fixed bottom-8 right-8 bg-gradient-to-r from-indigo-600 to-purple-600 text-white w-14 h-14 rounded-full shadow-lg hover:shadow-xl z-50 flex items-center justify-center opacity-0 invisible">
+    <button id="scrollToTop" class="fixed bottom-8 right-8 bg-gradient-to-r from-teal-600 to-teal-600 text-white w-14 h-14 rounded-full shadow-lg hover:shadow-xl z-50 flex items-center justify-center opacity-0 invisible">
         <i class="fas fa-arrow-up text-lg"></i>
     </button>
 
