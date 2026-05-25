@@ -480,10 +480,25 @@ def init_routes(app):
         # is clicked - only offer it if we still know which report this is for.
         pptx_url = url_for('download_report_pptx') if session.get('report_ctx') else None
 
+        # Slide images (page_1.png ...) for the in-browser slide editor.
+        aivideo_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                   'static', 'images', 'AIVideo')
+        slide_images = []
+        if os.path.isdir(aivideo_dir):
+            import re as _re
+
+            def _pn(name):
+                m = _re.search(r'page_(\d+)', name)
+                return int(m.group(1)) if m else 0
+
+            files = sorted([f for f in os.listdir(aivideo_dir) if f.lower().endswith('.png')], key=_pn)
+            slide_images = [url_for('static', filename=f'images/AIVideo/{f}') for f in files]
+
         return render_template('report_display.html',
                                pdf_url=url_for('static', filename='images/analytics_report.pdf'),
                                pptx_url=pptx_url,
                                clients=clients,
+                               slide_images=slide_images,
                                session_info=get_session_info())
 
     @app.route('/download-report-pptx')

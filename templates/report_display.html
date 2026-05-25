@@ -10,9 +10,24 @@
     <script src="/static/js/theme-toggle.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
         body { font-family: 'Inter', sans-serif; }
         .gradient-bg { background: linear-gradient(135deg, #14181a 0%, #0a0d0e 100%); }
+        /* ---- Slide editor ---- */
+        .slide-wrap { max-width: 920px; margin: 0 auto 28px; }
+        .slide-toolbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+        .slide-capture { position:relative; width:100%; box-shadow:0 6px 24px rgba(0,0,0,0.15); border-radius:8px; overflow:hidden; }
+        .slide-capture img { width:100%; display:block; }
+        .tb { position:absolute; left:30px; top:30px; min-width:50px; }
+        .tb-text { outline:none; padding:2px 4px; min-width:40px; cursor:text; white-space:pre-wrap; line-height:1.25; }
+        .tb-text:focus { box-shadow:0 0 0 2px #14b8a6; border-radius:3px; }
+        .tb-handle, .tb-del { position:absolute; width:20px; height:20px; border-radius:50%; color:#fff;
+            font-size:11px; display:flex; align-items:center; justify-content:center; cursor:pointer; user-select:none; }
+        .tb-handle { left:-10px; top:-10px; background:#14b8a6; cursor:move; }
+        .tb-del { right:-10px; top:-10px; background:#ef4444; }
+        .editor-hide-on-capture { }
     </style>
 </head>
 <body class="bg-gradient-to-br from-slate-50 via-blue-50 to-teal-50 min-h-screen">
@@ -59,8 +74,45 @@
                         class="inline-flex items-center bg-teal-600 px-8 py-4 rounded-xl font-bold text-lg shadow-lg hover:opacity-90 transition">
                     <i class="fas fa-paper-plane mr-3"></i>Send via Email
                 </button>
+                {% if slide_images %}
+                <button type="button" onclick="openSlideEditor()"
+                        class="inline-flex items-center bg-gradient-to-r from-indigo-600 to-violet-600 text-white px-8 py-4 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl transition">
+                    <i class="fas fa-pen-to-square mr-3"></i>Edit Slides
+                </button>
+                {% endif %}
             </div>
         </div>
+
+        {% if slide_images %}
+        <!-- Slide Editor: add your own text onto the slides, then download edited PDF -->
+        <div id="slideEditor" class="bg-white rounded-2xl shadow-lg p-6 mb-8" style="display:none;">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+                <h3 class="text-xl font-bold text-gray-800"><i class="fas fa-pen-to-square mr-2 text-indigo-600"></i>Edit Slides &mdash; add your own text</h3>
+                <div class="flex items-center gap-4">
+                    <label class="text-sm text-gray-600 flex items-center gap-1">Color <input type="color" id="edColor" value="#111827" class="align-middle"></label>
+                    <label class="text-sm text-gray-600 flex items-center gap-1">Size <input type="number" id="edSize" value="26" min="8" max="140" style="width:64px" class="border border-gray-300 rounded px-2 py-1"></label>
+                    <button type="button" id="edDownloadBtn" onclick="downloadEditedPDF()"
+                            class="bg-gradient-to-r from-red-600 to-rose-600 text-white px-5 py-2 rounded-lg font-bold shadow hover:shadow-xl">
+                        <i class="fas fa-download mr-2"></i>Download Edited PDF
+                    </button>
+                </div>
+            </div>
+            <p class="text-sm text-gray-500 mb-5">Each slide pe <b>"+ Add Text"</b> dabao &rarr; text-box aayega &rarr; apna text likho, <span style="color:#14b8a6">green handle</span> se drag karke jagah set karo, <span style="color:#ef4444">red &times;</span> se delete. Color/Size upar se choose karo. Phir <b>Download Edited PDF</b>.</p>
+            <div id="slidesContainer">
+                {% for img in slide_images %}
+                <div class="slide-wrap">
+                    <div class="slide-toolbar">
+                        <span class="text-sm font-semibold text-gray-700">Slide {{ loop.index }} / {{ slide_images|length }}</span>
+                        <button type="button" onclick="addText(this)" class="text-sm bg-teal-600 text-white px-3 py-1.5 rounded-lg font-semibold hover:opacity-90"><i class="fas fa-plus mr-1"></i>Add Text</button>
+                    </div>
+                    <div class="slide-capture">
+                        <img src="{{ img }}" alt="Slide {{ loop.index }}">
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
 
         <!-- Preview -->
         <div class="bg-white rounded-2xl shadow-lg p-4 mb-8">
@@ -206,6 +258,121 @@
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i>Send';
+            }
+        }
+
+        // ---------------- Slide editor (add your own text) ----------------
+        var LAST_TB = null;
+
+        function openSlideEditor() {
+            var e = document.getElementById('slideEditor');
+            if (!e) return;
+            e.style.display = 'block';
+            e.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function makeDraggable(el, handle, container) {
+            var sx, sy, ox, oy, dragging = false;
+            handle.addEventListener('mousedown', function (e) {
+                e.preventDefault();
+                dragging = true;
+                sx = e.clientX; sy = e.clientY;
+                ox = el.offsetLeft; oy = el.offsetTop;
+                document.addEventListener('mousemove', mv);
+                document.addEventListener('mouseup', up);
+            });
+            function mv(e) {
+                if (!dragging) return;
+                var nx = ox + (e.clientX - sx);
+                var ny = oy + (e.clientY - sy);
+                nx = Math.max(0, Math.min(nx, container.clientWidth - 24));
+                ny = Math.max(0, Math.min(ny, container.clientHeight - 12));
+                el.style.left = nx + 'px';
+                el.style.top = ny + 'px';
+            }
+            function up() {
+                dragging = false;
+                document.removeEventListener('mousemove', mv);
+                document.removeEventListener('mouseup', up);
+            }
+        }
+
+        function addText(btn) {
+            var wrap = btn.closest('.slide-wrap');
+            var cap = wrap.querySelector('.slide-capture');
+            var color = document.getElementById('edColor').value || '#111827';
+            var size = document.getElementById('edSize').value || 26;
+            var tb = document.createElement('div');
+            tb.className = 'tb';
+            var handle = document.createElement('span');
+            handle.className = 'tb-handle';
+            handle.innerHTML = '<i class="fas fa-up-down-left-right"></i>';
+            var del = document.createElement('span');
+            del.className = 'tb-del';
+            del.textContent = '×';
+            del.addEventListener('click', function () { tb.remove(); });
+            var txt = document.createElement('div');
+            txt.className = 'tb-text';
+            txt.setAttribute('contenteditable', 'true');
+            txt.style.color = color;
+            txt.style.fontSize = size + 'px';
+            txt.style.fontWeight = '700';
+            txt.textContent = 'Your text';
+            txt.addEventListener('focus', function () { LAST_TB = txt; });
+            tb.appendChild(handle);
+            tb.appendChild(del);
+            tb.appendChild(txt);
+            cap.appendChild(tb);
+            makeDraggable(tb, handle, cap);
+            txt.focus();
+            // select the placeholder text so typing replaces it
+            try {
+                var range = document.createRange();
+                range.selectNodeContents(txt);
+                var sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+            } catch (e) {}
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            var c = document.getElementById('edColor');
+            var s = document.getElementById('edSize');
+            if (c) c.addEventListener('input', function () { if (LAST_TB) LAST_TB.style.color = this.value; });
+            if (s) s.addEventListener('input', function () { if (LAST_TB) LAST_TB.style.fontSize = this.value + 'px'; });
+        });
+
+        async function downloadEditedPDF() {
+            var btn = document.getElementById('edDownloadBtn');
+            var old = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Building...';
+            // hide drag/delete controls + edit ring so they aren't baked into the PDF
+            document.querySelectorAll('.tb-handle,.tb-del').forEach(function (e) { e.style.visibility = 'hidden'; });
+            if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+            try {
+                var caps = Array.prototype.slice.call(document.querySelectorAll('.slide-capture'));
+                var pdf = null;
+                for (var i = 0; i < caps.length; i++) {
+                    var canvas = await html2canvas(caps[i], { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false });
+                    var imgData = canvas.toDataURL('image/jpeg', 0.92);
+                    var w = canvas.width, h = canvas.height;
+                    var orient = w >= h ? 'landscape' : 'portrait';
+                    if (!pdf) {
+                        pdf = new jspdf.jsPDF({ orientation: orient, unit: 'px', format: [w, h] });
+                    } else {
+                        pdf.addPage([w, h], orient);
+                    }
+                    pdf.addImage(imgData, 'JPEG', 0, 0, w, h);
+                }
+                if (pdf) pdf.save('edited-report.pdf');
+                showToast('Edited PDF downloaded! 📄', true);
+            } catch (e) {
+                showToast('Could not build edited PDF: ' + e, false);
+            } finally {
+                document.querySelectorAll('.tb-handle,.tb-del').forEach(function (e) { e.style.visibility = 'visible'; });
+                btn.disabled = false;
+                btn.innerHTML = old;
             }
         }
     </script>
