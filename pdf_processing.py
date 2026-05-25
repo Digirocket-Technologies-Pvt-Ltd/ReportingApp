@@ -298,9 +298,7 @@ def build_pptx_from_images(images_dir, output_pptx):
     prs.slide_height = Emu(6858000)   # 7.5in
     blank_layout = prs.slide_layouts[6]
     sw, sh = int(prs.slide_width), int(prs.slide_height)
-    strip = Inches(0.75)               # bottom strip reserved for an editable text box
-    avail_h = sh - strip
-    slide_aspect = sw / float(avail_h)
+    slide_aspect = sw / float(sh)
 
     for name in images:
         path = os.path.join(images_dir, name)
@@ -308,28 +306,19 @@ def build_pptx_from_images(images_dir, output_pptx):
         with Image.open(path) as im:
             iw, ih = im.size
         img_aspect = iw / float(ih)
-        # Fit the image into the top area (above the editable text strip).
+        # Fit the image inside the slide, preserving aspect ratio, centered.
         if img_aspect > slide_aspect:
             w = sw
             h = int(sw / img_aspect)
         else:
-            h = avail_h
-            w = int(avail_h * img_aspect)
+            h = sh
+            w = int(sh * img_aspect)
         left = int((sw - w) / 2)
-        top = int((avail_h - h) / 2)
+        top = int((sh - h) / 2)
         slide.shapes.add_picture(path, left, top, width=w, height=h)
 
-        # Editable text box (image stays an image; words can be added/changed here)
-        tb = slide.shapes.add_textbox(Inches(0.4), sh - strip + Inches(0.05), sw - Inches(0.8), Inches(0.6))
-        tf = tb.text_frame
-        tf.word_wrap = True
-        p = tf.paragraphs[0]
-        p.text = 'Click to add / edit your text…'
-        p.font.size = Pt(13)
-        p.font.color.rgb = RGBColor(0x6B, 0x72, 0x80)
-
     prs.save(output_pptx)
-    print(f"PPTX (image slides + editable text) saved: {output_pptx} ({len(images)} slides)")
+    print(f"PPTX (image slides) saved: {output_pptx} ({len(images)} slides)")
     return output_pptx
 
 
