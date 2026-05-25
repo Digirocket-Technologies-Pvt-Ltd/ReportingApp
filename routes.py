@@ -529,15 +529,24 @@ def init_routes(app):
                     client_id=CLIENT_ID, client_secret=CLIENT_SECRET, scopes=SCOPES)
                 gsc_data = get_gsc_detailed_data(credentials, ctx['gsc_site'], start_date, end_date)
 
-            metrics, tables = [], []
+            tables = []
+            overview = (ga4_data or {}).get('overview') or {}
+            OVLABELS = {
+                'new_users': 'New Users', 'active_users': 'Active Users', 'returning_users': 'Returning Users',
+                'sessions': 'Sessions', 'bounce_rate': 'Bounce Rate',
+                'avg_engagement_per_session': 'Avg Engagement / Session', 'views': 'Views', 'event_count': 'Event Count'}
+
+            def _ovdisp(k):
+                if k == 'bounce_rate':
+                    return f"{overview.get('bounce_rate', 0)}%"
+                if k == 'avg_engagement_per_session':
+                    return overview.get('avg_engagement_per_session', '0s')
+                return f"{overview.get(k, 0):,}"
+
+            selected_m = ctx.get('metrics') or ['new_users', 'active_users', 'returning_users', 'sessions']
+            metrics = [(OVLABELS.get(k, k), _ovdisp(k)) for k in selected_m]
+
             if ga4_data:
-                t = ga4_data['totals']
-                metrics = [
-                    ('Active Users', f"{t['totalActiveUsers']:,}"),
-                    ('Page Views', f"{t['totalViews']:,}"),
-                    ('New Users', f"{t['totalNewUsers']:,}"),
-                    ('Total Events', f"{t['totalEventCount']:,}"),
-                ]
                 cm = ga4_data.get('countryMetrics') or []
                 if cm:
                     tables.append({'title': 'GA4 - Geographic Distribution',
@@ -571,32 +580,9 @@ def init_routes(app):
                         tables.append({'title': f'Search Console - {title}',
                                        'headers': blk.get('headers', []), 'rows': blk['rows']})
 
-            # Native EDITABLE charts (vertical bars + a daily line) from real data
-            overview = (ga4_data or {}).get('overview') or {}
-            LABELS = {
-                'new_users': 'New Users', 'active_users': 'Active Users', 'returning_users': 'Returning Users',
-                'sessions': 'Sessions', 'bounce_rate': 'Bounce Rate (%)',
-                'avg_engagement_per_session': 'Avg Eng/Session (s)', 'views': 'Views', 'event_count': 'Event Count'}
-
-            def _mval(k):
-                if k == 'avg_engagement_per_session':
-                    return overview.get('avg_engagement_seconds', 0)
-                return overview.get(k, 0)
-
-            selected = ctx.get('metrics') or ['new_users', 'active_users', 'returning_users', 'sessions']
+            # Overview is shown as metric cards above; only keep a daily LINE chart
+            # (single metric over time) - mixed-scale bar charts hid small values.
             charts = []
-            groups = [selected[i:i + 4] for i in range(0, len(selected), 4)]
-            for gi, group in enumerate(groups, start=1):
-                charts.append({'title': f'Overview Infographic {gi}', 'kind': 'bar',
-                               'categories': [LABELS.get(k, k) for k in group],
-                               'values': [_mval(k) for k in group]})
-            if gsc_data and gsc_data.get('summary'):
-                s = gsc_data['summary']
-                charts.append({'title': 'Search Console Overview', 'kind': 'bar',
-                               'categories': ['Clicks', 'Impressions', 'Avg CTR (%)', 'Avg Position'],
-                               'values': [s.get('total_clicks', 0), s.get('total_impressions', 0),
-                                          float(str(s.get('average_ctr', '0')).replace('%', '') or 0),
-                                          float(str(s.get('average_position', '0')) or 0)]})
             if ga4_data and ga4_data.get('rows'):
                 rows = ga4_data['rows']
                 charts.append({'title': 'Daily Page Views', 'kind': 'line',

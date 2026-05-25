@@ -406,14 +406,16 @@ def build_editable_pptx(context, output_pptx, slide_images=None):
     if metrics:
         s = prs.slides.add_slide(blank)
         title_bar(s, 'Overview')
-        n = len(metrics)
+        per_row = 4
         gap = Inches(0.3)
         left0 = Inches(0.5)
-        card_w = int((SW - Inches(1) - gap * (n - 1)) / n)
-        card_h = Inches(2)
-        top = Inches(2.2)
+        card_w = int((SW - Inches(1) - gap * (per_row - 1)) / per_row)
+        card_h = Inches(1.9)
         for i, (label, value) in enumerate(metrics):
-            x = int(left0 + i * (card_w + gap))
+            row = i // per_row
+            col = i % per_row
+            x = int(left0 + col * (card_w + gap))
+            top = int(Inches(1.7) + row * (card_h + Inches(0.35)))
             shp = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, x, top, card_w, card_h)
             shp.fill.solid()
             shp.fill.fore_color.rgb = DARK
