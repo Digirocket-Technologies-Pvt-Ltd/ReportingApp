@@ -12,7 +12,7 @@ from PIL import Image
 import io
 from datetime import datetime, timedelta
 import requests
-from pdf_processing import build_slide_images, build_pdf_from_images, build_editable_pptx
+from pdf_processing import build_slide_images, build_pdf_from_images, build_editable_pptx, build_pptx_from_images
 from werkzeug.utils import secure_filename
 import shutil
 from image_explanation import explain_image_with_gemini
@@ -567,6 +567,18 @@ def init_routes(app):
 
         try:
             start_date, end_date = validate_dates(ctx['start'], ctx['end'])
+
+            base = os.path.dirname(os.path.abspath(__file__))
+            out_path = os.path.join(base, 'static', 'images', 'analytics_report.pptx')
+
+            # If the generated slide images exist, the PPT mirrors the PDF: the
+            # visuals stay as IMAGES (not converted to tables) + each slide gets
+            # an editable text box. (Falls back to a native deck if no images.)
+            aivideo_dir = os.path.join(base, 'static', 'images', 'AIVideo')
+            if os.path.isdir(aivideo_dir) and any(f.lower().endswith('.png') for f in os.listdir(aivideo_dir)):
+                build_pptx_from_images(aivideo_dir, out_path)
+                return send_file(out_path, as_attachment=True, download_name='analytics_report.pptx',
+                                 mimetype='application/vnd.openxmlformats-officedocument.presentationml.presentation')
 
             ga4_data = None
             if ctx.get('ga4_property_id'):
