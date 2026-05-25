@@ -96,6 +96,67 @@ def get_ga4_overview(access_token, property_id, start_date, end_date):
         return {}
 
 
+def get_ga4_acquisition(access_token, property_id, start_date, end_date, prev_start=None, prev_end=None):
+    """User Acquisition by channel, with optional previous-period comparison.
+
+    Returns a list: [{'channel', 'current': {...}, 'previous': {...}, 'change': {...}}]
+    metrics per period: total_users, new_users, returning_users, sessions, event_count.
+    """
+    try:
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json',
+            'X-TIMEZONE': 'UTC',
+        }
+        url = f'https://analyticsdata.googleapis.com/v1beta/properties/{property_id}:runReport'
+        date_ranges = [{"startDate": start_date.strftime('%Y-%m-%d'), "endDate": end_date.strftime('%Y-%m-%d')}]
+        if prev_start and prev_end:
+            date_ranges.append({"startDate": prev_start.strftime('%Y-%m-%d'), "endDate": prev_end.strftime('%Y-%m-%d')})
+        body = {
+            "dimensions": [{"name": "firstUserPrimaryChannelGroup"}],
+            "metrics": [{"name": "totalUsers"}, {"name": "newUsers"}, {"name": "sessions"}, {"name": "eventCount"}],
+            "dateRanges": date_ranges,
+            "orderBys": [{"metric": {"metricName": "totalUsers"}, "desc": True}],
+            "limit": 25,
+        }
+        r = requests.post(url, headers=headers, json=body, timeout=30)
+        r.raise_for_status()
+        data = r.json()
+
+        channels = {}
+        for row in data.get('rows', []):
+            dvs = row['dimensionValues']
+            channel = dvs[0]['value']
+            dr = dvs[1]['value'] if len(dvs) > 1 else 'date_range_0'
+            mv = row['metricValues']
+            tu, nu = int(mv[0]['value']), int(mv[1]['value'])
+            rec = {'total_users': tu, 'new_users': nu, 'returning_users': max(tu - nu, 0),
+                   'sessions': int(mv[2]['value']), 'event_count': int(mv[3]['value'])}
+            period = 'current' if dr == 'date_range_0' else 'previous'
+            channels.setdefault(channel, {})[period] = rec
+
+        def _chg(cur, prev):
+            try:
+                return round((cur - prev) / prev * 100, 1) if prev else None
+            except (TypeError, ZeroDivisionError):
+                return None
+
+        result = []
+        for ch, rec in channels.items():
+            cur = rec.get('current', {})
+            prev = rec.get('previous', {})
+            change = {}
+            if prev:
+                for k in ['total_users', 'new_users', 'returning_users', 'sessions', 'event_count']:
+                    change[k] = _chg(cur.get(k, 0), prev.get(k, 0))
+            result.append({'channel': ch, 'current': cur, 'previous': prev, 'change': change})
+        result.sort(key=lambda x: x['current'].get('total_users', 0), reverse=True)
+        return result
+    except Exception as e:
+        print(f"Error fetching GA4 acquisition: {e}")
+        return []
+
+
 def get_ga4_data(access_token, property_id, start_date, end_date):
     try:
         headers = {

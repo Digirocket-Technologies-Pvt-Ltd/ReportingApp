@@ -1,7 +1,7 @@
 from flask import Flask, render_template, redirect, url_for, request, jsonify, session, flash, send_file
 from auth import is_authenticated, refresh_token_if_needed, logout_user, get_user_info, get_session_info, is_pmo_admin
 import db
-from ga4 import get_ga4_properties, get_ga4_data, get_property_name, get_ga4_overview
+from ga4 import get_ga4_properties, get_ga4_data, get_property_name, get_ga4_overview, get_ga4_acquisition
 from gsc import get_gsc_sites, get_gsc_detailed_data, normalize_gsc_property, get_gsc_summary
 from data_processing import validate_dates
 from google.oauth2.credentials import Credentials
@@ -280,11 +280,21 @@ def init_routes(app):
                     return None
                 return round((cur - prev) / prev * 100, 1)
 
+            # Previous-period dates (used by both the cards and the acquisition table)
+            prev_start = prev_end = None
             if compare:
                 length = (end_date - start_date).days + 1
                 prev_end = start_date - timedelta(days=1)
                 prev_start = prev_end - timedelta(days=length - 1)
                 prev_label = f"{prev_start.strftime('%Y-%m-%d')} – {prev_end.strftime('%Y-%m-%d')}"
+
+            # User Acquisition by channel (always current; + previous if comparing)
+            acquisition = []
+            if ga4_property_id:
+                acquisition = get_ga4_acquisition(session['access_token'], ga4_property_id,
+                                                  start_date, end_date, prev_start, prev_end)
+
+            if compare:
                 cur_ov = (ga4_data or {}).get('overview') or {}
                 prev_ov = get_ga4_overview(session['access_token'], ga4_property_id, prev_start, prev_end) if ga4_property_id else {}
                 for k in ['new_users', 'active_users', 'returning_users', 'sessions',
@@ -315,6 +325,7 @@ def init_routes(app):
                 prev_label=prev_label,
                 ov_change=ov_change,
                 gsc_change=gsc_change,
+                acquisition=acquisition,
                 session_info=session_info
             )
 
@@ -598,6 +609,42 @@ def init_routes(app):
                     except (TypeError, ValueError):
                         ov_change_p[k] = None
             metrics = [(OVLABELS.get(k, k), _ovdisp(k), ov_change_p.get(k)) for k in selected_m]
+
+            # User Acquisition (by channel) comparison table
+            try:
+                acq_ps = acq_pe = None
+                if ctx.get('compare'):
+                    _len = (end_date - start_date).days + 1
+                    acq_pe = start_date - timedelta(days=1)
+                    acq_ps = acq_pe - timedelta(days=_len - 1)
+                acq = get_ga4_acquisition(session['access_token'], ctx['ga4_property_id'],
+                                          start_date, end_date, acq_ps, acq_pe) if ctx.get('ga4_property_id') else []
+
+                def _fc(v):
+                    if v is None:
+                        return '-'
+                    return ('+' if v >= 0 else '') + str(v) + '%'
+
+                if acq:
+                    acq_rows = []
+                    for ch in acq:
+                        cur = ch['current']
+                        prev = ch.get('previous') or {}
+                        chg = ch.get('change') or {}
+                        acq_rows.append([ch['channel'], 'Current', f"{cur.get('total_users',0):,}",
+                                         f"{cur.get('new_users',0):,}", f"{cur.get('returning_users',0):,}",
+                                         f"{cur.get('sessions',0):,}", f"{cur.get('event_count',0):,}"])
+                        if prev:
+                            acq_rows.append(['', 'Previous', f"{prev.get('total_users',0):,}",
+                                             f"{prev.get('new_users',0):,}", f"{prev.get('returning_users',0):,}",
+                                             f"{prev.get('sessions',0):,}", f"{prev.get('event_count',0):,}"])
+                            acq_rows.append(['', '% change', _fc(chg.get('total_users')), _fc(chg.get('new_users')),
+                                             _fc(chg.get('returning_users')), _fc(chg.get('sessions')), _fc(chg.get('event_count'))])
+                    tables.append({'title': 'User Acquisition (by Channel)',
+                                   'headers': ['Channel', 'Period', 'Total Users', 'New Users', 'Returning', 'Sessions', 'Events'],
+                                   'rows': acq_rows})
+            except Exception as e:
+                print(f'PPT acquisition table error: {e}')
 
             if ga4_data:
                 cm = ga4_data.get('countryMetrics') or []

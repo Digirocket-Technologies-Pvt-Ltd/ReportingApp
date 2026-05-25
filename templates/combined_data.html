@@ -399,6 +399,7 @@
                 { id: 'overview-infographic-1', type: 'div', name: '01b-overview-infographic-1', title: 'Overview Infographic 1' },
                 { id: 'overview-infographic-2', type: 'div', name: '01c-overview-infographic-2', title: 'Overview Infographic 2' },
                 { id: 'gsc-infographic', type: 'div', name: '01d-search-console-overview', title: 'Search Console Overview' },
+                { id: 'user-acquisition', type: 'table', name: '01e-user-acquisition', title: 'User Acquisition' },
                 {
                     id: "daily-line",
                     type: "div",
@@ -1294,6 +1295,55 @@
                     {% endif %}
                 </div>
                 {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- User Acquisition by channel (with previous-period comparison) -->
+        {% if acquisition %}
+        <div class="section-card rounded-2xl p-8 mb-8" id="user-acquisition">
+            <h2 class="text-2xl font-bold text-gray-800 mb-2"><i class="fas fa-arrow-trend-up mr-2 text-teal-600"></i>User Acquisition (by Channel)</h2>
+            {% if compare %}<p class="text-sm text-gray-500 mb-4">Current vs previous period ({{ prev_label }})</p>{% else %}<p class="text-sm text-gray-500 mb-4">Tick "Compare with previous period" to see vs-previous rows.</p>{% endif %}
+            <div class="table-container overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                    <thead class="border-b border-gray-200 text-gray-500">
+                        <tr>
+                            <th class="px-3 py-2">Channel</th><th class="px-3 py-2">Period</th>
+                            <th class="px-3 py-2">Total Users</th><th class="px-3 py-2">New Users</th>
+                            <th class="px-3 py-2">Returning</th><th class="px-3 py-2">Sessions</th><th class="px-3 py-2">Events</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ch in acquisition %}
+                        <tr class="border-b border-gray-100">
+                            <td class="px-3 py-2 font-semibold text-gray-800" {% if compare and ch.previous %}rowspan="3"{% endif %}>{{ ch.channel }}</td>
+                            <td class="px-3 py-2 text-gray-500">{% if compare and ch.previous %}Current{% else %}&nbsp;{% endif %}</td>
+                            <td class="px-3 py-2 text-gray-800">{{ "{:,}".format(ch.current.get('total_users',0)) }}</td>
+                            <td class="px-3 py-2 text-gray-800">{{ "{:,}".format(ch.current.get('new_users',0)) }}</td>
+                            <td class="px-3 py-2 text-gray-800">{{ "{:,}".format(ch.current.get('returning_users',0)) }}</td>
+                            <td class="px-3 py-2 text-gray-800">{{ "{:,}".format(ch.current.get('sessions',0)) }}</td>
+                            <td class="px-3 py-2 text-gray-800">{{ "{:,}".format(ch.current.get('event_count',0)) }}</td>
+                        </tr>
+                        {% if compare and ch.previous %}
+                        <tr class="border-b border-gray-100 text-gray-500">
+                            <td class="px-3 py-2">Previous</td>
+                            <td class="px-3 py-2">{{ "{:,}".format(ch.previous.get('total_users',0)) }}</td>
+                            <td class="px-3 py-2">{{ "{:,}".format(ch.previous.get('new_users',0)) }}</td>
+                            <td class="px-3 py-2">{{ "{:,}".format(ch.previous.get('returning_users',0)) }}</td>
+                            <td class="px-3 py-2">{{ "{:,}".format(ch.previous.get('sessions',0)) }}</td>
+                            <td class="px-3 py-2">{{ "{:,}".format(ch.previous.get('event_count',0)) }}</td>
+                        </tr>
+                        <tr class="border-b border-gray-200">
+                            <td class="px-3 py-2 font-bold text-gray-700">% change</td>
+                            {% for k in ['total_users','new_users','returning_users','sessions','event_count'] %}
+                            {% set c = ch.change.get(k) %}
+                            <td class="px-3 py-2 font-bold" style="color:{{ '#16a34a' if (c is not none and c >= 0) else ('#dc2626' if c is not none else '#9ca3af') }};">{{ (('▲ ' if c >= 0 else '▼ ') ~ (c|abs) ~ '%') if c is not none else '—' }}</td>
+                            {% endfor %}
+                        </tr>
+                        {% endif %}
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
         </div>
         {% endif %}
