@@ -1,8 +1,21 @@
 from flask import session
+import os
 import requests
 from datetime import datetime
 from google.oauth2.credentials import Credentials
 from config import CLIENT_ID, CLIENT_SECRET, REDIRECT_URI, SCOPES
+
+
+def pmo_admins():
+    """List of whitelisted PMO admin emails (lower-cased) from PMO_ADMINS env."""
+    return [e.strip().lower() for e in (os.getenv('PMO_ADMINS') or '').split(',') if e.strip()]
+
+
+def is_pmo_admin():
+    """True only if the logged-in user's email is in the PMO_ADMINS whitelist."""
+    if not is_authenticated():
+        return False
+    return (session.get('user_email') or '').lower() in pmo_admins()
 
 def is_authenticated():
     """Check if user is authenticated by verifying access token exists"""

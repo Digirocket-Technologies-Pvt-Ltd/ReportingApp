@@ -77,6 +77,19 @@
                 <button type="button" onclick="closeEmailModal()" class="text-white hover:text-gray-200 text-2xl leading-none">&times;</button>
             </div>
             <div class="p-6 space-y-4">
+                {% if clients %}
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Client (PMO record)</label>
+                    <select id="emClient" onchange="onClientPick()"
+                            class="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-teal-500 focus:ring-2 focus:ring-teal-500 outline-none">
+                        <option value="">— Select client (to log this report) —</option>
+                        {% for c in clients %}
+                        <option value="{{ c.id }}" data-email="{{ c.email or '' }}">{{ c.name }}{% if c.email %} ({{ c.email }}){% endif %}</option>
+                        {% endfor %}
+                    </select>
+                    <p class="text-xs text-gray-400 mt-1">Client choose karoge to portal me auto-log ho jaayega.</p>
+                </div>
+                {% endif %}
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">Your email (Reply-to)</label>
                     <input id="emFrom" type="email" placeholder="you@example.com"
@@ -92,6 +105,13 @@
                     <input id="emSubject" type="text" value="Your Analytics Report"
                            class="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-teal-500 focus:ring-2 focus:ring-teal-500 outline-none">
                 </div>
+                {% if clients %}
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Report month / period</label>
+                    <input id="emPeriod" type="text" placeholder="e.g. May 2026 / Month 7"
+                           class="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-teal-500 focus:ring-2 focus:ring-teal-500 outline-none">
+                </div>
+                {% endif %}
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">Message</label>
                     <textarea id="emMessage" rows="4" placeholder="Hi, please find your analytics report attached."
@@ -114,6 +134,14 @@
     <script>
         function openEmailModal() { document.getElementById('emailModal').style.display = 'flex'; }
         function closeEmailModal() { document.getElementById('emailModal').style.display = 'none'; }
+
+        // When a client is picked, auto-fill the client email field.
+        function onClientPick() {
+            var sel = document.getElementById('emClient');
+            if (!sel) return;
+            var email = sel.options[sel.selectedIndex].getAttribute('data-email');
+            if (email) document.getElementById('emTo').value = email;
+        }
 
         // Floating toast notification (top-center)
         function showToast(message, ok) {
@@ -154,7 +182,9 @@
                         from_email: document.getElementById('emFrom').value.trim(),
                         to_email: to,
                         subject: document.getElementById('emSubject').value.trim(),
-                        message: document.getElementById('emMessage').value.trim()
+                        message: document.getElementById('emMessage').value.trim(),
+                        client_id: (document.getElementById('emClient') || {}).value || '',
+                        report_period: (document.getElementById('emPeriod') || {}).value || ''
                     })
                 });
                 var data = await res.json();

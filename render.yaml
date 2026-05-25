@@ -30,3 +30,9 @@ services:
         sync: false
       - key: BREVO_SENDER
         sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: PMO_ADMINS
+        sync: false

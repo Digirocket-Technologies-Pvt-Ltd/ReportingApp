@@ -1,5 +1,6 @@
 from flask import Flask, render_template, redirect, url_for, request, jsonify, session, flash
-from auth import is_authenticated, refresh_token_if_needed, logout_user, get_user_info, get_session_info
+from auth import is_authenticated, refresh_token_if_needed, logout_user, get_user_info, get_session_info, is_pmo_admin
+import db
 from ga4 import get_ga4_properties, get_ga4_data, get_property_name
 from gsc import get_gsc_sites, get_gsc_detailed_data
 from data_processing import validate_dates
@@ -116,7 +117,8 @@ def init_routes(app):
                 ga4_properties=ga4_properties,
                 gsc_sites=gsc_sites,
                 ga4_error=error if error else None,
-                session_info=session_info
+                session_info=session_info,
+                is_admin=is_pmo_admin()
             )
         except Exception as e:
             flash(f'Error loading dashboard: {str(e)}', 'error')
@@ -437,8 +439,18 @@ def init_routes(app):
             flash('No report found. Please generate one first.', 'error')
             return redirect(url_for('dashboard'))
 
+        # PMO admins get a client dropdown in the email modal so the send can
+        # be logged against a specific client. Non-admins just send (no logging).
+        clients = []
+        if is_pmo_admin():
+            try:
+                clients = db.list_clients()
+            except Exception as e:
+                print(f'Error loading clients for report modal: {e}')
+
         return render_template('report_display.html',
                                pdf_url=url_for('static', filename='images/analytics_report.pdf'),
+                               clients=clients,
                                session_info=get_session_info())
 
     @app.route('/send-report-email', methods=['POST'])
@@ -452,6 +464,8 @@ def init_routes(app):
             subject = (data.get('subject') or '').strip()
             message = (data.get('message') or '').strip()
             reply_to = (data.get('from_email') or '').strip() or None
+            client_id = (data.get('client_id') or '').strip() or None
+            report_period = (data.get('report_period') or '').strip() or None
 
             if not to_email:
                 return jsonify({'success': False, 'message': 'Client email is required.'}), 400
@@ -463,9 +477,106 @@ def init_routes(app):
 
             from email_sender import send_report_email
             send_report_email(to_email, subject, message, pdf_path, reply_to=reply_to)
+
+            # Best-effort: log this send against the chosen client in the PMO portal.
+            if client_id:
+                db.log_report(client_id, report_period, to_email, subject or 'Your Analytics Report')
+
             return jsonify({'success': True, 'message': f'Report sent to {to_email}'})
         except Exception as e:
             print(f'Error sending report email: {e}')
+            return jsonify({'success': False, 'message': str(e)}), 500
+
+    # ============================================================
+    #  PMO PORTAL  (client database) - admins only
+    # ============================================================
+    @app.route('/pmo')
+    def pmo_portal():
+        """PMO team portal: manage clients and see report-send history."""
+        if not is_authenticated() or not refresh_token_if_needed():
+            flash('Please log in to access the PMO portal.', 'warning')
+            return redirect(url_for('login'))
+        if not is_pmo_admin():
+            return render_template('pmo_denied.html',
+                                   email=session.get('user_email')), 403
+
+        if not db.is_configured():
+            return render_template('pmo.html', clients=[], db_ready=False,
+                                   session_info=get_session_info())
+
+        try:
+            clients = db.list_clients()
+            latest = db.latest_reports()
+            for c in clients:
+                c['last_report'] = latest.get(c['id'])
+        except Exception as e:
+            print(f'Error loading PMO portal: {e}')
+            return render_template('pmo.html', clients=[], db_ready=True,
+                                   load_error=str(e), session_info=get_session_info())
+
+        return render_template('pmo.html', clients=clients, db_ready=True,
+                               session_info=get_session_info())
+
+    # ---- Client CRUD (JSON APIs, admin only) ----
+    def _client_payload():
+        d = request.get_json() or {}
+        def clean(v):
+            v = (str(v).strip() if v is not None else '')
+            return v or None
+        billing = clean(d.get('billing_cycle_day'))
+        try:
+            billing = int(billing) if billing else None
+        except ValueError:
+            billing = None
+        return {
+            'name': clean(d.get('name')),
+            'email': clean(d.get('email')),
+            'ga4_property_id': clean(d.get('ga4_property_id')),
+            'gsc_property_id': clean(d.get('gsc_property_id')),
+            'nature_of_business': clean(d.get('nature_of_business')),
+            'billing_cycle_day': billing,
+            'start_date': clean(d.get('start_date')),
+            'status': clean(d.get('status')) or 'active',
+            'notes': clean(d.get('notes')),
+        }
+
+    @app.route('/pmo/api/clients', methods=['POST'])
+    def pmo_add_client():
+        if not is_pmo_admin():
+            return jsonify({'success': False, 'message': 'Not authorized.'}), 403
+        try:
+            payload = _client_payload()
+            if not payload.get('name'):
+                return jsonify({'success': False, 'message': 'Client name is required.'}), 400
+            row = db.add_client(payload)
+            return jsonify({'success': True, 'client': row})
+        except Exception as e:
+            print(f'Error adding client: {e}')
+            return jsonify({'success': False, 'message': str(e)}), 500
+
+    @app.route('/pmo/api/clients/<client_id>', methods=['POST'])
+    def pmo_update_client(client_id):
+        if not is_pmo_admin():
+            return jsonify({'success': False, 'message': 'Not authorized.'}), 403
+        try:
+            payload = _client_payload()
+            if not payload.get('name'):
+                return jsonify({'success': False, 'message': 'Client name is required.'}), 400
+            row = db.update_client(client_id, payload)
+            return jsonify({'success': True, 'client': row})
+        except Exception as e:
+            print(f'Error updating client: {e}')
+            return jsonify({'success': False, 'message': str(e)}), 500
+
+    @app.route('/pmo/api/clients/<client_id>/delete', methods=['POST'])
+    def pmo_delete_client(client_id):
+        if not is_pmo_admin():
+            return jsonify({'success': False, 'message': 'Not authorized.'}), 403
+        try:
+            db.delete_client(client_id)
+            return jsonify({'success': True})
+        except Exception as e:
+            print(f'Error deleting client: {e}')
             return jsonify({'success': False, 'message': str(e)}), 500
 
 # Initialize the Flask app with routes

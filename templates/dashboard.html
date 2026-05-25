@@ -322,6 +322,12 @@
                             <a href="#" class="dropdown-item" onclick="checkSessionStatus()">
                                 <i class="fas fa-sync-alt mr-2"></i>Refresh Session
                             </a>
+                            {% if is_admin %}
+                            <div class="border-t border-gray-100"></div>
+                            <a href="{{ url_for('pmo_portal') }}" class="dropdown-item">
+                                <i class="fas fa-users-gear mr-2"></i>PMO Portal
+                            </a>
+                            {% endif %}
                             <div class="border-t border-gray-100"></div>
                             <a href="{{ url_for('logout') }}" class="dropdown-item text-red-600 hover:bg-red-50 hover:text-red-700">
                                 <i class="fas fa-sign-out-alt mr-2"></i>Logout
