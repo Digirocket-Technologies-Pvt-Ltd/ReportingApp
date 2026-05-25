@@ -56,12 +56,21 @@
         <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
             <div>
                 <h2 class="text-2xl font-bold text-gray-800">Clients</h2>
-                <p class="text-gray-500 text-sm">Total: <b>{{ clients|length }}</b></p>
+                <p class="text-gray-500 text-sm">Total: <b>{{ clients|length }}</b> <span id="searchCount"></span></p>
             </div>
-            <button type="button" onclick="openAddModal()"
-                    class="inline-flex items-center bg-teal-600 px-5 py-3 rounded-xl font-bold shadow hover:opacity-90">
-                <i class="fas fa-plus mr-2"></i>Add Client
-            </button>
+            <div class="flex flex-wrap items-center gap-3">
+                <div class="relative">
+                    <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                    <input id="clientSearch" type="text" onkeyup="filterClients()"
+                           placeholder="Search name, email, business..."
+                           class="pmo-input rounded-xl border border-gray-300 pl-10 pr-4 py-3 outline-none focus:border-teal-500"
+                           style="min-width:260px;">
+                </div>
+                <button type="button" onclick="openAddModal()"
+                        class="inline-flex items-center bg-teal-600 px-5 py-3 rounded-xl font-bold shadow hover:opacity-90">
+                    <i class="fas fa-plus mr-2"></i>Add Client
+                </button>
+            </div>
         </div>
 
         {% if load_error %}
@@ -99,7 +108,7 @@
                         <td class="px-4 py-3 text-gray-600">{{ c.billing_cycle_day or '—' }}</td>
                         <td class="px-4 py-3">
                             {% if c.status == 'churned' %}
-                                <span class="badge badge-churned">Churned</span>
+                                <span class="badge badge-churned">Not Active</span>
                             {% else %}
                                 <span class="badge badge-active">Active</span>
                             {% endif %}
@@ -172,7 +181,7 @@
                     <label class="block text-sm font-semibold text-gray-700 mb-1">Status</label>
                     <select id="cStatus" class="pmo-input w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-teal-500">
                         <option value="active">Active</option>
-                        <option value="churned">Churned (chala gaya)</option>
+                        <option value="churned">Not Active</option>
                     </select>
                 </div>
                 <div class="sm:col-span-2">
@@ -194,6 +203,20 @@
         // All clients passed from the server, keyed for editing.
         var CLIENTS = {};
         ({{ clients|tojson|safe }} || []).forEach(function (c) { CLIENTS[c.id] = c; });
+
+        // Live search: filter table rows by any visible text (name, email, business...).
+        function filterClients() {
+            var q = (document.getElementById('clientSearch').value || '').toLowerCase().trim();
+            var rows = document.querySelectorAll('.pmo-table tbody tr[data-id]');
+            var shown = 0;
+            rows.forEach(function (row) {
+                var match = row.innerText.toLowerCase().indexOf(q) !== -1;
+                row.style.display = match ? '' : 'none';
+                if (match) shown++;
+            });
+            var counter = document.getElementById('searchCount');
+            counter.textContent = q ? '· showing ' + shown : '';
+        }
 
         function showToast(message, ok) {
             var t = document.createElement('div');
