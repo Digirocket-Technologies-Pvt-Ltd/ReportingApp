@@ -12,7 +12,7 @@ from PIL import Image
 import io
 from datetime import datetime
 import requests
-from pdf_processing import build_slide_images, build_pdf_from_images
+from pdf_processing import build_slide_images, build_pdf_from_images, build_pptx_from_images
 import shutil
 from image_explanation import explain_image_with_gemini
 
@@ -355,6 +355,13 @@ def init_routes(app):
             report_pdf = os.path.join(image_dir, "analytics_report.pdf")
             build_pdf_from_images(aivideo_dir, report_pdf)
 
+            # Also build an editable-deck (PPTX) from the same slides (best-effort)
+            try:
+                report_pptx = os.path.join(image_dir, "analytics_report.pptx")
+                build_pptx_from_images(aivideo_dir, report_pptx)
+            except Exception as e:
+                print(f"PPTX build failed (non-fatal): {e}")
+
             # Activity feed: a report was generated
             who = session.get('user_name') or session.get('user_email') or 'Someone'
             db.log_activity('report_generated', f'{who} generated a PDF report',
@@ -453,8 +460,13 @@ def init_routes(app):
             except Exception as e:
                 print(f'Error loading clients for report modal: {e}')
 
+        pptx_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                 'static', 'images', 'analytics_report.pptx')
+        pptx_url = url_for('static', filename='images/analytics_report.pptx') if os.path.exists(pptx_path) else None
+
         return render_template('report_display.html',
                                pdf_url=url_for('static', filename='images/analytics_report.pdf'),
+                               pptx_url=pptx_url,
                                clients=clients,
                                session_info=get_session_info())
 

@@ -49,6 +49,12 @@
                    class="inline-flex items-center bg-gradient-to-r from-red-600 to-rose-600 text-white px-8 py-4 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl transition">
                     <i class="fas fa-download mr-3"></i>Download PDF
                 </a>
+                {% if pptx_url %}
+                <a href="{{ pptx_url }}" download="analytics-report.pptx"
+                   class="inline-flex items-center bg-gradient-to-r from-orange-500 to-amber-600 text-white px-8 py-4 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl transition">
+                    <i class="fas fa-file-powerpoint mr-3"></i>Download PPT
+                </a>
+                {% endif %}
                 <button type="button" onclick="openEmailModal()"
                         class="inline-flex items-center bg-teal-600 px-8 py-4 rounded-xl font-bold text-lg shadow-lg hover:opacity-90 transition">
                     <i class="fas fa-paper-plane mr-3"></i>Send via Email

@@ -323,7 +323,7 @@
             // Create enhanced pagination controls
             const paginationDiv = document.createElement('div');
             paginationDiv.id = `${tableId}-pagination`;
-            paginationDiv.className = 'flex items-center justify-between border-t border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4 mt-0 rounded-b-2xl';
+            paginationDiv.className = 'report-pagination flex items-center justify-between border-t border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4 mt-0 rounded-b-2xl';
             paginationDiv.innerHTML = `
                 <div class="flex flex-1 justify-between items-center">
                     <div>
@@ -497,6 +497,11 @@
                     removeContainer: true
                 };
 
+                // Hide the Previous/Next pagination controls so they don't overlap
+                // or clutter the captured report slides. Restored in `finally`.
+                var hiddenPaginations = document.querySelectorAll('.report-pagination');
+                hiddenPaginations.forEach(function (p) { p.style.display = 'none'; });
+
                 for (const element of elementsToCapture) {
                     const elem = document.getElementById(element.id);
                     if (!elem) {
@@ -577,13 +582,15 @@
             } catch (error) {
                 console.error('❌ Error taking screenshots:', error);
                 hideVideoLoadingOverlay();
-                showNotification('error', 'Error creating video. Please try again.');
+                showNotification('error', 'Error generating PDF report. Please try again.');
             } finally {
                 // Re-enable both buttons (null-safe)
                 ['exportPDF', 'exportPDF2'].forEach(function (id) {
                     var b = document.getElementById(id);
                     if (b) { b.disabled = false; b.style.opacity = '1'; }
                 });
+                // Restore the pagination controls hidden before capture
+                document.querySelectorAll('.report-pagination').forEach(function (p) { p.style.display = ''; });
             }
         }
 
@@ -1289,7 +1296,7 @@
                                     <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{{ "{:,}".format(country.users) }}</td>
                                     <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{{ "{:,}".format(country.newUsers) }}</td>
                                     <td class="px-4 py-3 whitespace-nowrap">
-                                        <span class="text-sm text-gray-900 bg-green-100 px-2 py-1 rounded-full">{{ country.engagementRate }}</span>
+                                        <span class="text-sm bg-green-100 px-2 py-1 rounded-full font-semibold" style="color:#166534;">{{ country.engagementRate }}</span>
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -1364,7 +1371,7 @@
                                     </td>
                                     <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{{ "{:,}".format(channel.newUsers) }}</td>
                                     <td class="px-4 py-3 whitespace-nowrap">
-                                        <span class="text-sm text-gray-900 bg-teal-100 px-2 py-1 rounded-full">{{ channel.percentage }}</span>
+                                        <span class="text-sm bg-teal-100 px-2 py-1 rounded-full font-semibold" style="color:#115e59;">{{ channel.percentage }}</span>
                                     </td>
                                     <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{{ channel.avgEngagementTime }}</td>
                                 </tr>

@@ -271,3 +271,51 @@ def build_pdf_from_images(images_dir, output_pdf):
     doc.close()
     print(f"PDF report saved: {output_pdf} ({len(images)} pages)")
     return output_pdf
+
+
+def build_pptx_from_images(images_dir, output_pptx):
+    """Combine the slide images (page_1.png ...) into a downloadable PPTX deck.
+
+    Each slide is one full-slide image (the same images used for the PDF), so the
+    deck matches the report exactly. The PMO team can then open it in PowerPoint
+    to reorder/remove slides, add their own slides, or add speaker notes.
+    """
+    from pptx import Presentation
+    from pptx.util import Emu
+
+    def _page_num(name):
+        m = re.search(r'page_(\d+)', name)
+        return int(m.group(1)) if m else 0
+
+    images = sorted(
+        [f for f in os.listdir(images_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg'))],
+        key=_page_num,
+    )
+
+    prs = Presentation()
+    prs.slide_width = Emu(12192000)   # 13.333in -> 16:9 widescreen
+    prs.slide_height = Emu(6858000)   # 7.5in
+    blank_layout = prs.slide_layouts[6]
+    sw, sh = prs.slide_width, prs.slide_height
+    slide_aspect = sw / sh
+
+    for name in images:
+        path = os.path.join(images_dir, name)
+        slide = prs.slides.add_slide(blank_layout)
+        with Image.open(path) as im:
+            iw, ih = im.size
+        img_aspect = iw / float(ih)
+        # Fit the image inside the slide, preserving aspect ratio, centered.
+        if img_aspect > slide_aspect:
+            w = sw
+            h = int(sw / img_aspect)
+        else:
+            h = sh
+            w = int(sh * img_aspect)
+        left = int((sw - w) / 2)
+        top = int((sh - h) / 2)
+        slide.shapes.add_picture(path, left, top, width=w, height=h)
+
+    prs.save(output_pptx)
+    print(f"PPTX report saved: {output_pptx} ({len(images)} slides)")
+    return output_pptx

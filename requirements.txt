@@ -10,4 +10,5 @@ Pillow
 PyPDF2
 reportlab
 PyMuPDF
+python-pptx
 gunicorn
