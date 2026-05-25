@@ -13,6 +13,7 @@ import io
 from datetime import datetime
 import requests
 from pdf_processing import build_slide_images, build_pdf_from_images, build_editable_pptx
+from werkzeug.utils import secure_filename
 import shutil
 from image_explanation import explain_image_with_gemini
 
@@ -112,13 +113,23 @@ def init_routes(app):
             # Get session info for display
             session_info = get_session_info()
 
+            # Clients list (admins only) for the "Send File to Client" modal dropdown
+            admin = is_pmo_admin()
+            clients = []
+            if admin:
+                try:
+                    clients = db.list_clients()
+                except Exception as e:
+                    print(f'Error loading clients for dashboard: {e}')
+
             return render_template(
                 'dashboard.html',
                 ga4_properties=ga4_properties,
                 gsc_sites=gsc_sites,
                 ga4_error=error if error else None,
                 session_info=session_info,
-                is_admin=is_pmo_admin()
+                is_admin=admin,
+                clients=clients
             )
         except Exception as e:
             flash(f'Error loading dashboard: {str(e)}', 'error')
@@ -601,6 +612,49 @@ def init_routes(app):
             return jsonify({'success': True, 'message': f'Report sent to {to_email}'})
         except Exception as e:
             print(f'Error sending report email: {e}')
+            return jsonify({'success': False, 'message': str(e)}), 500
+
+    @app.route('/send-file-email', methods=['POST'])
+    def send_file_email_route():
+        """Email an uploaded file (edited PPT, PDF, or anything) to a client,
+        straight from the dashboard - no need to leave for a separate email app."""
+        if not is_authenticated():
+            return jsonify({'success': False, 'message': 'Please log in.'}), 401
+        try:
+            to_email = (request.form.get('to_email') or '').strip()
+            subject = (request.form.get('subject') or '').strip()
+            message = (request.form.get('message') or '').strip()
+            reply_to = (request.form.get('from_email') or '').strip() or None
+            client_id = (request.form.get('client_id') or '').strip() or None
+            report_period = (request.form.get('report_period') or '').strip() or None
+
+            if not to_email:
+                return jsonify({'success': False, 'message': 'Client email is required.'}), 400
+
+            f = request.files.get('file')
+            if not f or not f.filename:
+                return jsonify({'success': False, 'message': 'Please choose a file to attach.'}), 400
+
+            data = f.read()
+            if not data:
+                return jsonify({'success': False, 'message': 'The selected file is empty.'}), 400
+            max_mb = 12
+            if len(data) > max_mb * 1024 * 1024:
+                return jsonify({'success': False, 'message': f'File too large (max {max_mb} MB).'}), 400
+
+            filename = secure_filename(f.filename) or 'attachment'
+
+            from email_sender import send_attachment_email
+            send_attachment_email(to_email, subject or 'Your Report', message, data, filename, reply_to=reply_to)
+
+            if client_id:
+                db.log_report(client_id, report_period, to_email, subject or filename)
+            db.log_activity('file_emailed', f'File "{filename}" emailed to {to_email}',
+                            url_for('dashboard'), session.get('user_email'))
+
+            return jsonify({'success': True, 'message': f'File sent to {to_email}'})
+        except Exception as e:
+            print(f'Error sending file email: {e}')
             return jsonify({'success': False, 'message': str(e)}), 500
 
     @app.route('/api/notifications')
