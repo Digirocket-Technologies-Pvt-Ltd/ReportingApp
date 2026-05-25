@@ -321,15 +321,16 @@ def build_pptx_from_images(images_dir, output_pptx):
     return output_pptx
 
 
-def build_editable_pptx(context, output_pptx):
-    """Build a fully EDITABLE PowerPoint report (native text + tables, NOT images).
+def build_editable_pptx(context, output_pptx, slide_images=None):
+    """Build a PowerPoint report.
 
-    Every element is real PowerPoint content, so the PMO team can edit text,
-    change numbers, move things, add their own slides, etc.
+    If `slide_images` (list of page_N.png paths) is given, those are added first
+    as full-slide images so the deck VISUALLY matches the PDF (cover, colours,
+    charts, screenshots). Then native EDITABLE slides (overview metrics + data
+    tables) are appended so the PMO team can still edit the numbers/text.
 
     context = {
-        'title': str,
-        'subtitle': str,
+        'title': str, 'subtitle': str,
         'metrics': [(label, value), ...],
         'tables': [{'title': str, 'headers': [...], 'rows': [[...], ...]}, ...],
     }
@@ -363,22 +364,50 @@ def build_editable_pptx(context, output_pptx):
         p.font.bold = True
         p.font.color.rgb = NAVY
 
-    # ---- Title slide ----
-    s = prs.slides.add_slide(blank)
-    tb = s.shapes.add_textbox(Inches(0.7), Inches(2.4), SW - Inches(1.4), Inches(2))
-    tf = tb.text_frame
-    tf.word_wrap = True
-    p = tf.paragraphs[0]
-    p.text = context.get('title', 'Analytics Report')
-    p.font.size = Pt(44)
-    p.font.bold = True
-    p.font.color.rgb = NAVY
-    p.alignment = PP_ALIGN.CENTER
-    p2 = tf.add_paragraph()
-    p2.text = context.get('subtitle', '')
-    p2.font.size = Pt(20)
-    p2.font.color.rgb = GREY
-    p2.alignment = PP_ALIGN.CENTER
+    # ---- Visual image slides first (exact match with the PDF) ----
+    if slide_images:
+        slide_aspect = SW / float(SH)
+        for path in slide_images:
+            if not os.path.exists(path):
+                continue
+            sl = prs.slides.add_slide(blank)
+            with Image.open(path) as im:
+                iw, ih = im.size
+            img_aspect = iw / float(ih)
+            if img_aspect > slide_aspect:
+                w = SW; h = int(SW / img_aspect)
+            else:
+                h = SH; w = int(SH * img_aspect)
+            sl.shapes.add_picture(path, int((SW - w) / 2), int((SH - h) / 2), width=w, height=h)
+
+    # ---- Title slide (only when there are no image slides) ----
+    if not slide_images:
+        s = prs.slides.add_slide(blank)
+        tb = s.shapes.add_textbox(Inches(0.7), Inches(2.4), SW - Inches(1.4), Inches(2))
+        tf = tb.text_frame
+        tf.word_wrap = True
+        p = tf.paragraphs[0]
+        p.text = context.get('title', 'Analytics Report')
+        p.font.size = Pt(44)
+        p.font.bold = True
+        p.font.color.rgb = NAVY
+        p.alignment = PP_ALIGN.CENTER
+        p2 = tf.add_paragraph()
+        p2.text = context.get('subtitle', '')
+        p2.font.size = Pt(20)
+        p2.font.color.rgb = GREY
+        p2.alignment = PP_ALIGN.CENTER
+    else:
+        # Divider before the editable section
+        s = prs.slides.add_slide(blank)
+        tb = s.shapes.add_textbox(Inches(0.7), Inches(3), SW - Inches(1.4), Inches(1.5))
+        tf = tb.text_frame
+        p = tf.paragraphs[0]
+        p.text = 'Editable Data'
+        p.font.size = Pt(40)
+        p.font.bold = True
+        p.font.color.rgb = NAVY
+        p.alignment = PP_ALIGN.CENTER
 
     # ---- Overview metrics slide ----
     metrics = context.get('metrics') or []

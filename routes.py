@@ -570,9 +570,23 @@ def init_routes(app):
                 'metrics': metrics,
                 'tables': tables,
             }
-            out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                    'static', 'images', 'analytics_report.pptx')
-            build_editable_pptx(context, out_path)
+            # Slide images (page_N.png) so the PPT visually matches the PDF
+            base = os.path.dirname(os.path.abspath(__file__))
+            aivideo_dir = os.path.join(base, 'static', 'images', 'AIVideo')
+            slide_images = []
+            if os.path.isdir(aivideo_dir):
+                import re as _re
+
+                def _pn(name):
+                    m = _re.search(r'page_(\d+)', name)
+                    return int(m.group(1)) if m else 0
+
+                slide_images = [os.path.join(aivideo_dir, f)
+                                for f in sorted([f for f in os.listdir(aivideo_dir)
+                                                 if f.lower().endswith('.png')], key=_pn)]
+
+            out_path = os.path.join(base, 'static', 'images', 'analytics_report.pptx')
+            build_editable_pptx(context, out_path, slide_images=slide_images)
             return send_file(out_path, as_attachment=True, download_name='analytics_report.pptx',
                              mimetype='application/vnd.openxmlformats-officedocument.presentationml.presentation')
         except Exception as e:
@@ -638,27 +652,40 @@ def init_routes(app):
             if not to_email:
                 return jsonify({'success': False, 'message': 'Client email is required.'}), 400
 
-            pdf_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                    'static', 'images', 'analytics_report.pdf')
-            if not os.path.exists(pdf_path):
-                return jsonify({'success': False, 'message': 'No report found. Generate one first.'}), 404
+            # Attachments are now MANUAL: only attach the report PDF if the user
+            # ticked the box; plus any files they added.
+            include_report = (form.get('include_report') or '').lower() in ('1', 'true', 'yes', 'on')
+            attachments = []
+            if include_report:
+                pdf_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                        'static', 'images', 'analytics_report.pdf')
+                if not os.path.exists(pdf_path):
+                    return jsonify({'success': False, 'message': 'No report found. Generate one first.'}), 404
+                with open(pdf_path, 'rb') as f:
+                    attachments.append((f.read(), 'analytics_report.pdf'))
 
-            with open(pdf_path, 'rb') as f:
-                attachments = [(f.read(), 'analytics_report.pdf')]
-
-            # Extra files attached in the modal (optional, multiple)
             for up in request.files.getlist('extra_files'):
                 if up and up.filename:
                     b = up.read()
                     if b:
                         attachments.append((b, secure_filename(up.filename) or 'attachment'))
 
+            if not attachments:
+                return jsonify({'success': False, 'message': 'Please attach at least one file (or tick "Include the report PDF").'}), 400
+
             total = sum(len(b) for b, _ in attachments)
             if total > 18 * 1024 * 1024:
                 return jsonify({'success': False, 'message': 'Attachments too large (max ~18 MB total).'}), 400
 
+            # Unique subject so each send is a NEW email (not threaded as a reply)
+            final_subject = subject or 'Your Analytics Report'
+            if report_period and report_period.lower() not in final_subject.lower():
+                final_subject = f'{final_subject} - {report_period}'
+            else:
+                final_subject = f'{final_subject} - {datetime.now().strftime("%d %b %Y, %H:%M")}'
+
             from email_sender import send_email_with_attachments
-            send_email_with_attachments(to_email, subject, message, attachments, reply_to=reply_to)
+            send_email_with_attachments(to_email, final_subject, message, attachments, reply_to=reply_to)
 
             # Best-effort: log this send against the chosen client in the PMO portal.
             if client_id:

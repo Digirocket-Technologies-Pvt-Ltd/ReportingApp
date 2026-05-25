@@ -175,13 +175,17 @@
                               class="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-teal-500 focus:ring-2 focus:ring-teal-500 outline-none"></textarea>
                 </div>
                 <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-1">Attach additional files (optional)</label>
-                    <input id="emFiles" type="file" multiple
-                           class="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-teal-500 outline-none">
-                    <p class="text-xs text-gray-400 mt-1">e.g. edited PPT, extra PDFs &mdash; sent along with the report PDF.</p>
-                </div>
-                <div class="flex items-center text-sm text-gray-500">
-                    <i class="fas fa-paperclip mr-2"></i> analytics_report.pdf (auto-attached)
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Attachments</label>
+                    <label class="flex items-center gap-2 text-sm text-gray-700 mb-2">
+                        <input type="checkbox" id="emIncludeReport"> Include the generated report PDF
+                    </label>
+                    <input id="emFileInput" type="file" multiple style="display:none">
+                    <button type="button" onclick="document.getElementById('emFileInput').click()"
+                            class="inline-flex items-center bg-gray-100 border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-gray-200">
+                        <i class="fas fa-paperclip mr-2"></i>Add files
+                    </button>
+                    <ul id="emFileList" class="mt-2 space-y-1"></ul>
+                    <p class="text-xs text-gray-400 mt-1">Pick your files (edited PPT, PDF, etc.) &mdash; add as many as you want. Download &amp; check the report first, then attach it here.</p>
                 </div>
                 <div id="emStatus" class="text-sm font-medium"></div>
             </div>
@@ -197,6 +201,28 @@
     <script>
         function openEmailModal() { document.getElementById('emailModal').style.display = 'flex'; }
         function closeEmailModal() { document.getElementById('emailModal').style.display = 'none'; }
+
+        // ---- multi-file attachment accumulator (add files across multiple dialogs) ----
+        var EM_FILES = [];
+        function emRenderFiles() {
+            var ul = document.getElementById('emFileList');
+            if (!ul) return;
+            ul.innerHTML = EM_FILES.map(function (f, i) {
+                return '<li class="flex items-center justify-between bg-gray-50 border border-gray-200 rounded px-3 py-1 text-sm text-gray-700">' +
+                    '<span><i class="fas fa-file mr-2 text-teal-600"></i>' + f.name +
+                    ' <span class="text-gray-400 text-xs">(' + Math.round(f.size / 1024) + ' KB)</span></span>' +
+                    '<button type="button" onclick="emRemoveFile(' + i + ')" class="text-red-500 hover:text-red-700 text-lg leading-none">&times;</button></li>';
+            }).join('');
+        }
+        function emRemoveFile(i) { EM_FILES.splice(i, 1); emRenderFiles(); }
+        document.addEventListener('DOMContentLoaded', function () {
+            var inp = document.getElementById('emFileInput');
+            if (inp) inp.addEventListener('change', function () {
+                for (var i = 0; i < this.files.length; i++) EM_FILES.push(this.files[i]);
+                this.value = '';   // reset so re-opening the dialog adds more
+                emRenderFiles();
+            });
+        });
 
         // When a client is picked, auto-fill the client email field.
         function onClientPick() {
@@ -245,10 +271,8 @@
                 fd.append('message', document.getElementById('emMessage').value.trim());
                 fd.append('client_id', (document.getElementById('emClient') || {}).value || '');
                 fd.append('report_period', (document.getElementById('emPeriod') || {}).value || '');
-                var extra = document.getElementById('emFiles');
-                if (extra && extra.files) {
-                    for (var i = 0; i < extra.files.length; i++) fd.append('extra_files', extra.files[i]);
-                }
+                fd.append('include_report', document.getElementById('emIncludeReport').checked ? 'true' : 'false');
+                for (var i = 0; i < EM_FILES.length; i++) fd.append('extra_files', EM_FILES[i]);
                 // No Content-Type header -> browser sets multipart boundary automatically
                 var res = await fetch('/send-report-email', { method: 'POST', body: fd });
                 var data = await res.json();

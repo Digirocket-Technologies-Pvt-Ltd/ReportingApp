@@ -16,6 +16,7 @@ import base64
 import smtplib
 import json
 from email.message import EmailMessage
+from email.utils import make_msgid
 
 import requests
 
@@ -59,8 +60,9 @@ def _send_via_brevo(to_email, subject, body, attachments, reply_to):
         'to': [{'email': to_email}],
         'subject': subject or 'Your Report',
         'textContent': body or _DEFAULT_BODY,
-        'attachment': [{'content': base64.b64encode(b).decode('ascii'), 'name': n} for (b, n) in attachments],
     }
+    if attachments:
+        payload['attachment'] = [{'content': base64.b64encode(b).decode('ascii'), 'name': n} for (b, n) in attachments]
     if reply_to:
         payload['replyTo'] = {'email': reply_to}
 
@@ -91,6 +93,8 @@ def _send_via_smtp(to_email, subject, body, attachments, reply_to):
     msg['Subject'] = subject or 'Your Report'
     msg['From'] = user
     msg['To'] = to_email
+    # Fresh Message-ID each time -> a brand-new email, never threaded as a reply
+    msg['Message-ID'] = make_msgid()
     if reply_to:
         msg['Reply-To'] = reply_to
     msg.set_content(body or _DEFAULT_BODY)
@@ -114,8 +118,6 @@ def send_email_with_attachments(to_email, subject, body, attachments, reply_to=N
     if not to_email:
         raise ValueError("Recipient (client) email is required")
     attachments = [(b, n) for (b, n) in (attachments or []) if b]
-    if not attachments:
-        raise ValueError("No attachments to send")
     if os.getenv('BREVO_API_KEY'):
         return _send_via_brevo(to_email, subject, body, attachments, reply_to)
     return _send_via_smtp(to_email, subject, body, attachments, reply_to)
