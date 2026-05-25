@@ -2,7 +2,7 @@ from flask import Flask, render_template, redirect, url_for, request, jsonify, s
 from auth import is_authenticated, refresh_token_if_needed, logout_user, get_user_info, get_session_info, is_pmo_admin
 import db
 from ga4 import get_ga4_properties, get_ga4_data, get_property_name
-from gsc import get_gsc_sites, get_gsc_detailed_data
+from gsc import get_gsc_sites, get_gsc_detailed_data, normalize_gsc_property
 from data_processing import validate_dates
 from google.oauth2.credentials import Credentials
 from config import CLIENT_ID, CLIENT_SECRET, REDIRECT_URI, SCOPES
@@ -660,7 +660,7 @@ def init_routes(app):
             'name': clean(d.get('name')),
             'email': clean(d.get('email')),
             'ga4_property_id': clean(d.get('ga4_property_id')),
-            'gsc_property_id': clean(d.get('gsc_property_id')),
+            'gsc_property_id': normalize_gsc_property(clean(d.get('gsc_property_id'))),
             'nature_of_business': clean(d.get('nature_of_business')),
             'billing_cycle_day': billing,
             'start_date': clean(d.get('start_date')),

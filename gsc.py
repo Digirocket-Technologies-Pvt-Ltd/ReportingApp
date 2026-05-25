@@ -1,8 +1,30 @@
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from datetime import datetime
+from urllib.parse import unquote
 from auth import is_authenticated, refresh_token_if_needed
 from config import CLIENT_ID, CLIENT_SECRET, SCOPES
+
+
+def normalize_gsc_property(site_url):
+    """Return a valid Search Console siteUrl from whatever the user pasted.
+
+    Handles the common mistake of pasting the GSC UI URL fragment, e.g.
+    'resource_id=https%3A%2F%2Fexample.com%2F' -> 'https://example.com/'.
+    Valid values ('https://example.com/', 'sc-domain:example.com') pass through.
+    """
+    if not site_url:
+        return site_url
+    s = str(site_url).strip()
+    if 'resource_id=' in s:
+        s = s.split('resource_id=', 1)[1].split('&', 1)[0]
+    # decode percent-encoding (twice in case it was double-encoded)
+    for _ in range(2):
+        if '%' in s:
+            s = unquote(s)
+        else:
+            break
+    return s.strip()
 
 def get_gsc_sites(session):
     if not is_authenticated() or not refresh_token_if_needed():
@@ -39,6 +61,7 @@ def get_gsc_detailed_data(credentials, site_url, start_date, end_date):
     top pages, country data, and device data.
     """
     try:
+        site_url = normalize_gsc_property(site_url)
         webmasters_service = build('searchconsole', 'v1', credentials=credentials)
 
         # Query for date-based metrics
