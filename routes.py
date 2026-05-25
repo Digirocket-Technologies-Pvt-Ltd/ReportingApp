@@ -223,6 +223,8 @@ def init_routes(app):
             gsc_site_url = request.args.get('gsc_site')
             start_date_str = request.args.get('start_date')
             end_date_str = request.args.get('end_date')
+            selected_metrics = request.args.getlist('metrics') or [
+                'new_users', 'active_users', 'returning_users', 'sessions']
 
             if not all([ga4_property_id, gsc_site_url, start_date_str, end_date_str]):
                 flash('Missing required parameters.', 'error')
@@ -255,10 +257,14 @@ def init_routes(app):
                 'gsc_site': gsc_site_url,
                 'start': start_date.strftime('%Y-%m-%d'),
                 'end': end_date.strftime('%Y-%m-%d'),
+                'metrics': selected_metrics,
             }
 
             # Get session info for display
             session_info = get_session_info()
+
+            # Split selected overview metrics into infographics of max 4 each
+            metric_groups = [selected_metrics[i:i + 4] for i in range(0, len(selected_metrics), 4)]
 
             return render_template(
                 'combined_data.html',
@@ -268,6 +274,7 @@ def init_routes(app):
                 end_date=end_date.strftime('%Y-%m-%d'),
                 ga4_data=ga4_data,
                 gsc_data=gsc_data,
+                metric_groups=metric_groups,
                 session_info=session_info
             )
 

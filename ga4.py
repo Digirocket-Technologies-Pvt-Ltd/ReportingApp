@@ -167,15 +167,35 @@ def get_ga4_data(access_token, property_id, start_date, end_date):
             "limit": 2500
         }
 
+        # Overview summary (NO date dimension -> accurate totals incl. ratio metrics)
+        overview_request_body = {
+            "metrics": [
+                {"name": "totalUsers"},
+                {"name": "newUsers"},
+                {"name": "activeUsers"},
+                {"name": "sessions"},
+                {"name": "screenPageViews"},
+                {"name": "eventCount"},
+                {"name": "bounceRate"},
+                {"name": "averageSessionDuration"},
+                {"name": "userEngagementDuration"},
+            ],
+            "dateRanges": [{
+                "startDate": start_date.strftime('%Y-%m-%d'),
+                "endDate": end_date.strftime('%Y-%m-%d')
+            }],
+        }
+
         # Execute all requests
         overall_response = requests.post(url, headers=headers, json=overall_request_body)
         page_response = requests.post(url, headers=headers, json=page_request_body)
         country_response = requests.post(url, headers=headers, json=country_request_body)
         event_response = requests.post(url, headers=headers, json=event_request_body)
         channel_response = requests.post(url, headers=headers, json=channel_request_body)
+        overview_response = requests.post(url, headers=headers, json=overview_request_body)
 
         # Check responses
-        for response in [overall_response, page_response, country_response, event_response, channel_response]:
+        for response in [overall_response, page_response, country_response, event_response, channel_response, overview_response]:
             response.raise_for_status()
 
         # Parse responses
@@ -199,8 +219,34 @@ def get_ga4_data(access_token, property_id, start_date, end_date):
             'pageMetrics': [],
             'countryMetrics': [],
             'eventMetrics': [],
-            'channelMetrics': []
+            'channelMetrics': [],
+            'overview': {}
         }
+
+        # Process overview summary (the 8 headline metrics)
+        ov = overview_response.json()
+        if ov.get('rows'):
+            mv = ov['rows'][0]['metricValues']
+            total_users = int(mv[0]['value'])
+            new_users = int(mv[1]['value'])
+            active_users = int(mv[2]['value'])
+            sessions = int(mv[3]['value'])
+            views = int(mv[4]['value'])
+            events = int(mv[5]['value'])
+            bounce = float(mv[6]['value'])          # 0..1
+            avg_sess_dur = float(mv[7]['value'])     # seconds
+            processed_data['overview'] = {
+                'new_users': new_users,
+                'active_users': active_users,
+                'returning_users': max(total_users - new_users, 0),
+                'event_count': events,
+                'sessions': sessions,
+                'bounce_rate': round(bounce * 100, 1),               # percent
+                'avg_engagement_per_session': format_duration(avg_sess_dur),
+                'avg_engagement_seconds': round(avg_sess_dur, 1),
+                'views': views,
+                'total_users': total_users,
+            }
 
         # Process overall metrics
         if 'rows' in overall_data:

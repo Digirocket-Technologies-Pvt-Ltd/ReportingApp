@@ -396,6 +396,9 @@
                     name: '01-analytics-intelligence-overview',
                     title: 'Analytics Intelligence Overview'
                 },
+                { id: 'overview-infographic-1', type: 'div', name: '01b-overview-infographic-1', title: 'Overview Infographic 1' },
+                { id: 'overview-infographic-2', type: 'div', name: '01c-overview-infographic-2', title: 'Overview Infographic 2' },
+                { id: 'gsc-infographic', type: 'div', name: '01d-search-console-overview', title: 'Search Console Overview' },
                 {
                     id: "daily-line",
                     type: "div",
@@ -670,6 +673,7 @@
 
             // Initialize chart
             initializeEnhancedChart();
+            renderInfographics();
 
             // Auto-hide flash messages after 5 seconds
             setTimeout(() => {
@@ -684,6 +688,53 @@
                 });
             }, 5000);
         });
+
+        // ---- Overview / GSC infographics (Chart.js bar charts of selected metrics) ----
+        function renderInfographics() {
+            if (typeof Chart === 'undefined') return;
+            var OVERVIEW = {{ (ga4_data.overview if ga4_data and ga4_data.overview else {})|tojson|safe }};
+            var GSC_SUMMARY = {{ (gsc_data.summary if gsc_data and gsc_data.summary else {})|tojson|safe }};
+            var LABELS = {
+                new_users: 'New Users', active_users: 'Active Users', returning_users: 'Returning Users',
+                sessions: 'Sessions', bounce_rate: 'Bounce Rate (%)', avg_engagement_per_session: 'Avg Eng/Session (s)',
+                views: 'Views', event_count: 'Event Count'
+            };
+            function val(k) {
+                if (k === 'avg_engagement_per_session') return OVERVIEW.avg_engagement_seconds || 0;
+                return OVERVIEW[k] || 0;
+            }
+            var COLORS = ['#7CC92A', '#00AEAF', '#4f46e5', '#f59e0b', '#ef4444', '#8b5cf6', '#0ea5e9', '#14b8a6'];
+
+            document.querySelectorAll('canvas[id^="ovChart"]').forEach(function (cv) {
+                var keys = (cv.getAttribute('data-metrics') || '').split(',').filter(Boolean);
+                if (!keys.length) return;
+                var labels = keys.map(function (k) { return (LABELS[k] || k) + ': ' + Number(val(k)).toLocaleString(); });
+                new Chart(cv, {
+                    type: 'bar',
+                    data: { labels: labels, datasets: [{ data: keys.map(val), backgroundColor: COLORS }] },
+                    options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } },
+                               scales: { x: { beginAtZero: true } } }
+                });
+            });
+
+            var gscCv = document.getElementById('gscChart');
+            if (gscCv && GSC_SUMMARY) {
+                var clicks = GSC_SUMMARY.total_clicks || 0;
+                var impr = GSC_SUMMARY.total_impressions || 0;
+                var ctr = parseFloat(GSC_SUMMARY.average_ctr) || 0;
+                var pos = parseFloat(GSC_SUMMARY.average_position) || 0;
+                new Chart(gscCv, {
+                    type: 'bar',
+                    data: {
+                        labels: ['Clicks: ' + clicks.toLocaleString(), 'Impressions: ' + impr.toLocaleString(),
+                                 'Avg CTR: ' + ctr + '%', 'Avg Position: ' + pos],
+                        datasets: [{ data: [clicks, impr, ctr, pos], backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444'] }]
+                    },
+                    options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } },
+                               scales: { x: { beginAtZero: true } } }
+                });
+            }
+        }
 
         function initializeEnhancedChart() {
             const table = document.getElementById('daily-metrics-table');
@@ -1138,6 +1189,28 @@
                 {% endif %}
             </div>
         </section>
+
+        <!-- Overview Infographics (selected metrics, max 4 each) -->
+        {% if ga4_data and ga4_data.overview and metric_groups %}
+        {% for group in metric_groups %}
+        <div class="section-card rounded-2xl p-8 mb-8" id="overview-infographic-{{ loop.index }}">
+            <h2 class="text-2xl font-bold text-gray-800 mb-6"><i class="fas fa-chart-column mr-2 text-teal-600"></i>Overview Infographic {{ loop.index }}</h2>
+            <div style="max-width:780px; margin:0 auto;">
+                <canvas id="ovChart{{ loop.index }}" data-metrics="{{ group|join(',') }}" height="260"></canvas>
+            </div>
+        </div>
+        {% endfor %}
+        {% endif %}
+
+        <!-- Search Console Overview Infographic -->
+        {% if gsc_data and gsc_data.summary %}
+        <div class="section-card rounded-2xl p-8 mb-8" id="gsc-infographic">
+            <h2 class="text-2xl font-bold text-gray-800 mb-6"><i class="fas fa-magnifying-glass mr-2 text-teal-600"></i>Search Console Overview</h2>
+            <div style="max-width:780px; margin:0 auto;">
+                <canvas id="gscChart" height="260"></canvas>
+            </div>
+        </div>
+        {% endif %}
 
         <!-- Daily Chart -->
         <div class="section-card rounded-2xl p-8 mb-8" id="daily-line">

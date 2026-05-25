@@ -602,9 +602,35 @@
                         </div>
                     </div>
 
+                    <!-- Overview Metrics Selection (for the report infographics) -->
+                    <div class="bg-gray-50 rounded-xl p-6">
+                        <div class="flex items-center space-x-3 mb-4">
+                            <div class="w-10 h-10 bg-teal-100 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-chart-pie text-teal-600"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-800">Overview Metrics (for infographic)</h3>
+                                <p class="text-sm text-gray-600">Pick the metrics to chart. First 4 &rarr; Infographic 1, next 4 &rarr; Infographic 2. (Default: first 4.)</p>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            {% set metric_opts = [
+                                ('new_users','New Users'), ('active_users','Active Users'),
+                                ('returning_users','Returning Users'), ('sessions','Sessions'),
+                                ('bounce_rate','Bounce Rate'), ('avg_engagement_per_session','Avg Engagement/Session'),
+                                ('views','Views'), ('event_count','Event Count') ] %}
+                            {% for key, label in metric_opts %}
+                            <label class="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 cursor-pointer hover:border-teal-400">
+                                <input type="checkbox" name="metrics" value="{{ key }}" {% if loop.index <= 4 %}checked{% endif %}>
+                                {{ label }}
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </div>
+
                     <!-- Submit Button -->
                     <div class="form-group text-center">
-                        <button type="submit" 
+                        <button type="submit"
                                 class="group relative inline-flex items-center justify-center px-8 py-4 text-lg font-semibold text-white bg-gradient-to-r from-teal-600 to-teal-600 rounded-xl shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 w-full md:w-auto min-w-64">
                             <span class="absolute inset-0 w-full h-full bg-gradient-to-r from-teal-700 to-teal-700 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>
                             <span class="relative flex items-center">

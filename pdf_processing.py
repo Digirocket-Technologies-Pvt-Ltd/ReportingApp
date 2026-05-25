@@ -364,7 +364,8 @@ def build_editable_pptx(context, output_pptx, slide_images=None):
         p.font.bold = True
         p.font.color.rgb = NAVY
 
-    # ---- Visual image slides first (exact match with the PDF) ----
+    # ---- If slide images are given, the deck is JUST those (matches the PDF
+    #      exactly). No duplicated "Editable Data" tables. ----
     if slide_images:
         slide_aspect = SW / float(SH)
         for path in slide_images:
@@ -379,35 +380,26 @@ def build_editable_pptx(context, output_pptx, slide_images=None):
             else:
                 h = SH; w = int(SH * img_aspect)
             sl.shapes.add_picture(path, int((SW - w) / 2), int((SH - h) / 2), width=w, height=h)
+        prs.save(output_pptx)
+        print(f"PPTX (image slides) saved: {output_pptx}")
+        return output_pptx
 
-    # ---- Title slide (only when there are no image slides) ----
-    if not slide_images:
-        s = prs.slides.add_slide(blank)
-        tb = s.shapes.add_textbox(Inches(0.7), Inches(2.4), SW - Inches(1.4), Inches(2))
-        tf = tb.text_frame
-        tf.word_wrap = True
-        p = tf.paragraphs[0]
-        p.text = context.get('title', 'Analytics Report')
-        p.font.size = Pt(44)
-        p.font.bold = True
-        p.font.color.rgb = NAVY
-        p.alignment = PP_ALIGN.CENTER
-        p2 = tf.add_paragraph()
-        p2.text = context.get('subtitle', '')
-        p2.font.size = Pt(20)
-        p2.font.color.rgb = GREY
-        p2.alignment = PP_ALIGN.CENTER
-    else:
-        # Divider before the editable section
-        s = prs.slides.add_slide(blank)
-        tb = s.shapes.add_textbox(Inches(0.7), Inches(3), SW - Inches(1.4), Inches(1.5))
-        tf = tb.text_frame
-        p = tf.paragraphs[0]
-        p.text = 'Editable Data'
-        p.font.size = Pt(40)
-        p.font.bold = True
-        p.font.color.rgb = NAVY
-        p.alignment = PP_ALIGN.CENTER
+    # ---- Otherwise build a native editable deck (title + metrics + tables) ----
+    s = prs.slides.add_slide(blank)
+    tb = s.shapes.add_textbox(Inches(0.7), Inches(2.4), SW - Inches(1.4), Inches(2))
+    tf = tb.text_frame
+    tf.word_wrap = True
+    p = tf.paragraphs[0]
+    p.text = context.get('title', 'Analytics Report')
+    p.font.size = Pt(44)
+    p.font.bold = True
+    p.font.color.rgb = NAVY
+    p.alignment = PP_ALIGN.CENTER
+    p2 = tf.add_paragraph()
+    p2.text = context.get('subtitle', '')
+    p2.font.size = Pt(20)
+    p2.font.color.rgb = GREY
+    p2.alignment = PP_ALIGN.CENTER
 
     # ---- Overview metrics slide ----
     metrics = context.get('metrics') or []
