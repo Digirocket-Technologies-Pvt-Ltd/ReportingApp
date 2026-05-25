@@ -1080,13 +1080,13 @@
                             <input type="checkbox" name="compare" value="1" {% if compare %}checked{% endif %}> Compare with previous period
                         </label>
                         <label class="flex items-center gap-2 text-xs font-medium text-gray-600">
-                            <input type="checkbox" name="ai_insights" value="1" {% if ai_text %}checked{% endif %}> Add AI Insights &amp; Action Plan
+                            <input type="checkbox" name="ai_insights" value="1" {% if request.args.get('ai_insights') %}checked{% endif %}> Add AI Insights &amp; Action Plan
                         </label>
                         <label class="flex items-center gap-2 text-xs font-medium text-gray-600">
-                            <input type="checkbox" name="gmb" value="1" {% if gmb_data %}checked{% endif %}> Add Google Business Profile (GMB)
+                            <input type="checkbox" name="gmb" value="1" {% if request.args.get('gmb') %}checked{% endif %}> Add Google Business Profile (GMB)
                         </label>
                         <label class="flex items-center gap-2 text-xs font-medium text-gray-600">
-                            <input type="checkbox" name="gmc" value="1" {% if gmc_data %}checked{% endif %}> Add Google Merchant Center (GMC)
+                            <input type="checkbox" name="gmc" value="1" {% if request.args.get('gmc') %}checked{% endif %}> Add Google Merchant Center (GMC)
                         </label>
                         <!-- Quick preset ranges (like Google Search Console) -->
                         <div class="flex items-center flex-wrap gap-2">
@@ -1922,6 +1922,16 @@
                 </div>
                 {% endfor %}
             </div>
+        </div>
+        {% endif %}
+
+        <!-- Helper note when GMB/GMC was requested but returned no data (on-screen only) -->
+        {% if (request.args.get('gmb') and not gmb_data) or (request.args.get('gmc') and not gmc_data) %}
+        <div class="section-card rounded-2xl p-6 mb-8" style="border:1px dashed #f59e0b;">
+            <p class="text-sm text-gray-600"><i class="fas fa-circle-info mr-2" style="color:#f59e0b;"></i>
+            {% if request.args.get('gmb') and not gmb_data %}<b>GMB</b> ka data nahi aaya &mdash; Google Cloud me <b>Business Profile Performance API</b> enable karke <b>logout &rarr; login</b> karo (nayi permission grant). {% endif %}
+            {% if request.args.get('gmc') and not gmc_data %}<b>GMC</b> ka data nahi aaya &mdash; ya to is website ka Merchant Center account nahi hai, ya <b>Content API for Shopping</b> enable + re-login pending hai.{% endif %}
+            </p>
         </div>
         {% endif %}
 
