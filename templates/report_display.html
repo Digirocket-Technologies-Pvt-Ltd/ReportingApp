@@ -175,6 +175,12 @@
                     <textarea id="emMessage" rows="4" placeholder="Hi, please find your analytics report attached."
                               class="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-teal-500 focus:ring-2 focus:ring-teal-500 outline-none"></textarea>
                 </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Attach additional files (optional)</label>
+                    <input id="emFiles" type="file" multiple
+                           class="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-teal-500 outline-none">
+                    <p class="text-xs text-gray-400 mt-1">e.g. edited PPT, extra PDFs &mdash; sent along with the report PDF.</p>
+                </div>
                 <div class="flex items-center text-sm text-gray-500">
                     <i class="fas fa-paperclip mr-2"></i> analytics_report.pdf (auto-attached)
                 </div>
@@ -233,18 +239,19 @@
             status.innerHTML = '<span style="color:#6b7280">Sending...</span>';
 
             try {
-                var res = await fetch('/send-report-email', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        from_email: document.getElementById('emFrom').value.trim(),
-                        to_email: to,
-                        subject: document.getElementById('emSubject').value.trim(),
-                        message: document.getElementById('emMessage').value.trim(),
-                        client_id: (document.getElementById('emClient') || {}).value || '',
-                        report_period: (document.getElementById('emPeriod') || {}).value || ''
-                    })
-                });
+                var fd = new FormData();
+                fd.append('from_email', document.getElementById('emFrom').value.trim());
+                fd.append('to_email', to);
+                fd.append('subject', document.getElementById('emSubject').value.trim());
+                fd.append('message', document.getElementById('emMessage').value.trim());
+                fd.append('client_id', (document.getElementById('emClient') || {}).value || '');
+                fd.append('report_period', (document.getElementById('emPeriod') || {}).value || '');
+                var extra = document.getElementById('emFiles');
+                if (extra && extra.files) {
+                    for (var i = 0; i < extra.files.length; i++) fd.append('extra_files', extra.files[i]);
+                }
+                // No Content-Type header -> browser sets multipart boundary automatically
+                var res = await fetch('/send-report-email', { method: 'POST', body: fd });
                 var data = await res.json();
                 if (res.ok && data.success) {
                     closeEmailModal();

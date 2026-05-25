@@ -113,23 +113,13 @@ def init_routes(app):
             # Get session info for display
             session_info = get_session_info()
 
-            # Clients list (admins only) for the "Send File to Client" modal dropdown
-            admin = is_pmo_admin()
-            clients = []
-            if admin:
-                try:
-                    clients = db.list_clients()
-                except Exception as e:
-                    print(f'Error loading clients for dashboard: {e}')
-
             return render_template(
                 'dashboard.html',
                 ga4_properties=ga4_properties,
                 gsc_sites=gsc_sites,
                 ga4_error=error if error else None,
                 session_info=session_info,
-                is_admin=admin,
-                clients=clients
+                is_admin=is_pmo_admin()
             )
         except Exception as e:
             flash(f'Error loading dashboard: {str(e)}', 'error')
@@ -592,17 +582,19 @@ def init_routes(app):
 
     @app.route('/send-report-email', methods=['POST'])
     def send_report_email_route():
-        """Email the generated PDF report to a client."""
+        """Email the generated PDF report to a client, plus any extra files the
+        user attached in the compose modal."""
         if not is_authenticated():
             return jsonify({'success': False, 'message': 'Please log in.'}), 401
         try:
-            data = request.get_json() or {}
-            to_email = (data.get('to_email') or '').strip()
-            subject = (data.get('subject') or '').strip()
-            message = (data.get('message') or '').strip()
-            reply_to = (data.get('from_email') or '').strip() or None
-            client_id = (data.get('client_id') or '').strip() or None
-            report_period = (data.get('report_period') or '').strip() or None
+            # Modal now posts multipart/form-data (so extra files can be attached).
+            form = request.form if request.form else (request.get_json() or {})
+            to_email = (form.get('to_email') or '').strip()
+            subject = (form.get('subject') or '').strip()
+            message = (form.get('message') or '').strip()
+            reply_to = (form.get('from_email') or '').strip() or None
+            client_id = (form.get('client_id') or '').strip() or None
+            report_period = (form.get('report_period') or '').strip() or None
 
             if not to_email:
                 return jsonify({'success': False, 'message': 'Client email is required.'}), 400
@@ -612,8 +604,22 @@ def init_routes(app):
             if not os.path.exists(pdf_path):
                 return jsonify({'success': False, 'message': 'No report found. Generate one first.'}), 404
 
-            from email_sender import send_report_email
-            send_report_email(to_email, subject, message, pdf_path, reply_to=reply_to)
+            with open(pdf_path, 'rb') as f:
+                attachments = [(f.read(), 'analytics_report.pdf')]
+
+            # Extra files attached in the modal (optional, multiple)
+            for up in request.files.getlist('extra_files'):
+                if up and up.filename:
+                    b = up.read()
+                    if b:
+                        attachments.append((b, secure_filename(up.filename) or 'attachment'))
+
+            total = sum(len(b) for b, _ in attachments)
+            if total > 18 * 1024 * 1024:
+                return jsonify({'success': False, 'message': 'Attachments too large (max ~18 MB total).'}), 400
+
+            from email_sender import send_email_with_attachments
+            send_email_with_attachments(to_email, subject, message, attachments, reply_to=reply_to)
 
             # Best-effort: log this send against the chosen client in the PMO portal.
             if client_id:
@@ -621,55 +627,14 @@ def init_routes(app):
 
             # Activity feed: a report was emailed
             period_txt = f' ({report_period})' if report_period else ''
-            db.log_activity('report_emailed', f'Report emailed to {to_email}{period_txt}',
+            extra_n = len(attachments) - 1
+            extra_txt = f' (+{extra_n} file{"s" if extra_n > 1 else ""})' if extra_n > 0 else ''
+            db.log_activity('report_emailed', f'Report emailed to {to_email}{period_txt}{extra_txt}',
                             url_for('display_report'), session.get('user_email'))
 
             return jsonify({'success': True, 'message': f'Report sent to {to_email}'})
         except Exception as e:
             print(f'Error sending report email: {e}')
-            return jsonify({'success': False, 'message': str(e)}), 500
-
-    @app.route('/send-file-email', methods=['POST'])
-    def send_file_email_route():
-        """Email an uploaded file (edited PPT, PDF, or anything) to a client,
-        straight from the dashboard - no need to leave for a separate email app."""
-        if not is_authenticated():
-            return jsonify({'success': False, 'message': 'Please log in.'}), 401
-        try:
-            to_email = (request.form.get('to_email') or '').strip()
-            subject = (request.form.get('subject') or '').strip()
-            message = (request.form.get('message') or '').strip()
-            reply_to = (request.form.get('from_email') or '').strip() or None
-            client_id = (request.form.get('client_id') or '').strip() or None
-            report_period = (request.form.get('report_period') or '').strip() or None
-
-            if not to_email:
-                return jsonify({'success': False, 'message': 'Client email is required.'}), 400
-
-            f = request.files.get('file')
-            if not f or not f.filename:
-                return jsonify({'success': False, 'message': 'Please choose a file to attach.'}), 400
-
-            data = f.read()
-            if not data:
-                return jsonify({'success': False, 'message': 'The selected file is empty.'}), 400
-            max_mb = 12
-            if len(data) > max_mb * 1024 * 1024:
-                return jsonify({'success': False, 'message': f'File too large (max {max_mb} MB).'}), 400
-
-            filename = secure_filename(f.filename) or 'attachment'
-
-            from email_sender import send_attachment_email
-            send_attachment_email(to_email, subject or 'Your Report', message, data, filename, reply_to=reply_to)
-
-            if client_id:
-                db.log_report(client_id, report_period, to_email, subject or filename)
-            db.log_activity('file_emailed', f'File "{filename}" emailed to {to_email}',
-                            url_for('dashboard'), session.get('user_email'))
-
-            return jsonify({'success': True, 'message': f'File sent to {to_email}'})
-        except Exception as e:
-            print(f'Error sending file email: {e}')
             return jsonify({'success': False, 'message': str(e)}), 500
 
     @app.route('/api/notifications')

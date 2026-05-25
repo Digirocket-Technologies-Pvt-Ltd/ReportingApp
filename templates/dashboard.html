@@ -407,68 +407,11 @@
                             </div>
                         </div>
                         <div class="mt-6 md:mt-0">
-                            <button type="button" onclick="openSendFileModal()"
-                                    class="inline-flex items-center gap-3 bg-white text-teal-700 font-bold px-6 py-4 rounded-xl shadow-lg hover:shadow-xl transition">
-                                <span class="w-9 h-9 rounded-full bg-teal-600 text-white flex items-center justify-center text-lg"><i class="fas fa-plus"></i></span>
-                                Send File to Client
-                            </button>
+                            <div class="floating-animation">
+                                <i class="fas fa-rocket text-6xl opacity-20"></i>
+                            </div>
                         </div>
                     </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Send File to Client Modal -->
-        <div id="sendFileModal" style="display:none; position:fixed; inset:0; z-index:9998; background:rgba(0,0,0,0.6); align-items:center; justify-content:center; padding:16px; overflow-y:auto;">
-            <div class="bg-white rounded-2xl shadow-2xl w-full my-8" style="max-width:560px;">
-                <div class="rounded-t-2xl px-6 py-4 flex items-center justify-between" style="background:linear-gradient(135deg,#14181a,#0a0d0e);">
-                    <h3 class="text-white text-lg font-bold"><i class="fas fa-paper-plane mr-2"></i>Send File to Client</h3>
-                    <button type="button" onclick="closeSendFileModal()" class="text-white hover:text-gray-200 text-2xl leading-none">&times;</button>
-                </div>
-                <div class="p-6 space-y-4">
-                    {% if clients %}
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-1">Client (PMO record)</label>
-                        <select id="sfClient" onchange="sfClientPick()" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-teal-500">
-                            <option value="">&mdash; Select client (to log this) &mdash;</option>
-                            {% for c in clients %}
-                            <option value="{{ c.id }}" data-email="{{ c.email or '' }}">{{ c.name }}{% if c.email %} ({{ c.email }}){% endif %}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    {% endif %}
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-1">File to send <span class="text-red-500">*</span></label>
-                        <input id="sfFile" type="file" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-teal-500">
-                        <p class="text-xs text-gray-400 mt-1">PPT, PDF, Word, Excel, image... (max 12 MB)</p>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-1">Your email (Reply-to)</label>
-                        <input id="sfFrom" type="email" placeholder="you@example.com" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-teal-500">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-1">Client email <span class="text-red-500">*</span></label>
-                        <input id="sfTo" type="email" placeholder="client@example.com" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-teal-500">
-                    </div>
-                    {% if clients %}
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-1">Report month / period (optional)</label>
-                        <input id="sfPeriod" type="text" placeholder="e.g. May 2026 / Month 7" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-teal-500">
-                    </div>
-                    {% endif %}
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-1">Subject</label>
-                        <input id="sfSubject" type="text" value="Your Report" class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-teal-500">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-1">Message</label>
-                        <textarea id="sfMessage" rows="3" placeholder="Hi, please find the attached file." class="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-teal-500"></textarea>
-                    </div>
-                    <div id="sfStatus" class="text-sm font-medium"></div>
-                </div>
-                <div class="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
-                    <button type="button" onclick="closeSendFileModal()" class="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50">Cancel</button>
-                    <button type="button" id="sfSendBtn" onclick="sendFile()" class="px-6 py-2 rounded-lg bg-teal-600 font-bold hover:opacity-90"><i class="fas fa-paper-plane mr-2"></i>Send</button>
                 </div>
             </div>
         </div>
@@ -885,54 +828,6 @@
         document.addEventListener('DOMContentLoaded', function () { loadNotif(); });
         setInterval(function () { loadNotif(); }, 45000);
 
-        // ---------------- Send File to Client ----------------
-        function openSendFileModal() { document.getElementById('sendFileModal').style.display = 'flex'; }
-        function closeSendFileModal() { document.getElementById('sendFileModal').style.display = 'none'; }
-        function sfClientPick() {
-            var s = document.getElementById('sfClient');
-            if (!s) return;
-            var em = s.options[s.selectedIndex].getAttribute('data-email');
-            if (em) document.getElementById('sfTo').value = em;
-        }
-        async function sendFile() {
-            var fileEl = document.getElementById('sfFile');
-            var to = document.getElementById('sfTo').value.trim();
-            var status = document.getElementById('sfStatus');
-            if (!fileEl.files.length) { status.innerHTML = '<span style="color:#dc2626">Please choose a file.</span>'; return; }
-            if (!to) { status.innerHTML = '<span style="color:#dc2626">Client email is required.</span>'; return; }
-
-            var fd = new FormData();
-            fd.append('file', fileEl.files[0]);
-            fd.append('to_email', to);
-            fd.append('from_email', document.getElementById('sfFrom').value.trim());
-            fd.append('subject', document.getElementById('sfSubject').value.trim());
-            fd.append('message', document.getElementById('sfMessage').value.trim());
-            var clientEl = document.getElementById('sfClient');
-            if (clientEl) fd.append('client_id', clientEl.value);
-            var periodEl = document.getElementById('sfPeriod');
-            if (periodEl) fd.append('report_period', periodEl.value.trim());
-
-            var btn = document.getElementById('sfSendBtn');
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Sending...';
-            status.innerHTML = '<span style="color:#6b7280">Sending...</span>';
-            try {
-                var res = await fetch('/send-file-email', { method: 'POST', body: fd });
-                var data = await res.json();
-                if (res.ok && data.success) {
-                    closeSendFileModal();
-                    status.innerHTML = '';
-                    showNotification('success', 'File sent to client! 📧');
-                } else {
-                    status.innerHTML = '<span style="color:#dc2626">❌ ' + (data.message || 'Failed to send') + '</span>';
-                }
-            } catch (e) {
-                status.innerHTML = '<span style="color:#dc2626">❌ Error: ' + e + '</span>';
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i>Send';
-            }
-        }
 
         // Update current time
         function updateTime() {
