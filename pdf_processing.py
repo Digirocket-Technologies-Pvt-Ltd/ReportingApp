@@ -432,6 +432,29 @@ def build_editable_pptx(context, output_pptx, slide_images=None):
             pl.font.color.rgb = WHITE
             pl.alignment = PP_ALIGN.CENTER
 
+    # ---- Native editable charts (infographics) ----
+    charts = context.get('charts') or []
+    if charts:
+        from pptx.chart.data import CategoryChartData
+        from pptx.enum.chart import XL_CHART_TYPE
+        for ch in charts:
+            cats = [str(c) for c in (ch.get('categories') or [])]
+            vals = [float(v) for v in (ch.get('values') or [])]
+            if not cats or not vals:
+                continue
+            s = prs.slides.add_slide(blank)
+            title_bar(s, ch.get('title', ''))
+            cd = CategoryChartData()
+            cd.categories = cats
+            cd.add_series('Value', vals)
+            ctype = XL_CHART_TYPE.LINE if ch.get('kind') == 'line' else XL_CHART_TYPE.COLUMN_CLUSTERED
+            gframe = s.shapes.add_chart(ctype, Inches(0.6), Inches(1.5),
+                                        SW - Inches(1.2), SH - Inches(2.2), cd)
+            try:
+                gframe.chart.has_legend = False
+            except Exception:
+                pass
+
     # ---- One slide per table ----
     for t in context.get('tables', []):
         headers = t.get('headers') or []

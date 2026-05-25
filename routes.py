@@ -571,29 +571,48 @@ def init_routes(app):
                         tables.append({'title': f'Search Console - {title}',
                                        'headers': blk.get('headers', []), 'rows': blk['rows']})
 
+            # Native EDITABLE charts (vertical bars + a daily line) from real data
+            overview = (ga4_data or {}).get('overview') or {}
+            LABELS = {
+                'new_users': 'New Users', 'active_users': 'Active Users', 'returning_users': 'Returning Users',
+                'sessions': 'Sessions', 'bounce_rate': 'Bounce Rate (%)',
+                'avg_engagement_per_session': 'Avg Eng/Session (s)', 'views': 'Views', 'event_count': 'Event Count'}
+
+            def _mval(k):
+                if k == 'avg_engagement_per_session':
+                    return overview.get('avg_engagement_seconds', 0)
+                return overview.get(k, 0)
+
+            selected = ctx.get('metrics') or ['new_users', 'active_users', 'returning_users', 'sessions']
+            charts = []
+            groups = [selected[i:i + 4] for i in range(0, len(selected), 4)]
+            for gi, group in enumerate(groups, start=1):
+                charts.append({'title': f'Overview Infographic {gi}', 'kind': 'bar',
+                               'categories': [LABELS.get(k, k) for k in group],
+                               'values': [_mval(k) for k in group]})
+            if gsc_data and gsc_data.get('summary'):
+                s = gsc_data['summary']
+                charts.append({'title': 'Search Console Overview', 'kind': 'bar',
+                               'categories': ['Clicks', 'Impressions', 'Avg CTR (%)', 'Avg Position'],
+                               'values': [s.get('total_clicks', 0), s.get('total_impressions', 0),
+                                          float(str(s.get('average_ctr', '0')).replace('%', '') or 0),
+                                          float(str(s.get('average_position', '0')) or 0)]})
+            if ga4_data and ga4_data.get('rows'):
+                rows = ga4_data['rows']
+                charts.append({'title': 'Daily Page Views', 'kind': 'line',
+                               'categories': [r[0] for r in rows], 'values': [r[1] for r in rows]})
+
             context = {
                 'title': 'Analytics Report',
                 'subtitle': f"{ctx.get('ga4_property_name', '')}  |  {ctx['start']} to {ctx['end']}",
                 'metrics': metrics,
+                'charts': charts,
                 'tables': tables,
             }
-            # Slide images (page_N.png) so the PPT visually matches the PDF
             base = os.path.dirname(os.path.abspath(__file__))
-            aivideo_dir = os.path.join(base, 'static', 'images', 'AIVideo')
-            slide_images = []
-            if os.path.isdir(aivideo_dir):
-                import re as _re
-
-                def _pn(name):
-                    m = _re.search(r'page_(\d+)', name)
-                    return int(m.group(1)) if m else 0
-
-                slide_images = [os.path.join(aivideo_dir, f)
-                                for f in sorted([f for f in os.listdir(aivideo_dir)
-                                                 if f.lower().endswith('.png')], key=_pn)]
-
             out_path = os.path.join(base, 'static', 'images', 'analytics_report.pptx')
-            build_editable_pptx(context, out_path, slide_images=slide_images)
+            # Native editable deck (no full-slide images) so text/tables/charts are all editable
+            build_editable_pptx(context, out_path)
             return send_file(out_path, as_attachment=True, download_name='analytics_report.pptx',
                              mimetype='application/vnd.openxmlformats-officedocument.presentationml.presentation')
         except Exception as e:
@@ -684,12 +703,12 @@ def init_routes(app):
             if total > 18 * 1024 * 1024:
                 return jsonify({'success': False, 'message': 'Attachments too large (max ~18 MB total).'}), 400
 
-            # Unique subject so each send is a NEW email (not threaded as a reply)
+            # Unique subject so each send is a NEW email (Gmail threads same-subject
+            # mails together; a precise timestamp makes every send distinct).
             final_subject = subject or 'Your Analytics Report'
             if report_period and report_period.lower() not in final_subject.lower():
                 final_subject = f'{final_subject} - {report_period}'
-            else:
-                final_subject = f'{final_subject} - {datetime.now().strftime("%d %b %Y, %H:%M")}'
+            final_subject = f'{final_subject} ({datetime.now().strftime("%d %b %Y, %I:%M:%S %p")})'
 
             from email_sender import send_email_with_attachments
             send_email_with_attachments(to_email, final_subject, message, attachments, reply_to=reply_to)

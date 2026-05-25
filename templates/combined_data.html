@@ -712,8 +712,8 @@
                 new Chart(cv, {
                     type: 'bar',
                     data: { labels: labels, datasets: [{ data: keys.map(val), backgroundColor: COLORS }] },
-                    options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } },
-                               scales: { x: { beginAtZero: true } } }
+                    options: { responsive: true, plugins: { legend: { display: false } },
+                               scales: { y: { beginAtZero: true } } }
                 });
             });
 
@@ -730,8 +730,8 @@
                                  'Avg CTR: ' + ctr + '%', 'Avg Position: ' + pos],
                         datasets: [{ data: [clicks, impr, ctr, pos], backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444'] }]
                     },
-                    options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } },
-                               scales: { x: { beginAtZero: true } } }
+                    options: { responsive: true, plugins: { legend: { display: false } },
+                               scales: { y: { beginAtZero: true } } }
                 });
             }
         }
