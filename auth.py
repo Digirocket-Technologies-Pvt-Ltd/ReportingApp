@@ -6,9 +6,17 @@ from google.oauth2.credentials import Credentials
 from config import CLIENT_ID, CLIENT_SECRET, REDIRECT_URI, SCOPES
 
 
+# PMO team always logs in with this ID -> permanent built-in admin.
+# Add more admins via the PMO_ADMINS env var (comma-separated), no code change needed.
+DEFAULT_PMO_ADMINS = ['analytics@digirocketads.com']
+
+
 def pmo_admins():
-    """List of whitelisted PMO admin emails (lower-cased) from PMO_ADMINS env."""
-    return [e.strip().lower() for e in (os.getenv('PMO_ADMINS') or '').split(',') if e.strip()]
+    """Whitelisted PMO admin emails (lower-cased): built-in defaults + PMO_ADMINS env."""
+    env_admins = [e.strip().lower() for e in (os.getenv('PMO_ADMINS') or '').split(',') if e.strip()]
+    defaults = [e.strip().lower() for e in DEFAULT_PMO_ADMINS]
+    # de-dupe while keeping it simple
+    return list(dict.fromkeys(defaults + env_admins))
 
 
 def is_pmo_admin():
