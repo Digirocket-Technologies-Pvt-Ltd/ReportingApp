@@ -45,8 +45,8 @@ def init_routes(app):
             'response_type': 'code',
             'scope': ' '.join(SCOPES),
             'access_type': 'offline',
-            # select_account = Google account chooser dikhao (taaki sahi account chun sako)
-            # consent = naye permissions ke liye dobara poocho
+            # select_account = show the Google account chooser (so the right account can be picked)
+            # consent = ask again for new permissions
             'prompt': 'select_account consent',
         }
         auth_url = 'https://accounts.google.com/o/oauth2/auth?' + urlencode(params)
@@ -195,14 +195,14 @@ def init_routes(app):
         </style></head><body>
         """
         html += f"<h1>✅ {len(with_data)} properties have data (last 90 days)</h1>"
-        html += "<p>Inhe dashboard ki GA4 dropdown mein select karo (Property ID se pehchaano):</p>"
+        html += "<p>Select these in the dashboard's GA4 dropdown (identify by Property ID):</p>"
         for p in with_data:
             html += (f"<div class='ok'><b>{p['name']}</b><br>"
                      f"<span class='id'>Property ID: {p['id']}</span><br>"
                      f"<span class='stats'>{p['users']:,} users &nbsp;|&nbsp; {p['views']:,} page views</span></div>")
         if not with_data:
-            html += "<p>⚠️ Kisi bhi property mein last 90 days ka data nahi mila.</p>"
-        html += f"<p class='empty'>({len(empty)} properties khaali hain - inme tracking data nahi aa raha)</p>"
+            html += "<p>⚠️ No data found in any property for the last 90 days.</p>"
+        html += f"<p class='empty'>({len(empty)} properties are empty - no tracking data coming in)</p>"
         html += "<a class='btn' href='/dashboard'>← Back to Dashboard</a>"
         html += "</body></html>"
         return html

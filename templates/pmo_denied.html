@@ -18,10 +18,10 @@
             <i class="fas fa-lock text-red-500 text-2xl"></i>
         </div>
         <h1 class="text-2xl font-bold text-gray-800 mb-2">Access Denied</h1>
-        <p class="text-gray-600 mb-4">Ye PMO Portal sirf authorized admins ke liye hai.</p>
+        <p class="text-gray-600 mb-4">This PMO Portal is for authorized admins only.</p>
         {% if email %}
-        <p class="text-sm text-gray-500 mb-6">Aapka email: <b>{{ email }}</b><br>
-           Ise access dene ke liye <code>PMO_ADMINS</code> list me add karwao.</p>
+        <p class="text-sm text-gray-500 mb-6">Your email: <b>{{ email }}</b><br>
+           To grant access, add it to the <code>PMO_ADMINS</code> list.</p>
         {% endif %}
         <a href="{{ url_for('dashboard') }}" class="inline-flex items-center bg-teal-600 text-white px-6 py-3 rounded-xl font-semibold shadow hover:opacity-90">
             <i class="fas fa-arrow-left mr-2"></i>Back to Dashboard
