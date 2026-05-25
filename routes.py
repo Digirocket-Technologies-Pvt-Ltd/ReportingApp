@@ -1,7 +1,7 @@
 from flask import Flask, render_template, redirect, url_for, request, jsonify, session, flash, send_file
 from auth import is_authenticated, refresh_token_if_needed, logout_user, get_user_info, get_session_info, is_pmo_admin
 import db
-from ga4 import get_ga4_properties, get_ga4_data, get_property_name, get_ga4_overview, get_ga4_acquisition
+from ga4 import get_ga4_properties, get_ga4_data, get_property_name, get_ga4_overview, get_ga4_acquisition, get_ga4_extra
 from gsc import get_gsc_sites, get_gsc_detailed_data, normalize_gsc_property, get_gsc_summary
 from data_processing import validate_dates
 from google.oauth2.credentials import Credentials
@@ -294,6 +294,37 @@ def init_routes(app):
                 acquisition = get_ga4_acquisition(session['access_token'], ga4_property_id,
                                                   start_date, end_date, prev_start, prev_end)
 
+            # Extra GA4 sections (Tech / Landing Pages)
+            ga4_extra = {}
+            if ga4_property_id:
+                ga4_extra = get_ga4_extra(session['access_token'], ga4_property_id, start_date, end_date)
+
+            # Manual indexed pages count (user types it from Search Console)
+            indexed_pages = (request.args.get('indexed_pages') or '').strip()
+
+            # AI Insights & Action Plan (optional, Kimi) - only when requested
+            ai_text = ''
+            if (request.args.get('ai_insights') or '').lower() in ('1', 'true', 'on', 'yes'):
+                try:
+                    from ai_vision import ai_summary
+                    ov = (ga4_data or {}).get('overview') or {}
+                    gs = (gsc_data or {}).get('summary') or {}
+                    prompt = (
+                        "You are an SEO analyst. Write a concise professional report summary and a "
+                        "'Suggested Action Plan' (4-6 bullet points) for next month, based on this data for "
+                        f"{ga4_property_name} ({start_date} to {end_date}).\n\n"
+                        f"Google Analytics: active users {ov.get('active_users')}, new users {ov.get('new_users')}, "
+                        f"returning users {ov.get('returning_users')}, sessions {ov.get('sessions')}, "
+                        f"views {ov.get('views')}, events {ov.get('event_count')}, bounce rate {ov.get('bounce_rate')}%.\n"
+                        f"Search Console: clicks {gs.get('total_clicks')}, impressions {gs.get('total_impressions')}, "
+                        f"avg CTR {gs.get('average_ctr')}, avg position {gs.get('average_position')}.\n"
+                        "Keep it under 180 words. Plain text, no markdown headers."
+                    )
+                    ai_text = ai_summary(prompt)
+                except Exception as e:
+                    print(f"AI insights error: {e}")
+                    ai_text = ''
+
             if compare:
                 cur_ov = (ga4_data or {}).get('overview') or {}
                 prev_ov = get_ga4_overview(session['access_token'], ga4_property_id, prev_start, prev_end) if ga4_property_id else {}
@@ -326,6 +357,9 @@ def init_routes(app):
                 ov_change=ov_change,
                 gsc_change=gsc_change,
                 acquisition=acquisition,
+                ga4_extra=ga4_extra,
+                indexed_pages=indexed_pages,
+                ai_text=ai_text,
                 session_info=session_info
             )
 

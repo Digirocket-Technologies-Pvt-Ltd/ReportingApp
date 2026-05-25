@@ -96,6 +96,44 @@ def get_ga4_overview(access_token, property_id, start_date, end_date):
         return {}
 
 
+def get_ga4_extra(access_token, property_id, start_date, end_date):
+    """Extra GA4 sections: Tech (device) + Landing Pages."""
+    out = {'tech': [], 'landing': []}
+    try:
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json',
+            'X-TIMEZONE': 'UTC',
+        }
+        url = f'https://analyticsdata.googleapis.com/v1beta/properties/{property_id}:runReport'
+        dr = [{"startDate": start_date.strftime('%Y-%m-%d'), "endDate": end_date.strftime('%Y-%m-%d')}]
+
+        dev = requests.post(url, headers=headers, json={
+            "dimensions": [{"name": "deviceCategory"}],
+            "metrics": [{"name": "activeUsers"}, {"name": "sessions"}, {"name": "screenPageViews"}],
+            "dateRanges": dr,
+            "orderBys": [{"metric": {"metricName": "activeUsers"}, "desc": True}],
+            "limit": 10}, timeout=30).json()
+        for row in dev.get('rows', []):
+            mv = row['metricValues']
+            out['tech'].append({'device': row['dimensionValues'][0]['value'] or '(not set)',
+                                'users': int(mv[0]['value']), 'sessions': int(mv[1]['value']), 'views': int(mv[2]['value'])})
+
+        lp = requests.post(url, headers=headers, json={
+            "dimensions": [{"name": "landingPage"}],
+            "metrics": [{"name": "sessions"}, {"name": "activeUsers"}, {"name": "screenPageViews"}],
+            "dateRanges": dr,
+            "orderBys": [{"metric": {"metricName": "sessions"}, "desc": True}],
+            "limit": 15}, timeout=30).json()
+        for row in lp.get('rows', []):
+            mv = row['metricValues']
+            out['landing'].append({'page': row['dimensionValues'][0]['value'] or '/',
+                                   'sessions': int(mv[0]['value']), 'users': int(mv[1]['value']), 'views': int(mv[2]['value'])})
+    except Exception as e:
+        print(f"Error fetching GA4 extra: {e}")
+    return out
+
+
 def get_ga4_acquisition(access_token, property_id, start_date, end_date, prev_start=None, prev_end=None):
     """User Acquisition by channel, with optional previous-period comparison.
 

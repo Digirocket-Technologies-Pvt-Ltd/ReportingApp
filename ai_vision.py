@@ -15,7 +15,27 @@ from PIL import Image
 
 KIMI_BASE_URL = 'https://api.moonshot.ai/v1'
 KIMI_VISION_MODEL = 'moonshot-v1-8k-vision-preview'
+KIMI_TEXT_MODEL = 'moonshot-v1-8k'
 MAX_DIM = 1280  # max width/height sent to Kimi -> fewer tokens, much faster
+
+
+def ai_summary(prompt, system=None):
+    """Send a text prompt to Kimi and return the reply (for report insights/action plans)."""
+    api_key = os.getenv('KIMI_API_KEY')
+    if not api_key:
+        raise RuntimeError("KIMI_API_KEY is not set in the .env file")
+    messages = []
+    if system:
+        messages.append({'role': 'system', 'content': system})
+    messages.append({'role': 'user', 'content': prompt})
+    resp = requests.post(
+        f'{KIMI_BASE_URL}/chat/completions',
+        headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
+        json={'model': KIMI_TEXT_MODEL, 'messages': messages, 'temperature': 0.4},
+        timeout=60,
+    )
+    resp.raise_for_status()
+    return resp.json()['choices'][0]['message']['content'].strip()
 
 
 def explain_image(image_path, prompt):

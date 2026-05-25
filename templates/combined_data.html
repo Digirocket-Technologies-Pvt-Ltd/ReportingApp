@@ -132,6 +132,16 @@
             -webkit-text-fill-color: #7CC92A;
             font-weight: 800;
         }
+
+        /* Compact tables so all columns fit (less horizontal scrolling) */
+        .enhanced-table th, .enhanced-table td,
+        .table-container table th, .table-container table td {
+            font-size: 12.5px;
+            padding-left: 10px;
+            padding-right: 10px;
+            word-break: break-word;
+            white-space: normal;
+        }
         
         .capture-button {
             background: linear-gradient(135deg, #C4F82A 0%, #A6D81C 100%);
@@ -400,6 +410,8 @@
                 { id: 'overview-infographic-2', type: 'div', name: '01c-overview-infographic-2', title: 'Overview Infographic 2' },
                 { id: 'gsc-infographic', type: 'div', name: '01d-search-console-overview', title: 'Search Console Overview' },
                 { id: 'user-acquisition', type: 'table', name: '01e-user-acquisition', title: 'User Acquisition' },
+                { id: 'landing-pages', type: 'table', name: '01f-landing-pages', title: 'Landing Page Overview' },
+                { id: 'tech-overview', type: 'table', name: '01g-tech-overview', title: 'Tech Overview' },
                 {
                     id: "daily-line",
                     type: "div",
@@ -471,7 +483,9 @@
                     type: 'table',
                     name: '13-gsc-device-performance',
                     title: 'Search Console Device Performance'
-                }
+                },
+                { id: 'indexed-pages', type: 'div', name: '14-gsc-indexed-pages', title: 'Indexed Pages' },
+                { id: 'ai-insights', type: 'div', name: '15-ai-insights-action-plan', title: 'AI Insights & Action Plan' }
             ];
 
             const screenshots = [];
@@ -1059,8 +1073,12 @@
                         <input type="hidden" name="gsc_site" value="{{ request.args.get('gsc_site') }}">
                         <!-- preserve selected metrics on in-page Update -->
                         {% for g in metric_groups %}{% for m in g %}<input type="hidden" name="metrics" value="{{ m }}">{% endfor %}{% endfor %}
+                        {% if indexed_pages %}<input type="hidden" name="indexed_pages" value="{{ indexed_pages }}">{% endif %}
                         <label class="flex items-center gap-2 text-xs font-medium text-gray-600">
                             <input type="checkbox" name="compare" value="1" {% if compare %}checked{% endif %}> Compare with previous period
+                        </label>
+                        <label class="flex items-center gap-2 text-xs font-medium text-gray-600">
+                            <input type="checkbox" name="ai_insights" value="1" {% if ai_text %}checked{% endif %}> Add AI Insights &amp; Action Plan
                         </label>
                         <!-- Quick preset ranges (like Google Search Console) -->
                         <div class="flex items-center flex-wrap gap-2">
@@ -1341,6 +1359,40 @@
                             {% endfor %}
                         </tr>
                         {% endif %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Landing Page Overview -->
+        {% if ga4_extra and ga4_extra.landing %}
+        <div class="section-card rounded-2xl p-8 mb-8" id="landing-pages">
+            <h2 class="text-2xl font-bold text-gray-800 mb-6"><i class="fas fa-right-to-bracket mr-2 text-teal-600"></i>Landing Page Overview</h2>
+            <div class="table-container overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                    <thead class="border-b border-gray-200 text-gray-500"><tr><th class="px-3 py-2">Landing Page</th><th class="px-3 py-2">Sessions</th><th class="px-3 py-2">Users</th><th class="px-3 py-2">Views</th></tr></thead>
+                    <tbody>
+                        {% for p in ga4_extra.landing %}
+                        <tr class="border-b border-gray-100"><td class="px-3 py-2 text-gray-800">{{ p.page }}</td><td class="px-3 py-2 text-gray-800">{{ "{:,}".format(p.sessions) }}</td><td class="px-3 py-2 text-gray-800">{{ "{:,}".format(p.users) }}</td><td class="px-3 py-2 text-gray-800">{{ "{:,}".format(p.views) }}</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Tech Overview (Device) -->
+        {% if ga4_extra and ga4_extra.tech %}
+        <div class="section-card rounded-2xl p-8 mb-8" id="tech-overview">
+            <h2 class="text-2xl font-bold text-gray-800 mb-6"><i class="fas fa-desktop mr-2 text-teal-600"></i>Tech Overview (Device)</h2>
+            <div class="table-container overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                    <thead class="border-b border-gray-200 text-gray-500"><tr><th class="px-3 py-2">Device</th><th class="px-3 py-2">Active Users</th><th class="px-3 py-2">Sessions</th><th class="px-3 py-2">Views</th></tr></thead>
+                    <tbody>
+                        {% for d in ga4_extra.tech %}
+                        <tr class="border-b border-gray-100"><td class="px-3 py-2 text-gray-800">{{ d.device }}</td><td class="px-3 py-2 text-gray-800">{{ "{:,}".format(d.users) }}</td><td class="px-3 py-2 text-gray-800">{{ "{:,}".format(d.sessions) }}</td><td class="px-3 py-2 text-gray-800">{{ "{:,}".format(d.views) }}</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -1823,6 +1875,25 @@
         </section>
 
         <!-- Call to Action Section -->
+        <!-- Search Console - Indexed Pages (manual number) -->
+        {% if indexed_pages %}
+        <div class="section-card rounded-2xl p-8 mb-8" id="indexed-pages">
+            <h2 class="text-2xl font-bold text-gray-800 mb-6"><i class="fas fa-list-check mr-2 text-teal-600"></i>Search Console &mdash; Indexed Pages</h2>
+            <div style="border-radius:18px; padding:30px; background:#059669; max-width:340px; box-shadow:0 8px 24px rgba(0,0,0,0.18);">
+                <div style="font-size:46px; font-weight:800; color:#ffffff; line-height:1;">{{ indexed_pages }}</div>
+                <div style="font-size:14px; color:rgba(255,255,255,0.9); margin-top:8px;">Indexed Pages (servable on Google)</div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- AI Insights & Action Plan -->
+        {% if ai_text %}
+        <div class="section-card rounded-2xl p-8 mb-8" id="ai-insights">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4"><i class="fas fa-robot mr-2 text-teal-600"></i>AI Insights &amp; Action Plan</h2>
+            <p class="text-gray-800" style="white-space:pre-wrap; line-height:1.7; font-size:15px;">{{ ai_text }}</p>
+        </div>
+        {% endif %}
+
         <section class="section-card rounded-3xl p-8 mb-8 relative overflow-hidden">
             <div class="relative z-10 text-center">
                 <h2 class="text-3xl font-bold mb-4 text-gray-800">🚀 Ready to Take Action?</h2>
