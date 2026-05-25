@@ -802,12 +802,12 @@
                         {
                             label: 'New Users',
                             data: newUsers,
-                            borderColor: '#10B981',
-                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                            borderColor: '#6366f1',
+                            backgroundColor: 'rgba(99, 102, 241, 0.12)',
                             tension: 0.4,
                             fill: true,
                             borderWidth: 3,
-                            pointBackgroundColor: '#10B981',
+                            pointBackgroundColor: '#6366f1',
                             pointBorderColor: '#ffffff',
                             pointBorderWidth: 3,
                             pointRadius: 6,
@@ -1192,11 +1192,28 @@
 
         <!-- Overview Infographics (selected metrics, max 4 each) -->
         {% if ga4_data and ga4_data.overview and metric_groups %}
+        {% set ov = ga4_data.overview %}
+        {% set MLABEL = {'new_users':'New Users','active_users':'Active Users','returning_users':'Returning Users','sessions':'Sessions','bounce_rate':'Bounce Rate','avg_engagement_per_session':'Avg Engagement / Session','views':'Views','event_count':'Event Count'} %}
+        {% set MVAL = {
+            'new_users': '{:,}'.format(ov.get('new_users',0)),
+            'active_users': '{:,}'.format(ov.get('active_users',0)),
+            'returning_users': '{:,}'.format(ov.get('returning_users',0)),
+            'sessions': '{:,}'.format(ov.get('sessions',0)),
+            'bounce_rate': '{}%'.format(ov.get('bounce_rate',0)),
+            'avg_engagement_per_session': ov.get('avg_engagement_per_session','0s'),
+            'views': '{:,}'.format(ov.get('views',0)),
+            'event_count': '{:,}'.format(ov.get('event_count',0)) } %}
+        {% set CARD_COLORS = ['#2563eb','#00AEAF','#7CC92A','#f59e0b','#6366f1','#ec4899','#10b981','#ef4444'] %}
         {% for group in metric_groups %}
         <div class="section-card rounded-2xl p-8 mb-8" id="overview-infographic-{{ loop.index }}">
-            <h2 class="text-2xl font-bold text-gray-800 mb-6"><i class="fas fa-chart-column mr-2 text-teal-600"></i>Overview Infographic {{ loop.index }}</h2>
-            <div style="max-width:780px; margin:0 auto;">
-                <canvas id="ovChart{{ loop.index }}" data-metrics="{{ group|join(',') }}" height="260"></canvas>
+            <h2 class="text-2xl font-bold text-gray-800 mb-6"><i class="fas fa-chart-simple mr-2 text-teal-600"></i>Overview Infographic {{ loop.index }}</h2>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-5">
+                {% for key in group %}
+                <div style="border-radius:18px; padding:26px 20px; background:{{ CARD_COLORS[loop.index0 % 8] }}; box-shadow:0 8px 24px rgba(0,0,0,0.18);">
+                    <div style="font-size:34px; font-weight:800; color:#ffffff; line-height:1.1;">{{ MVAL.get(key, '-') }}</div>
+                    <div style="font-size:13px; font-weight:600; color:rgba(255,255,255,0.9); margin-top:8px;">{{ MLABEL.get(key, key) }}</div>
+                </div>
+                {% endfor %}
             </div>
         </div>
         {% endfor %}
@@ -1206,8 +1223,23 @@
         {% if gsc_data and gsc_data.summary %}
         <div class="section-card rounded-2xl p-8 mb-8" id="gsc-infographic">
             <h2 class="text-2xl font-bold text-gray-800 mb-6"><i class="fas fa-magnifying-glass mr-2 text-teal-600"></i>Search Console Overview</h2>
-            <div style="max-width:780px; margin:0 auto;">
-                <canvas id="gscChart" height="260"></canvas>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-5">
+                <div style="border-radius:18px; padding:26px 20px; background:#2563eb; box-shadow:0 8px 24px rgba(0,0,0,0.18);">
+                    <div style="font-size:34px; font-weight:800; color:#fff; line-height:1.1;">{{ "{:,}".format(gsc_data.summary.total_clicks) }}</div>
+                    <div style="font-size:13px; font-weight:600; color:rgba(255,255,255,0.9); margin-top:8px;">Total Clicks</div>
+                </div>
+                <div style="border-radius:18px; padding:26px 20px; background:#7c3aed; box-shadow:0 8px 24px rgba(0,0,0,0.18);">
+                    <div style="font-size:34px; font-weight:800; color:#fff; line-height:1.1;">{{ "{:,}".format(gsc_data.summary.total_impressions) }}</div>
+                    <div style="font-size:13px; font-weight:600; color:rgba(255,255,255,0.9); margin-top:8px;">Total Impressions</div>
+                </div>
+                <div style="border-radius:18px; padding:26px 20px; background:#059669; box-shadow:0 8px 24px rgba(0,0,0,0.18);">
+                    <div style="font-size:34px; font-weight:800; color:#fff; line-height:1.1;">{{ gsc_data.summary.average_ctr }}</div>
+                    <div style="font-size:13px; font-weight:600; color:rgba(255,255,255,0.9); margin-top:8px;">Average CTR</div>
+                </div>
+                <div style="border-radius:18px; padding:26px 20px; background:#ea580c; box-shadow:0 8px 24px rgba(0,0,0,0.18);">
+                    <div style="font-size:34px; font-weight:800; color:#fff; line-height:1.1;">{{ gsc_data.summary.average_position }}</div>
+                    <div style="font-size:13px; font-weight:600; color:rgba(255,255,255,0.9); margin-top:8px;">Average Position</div>
+                </div>
             </div>
         </div>
         {% endif %}
