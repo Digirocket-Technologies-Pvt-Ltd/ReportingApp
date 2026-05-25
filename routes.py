@@ -580,6 +580,45 @@ def init_routes(app):
             flash(f'Could not build PPT: {e}', 'error')
             return redirect(url_for('display_report'))
 
+    @app.route('/save-edited-report', methods=['POST'])
+    def save_edited_report():
+        """Overwrite the report PDF with the user's edited slides (from the
+        in-browser editor), so the preview AND the emailed report use the edits."""
+        if not is_authenticated():
+            return jsonify({'success': False, 'message': 'Please log in.'}), 401
+        try:
+            data = request.get_json(silent=True) or {}
+            slides = data.get('slides') or []
+            if not slides:
+                return jsonify({'success': False, 'message': 'Nothing to save.'}), 400
+
+            base = os.path.dirname(os.path.abspath(__file__))
+            aivideo_dir = os.path.join(base, 'static', 'images', 'AIVideo')
+            os.makedirs(aivideo_dir, exist_ok=True)
+
+            # Replace the old slide images with the edited ones
+            for f in os.listdir(aivideo_dir):
+                if f.lower().startswith('page_') and f.lower().endswith('.png'):
+                    try:
+                        os.remove(os.path.join(aivideo_dir, f))
+                    except OSError:
+                        pass
+            for i, durl in enumerate(slides, start=1):
+                b64 = durl.split(',', 1)[1] if ',' in durl else durl
+                with open(os.path.join(aivideo_dir, f'page_{i}.png'), 'wb') as fh:
+                    fh.write(base64.b64decode(b64))
+
+            report_pdf = os.path.join(base, 'static', 'images', 'analytics_report.pdf')
+            build_pdf_from_images(aivideo_dir, report_pdf)
+
+            db.log_activity('report_edited', 'Report edited & saved',
+                            url_for('display_report'), session.get('user_email'))
+            return jsonify({'success': True,
+                            'pdf_url': url_for('static', filename='images/analytics_report.pdf')})
+        except Exception as e:
+            print(f'Error saving edited report: {e}')
+            return jsonify({'success': False, 'message': str(e)}), 500
+
     @app.route('/send-report-email', methods=['POST'])
     def send_report_email_route():
         """Email the generated PDF report to a client, plus any extra files the

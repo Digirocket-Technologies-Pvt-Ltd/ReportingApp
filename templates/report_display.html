@@ -11,7 +11,6 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
         body { font-family: 'Inter', sans-serif; }
         .gradient-bg { background: linear-gradient(135deg, #14181a 0%, #0a0d0e 100%); }
@@ -91,13 +90,13 @@
                 <div class="flex items-center gap-4">
                     <label class="text-sm text-gray-600 flex items-center gap-1">Color <input type="color" id="edColor" value="#111827" class="align-middle"></label>
                     <label class="text-sm text-gray-600 flex items-center gap-1">Size <input type="number" id="edSize" value="26" min="8" max="140" style="width:64px" class="border border-gray-300 rounded px-2 py-1"></label>
-                    <button type="button" id="edDownloadBtn" onclick="downloadEditedPDF()"
-                            class="bg-gradient-to-r from-red-600 to-rose-600 text-white px-5 py-2 rounded-lg font-bold shadow hover:shadow-xl">
-                        <i class="fas fa-download mr-2"></i>Download Edited PDF
+                    <button type="button" id="edSaveBtn" onclick="saveEditedReport()"
+                            class="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-2 rounded-lg font-bold shadow hover:shadow-xl">
+                        <i class="fas fa-floppy-disk mr-2"></i>Save Changes
                     </button>
                 </div>
             </div>
-            <p class="text-sm text-gray-500 mb-5">Each slide pe <b>"+ Add Text"</b> dabao &rarr; text-box aayega &rarr; apna text likho, <span style="color:#14b8a6">green handle</span> se drag karke jagah set karo, <span style="color:#ef4444">red &times;</span> se delete. Color/Size upar se choose karo. Phir <b>Download Edited PDF</b>.</p>
+            <p class="text-sm text-gray-500 mb-5">Each slide pe <b>"+ Add Text"</b> dabao &rarr; text-box aayega &rarr; apna text likho, <span style="color:#14b8a6">green handle</span> se drag karke jagah set karo, <span style="color:#ef4444">red &times;</span> se delete. Color/Size upar se choose karo. Phir <b>Save Changes</b> &mdash; report PDF update ho jaayega (download/email me yahi edited version jaayega).</p>
             <div id="slidesContainer">
                 {% for img in slide_images %}
                 <div class="slide-wrap">
@@ -116,7 +115,7 @@
 
         <!-- Preview -->
         <div class="bg-white rounded-2xl shadow-lg p-4 mb-8">
-            <iframe src="{{ pdf_url }}" class="w-full rounded-xl" style="height: 80vh; border: none;"></iframe>
+            <iframe id="pdfPreview" src="{{ pdf_url }}" class="w-full rounded-xl" style="height: 80vh; border: none;"></iframe>
         </div>
 
         <!-- Generate another -->
@@ -349,33 +348,40 @@
             if (s) s.addEventListener('input', function () { if (LAST_TB) LAST_TB.style.fontSize = this.value + 'px'; });
         });
 
-        async function downloadEditedPDF() {
-            var btn = document.getElementById('edDownloadBtn');
+        async function saveEditedReport() {
+            var btn = document.getElementById('edSaveBtn');
             var old = btn.innerHTML;
             btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Building...';
-            // hide drag/delete controls + edit ring so they aren't baked into the PDF
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Saving...';
+            // hide drag/delete controls + edit ring so they aren't baked into the slides
             document.querySelectorAll('.tb-handle,.tb-del').forEach(function (e) { e.style.visibility = 'hidden'; });
             if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
             try {
                 var caps = Array.prototype.slice.call(document.querySelectorAll('.slide-capture'));
-                var pdf = null;
+                var slides = [];
                 for (var i = 0; i < caps.length; i++) {
                     var canvas = await html2canvas(caps[i], { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false });
-                    var imgData = canvas.toDataURL('image/jpeg', 0.92);
-                    var w = canvas.width, h = canvas.height;
-                    var orient = w >= h ? 'landscape' : 'portrait';
-                    if (!pdf) {
-                        pdf = new jspdf.jsPDF({ orientation: orient, unit: 'px', format: [w, h] });
-                    } else {
-                        pdf.addPage([w, h], orient);
-                    }
-                    pdf.addImage(imgData, 'JPEG', 0, 0, w, h);
+                    slides.push(canvas.toDataURL('image/png'));
                 }
-                if (pdf) pdf.save('edited-report.pdf');
-                showToast('Edited PDF downloaded! 📄', true);
+                var res = await fetch('/save-edited-report', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ slides: slides })
+                });
+                var data = await res.json();
+                if (res.ok && data.success) {
+                    // refresh the preview so it shows the saved (edited) PDF
+                    var ifr = document.getElementById('pdfPreview');
+                    if (ifr) {
+                        var baseUrl = (data.pdf_url || ifr.src.split('?')[0]);
+                        ifr.src = baseUrl + '?t=' + Date.now();
+                    }
+                    showToast('Saved! The report now has your edits - download or email it. 💾', true);
+                } else {
+                    showToast((data && data.message) || 'Save failed', false);
+                }
             } catch (e) {
-                showToast('Could not build edited PDF: ' + e, false);
+                showToast('Could not save: ' + e, false);
             } finally {
                 document.querySelectorAll('.tb-handle,.tb-del').forEach(function (e) { e.style.visibility = 'visible'; });
                 btn.disabled = false;
