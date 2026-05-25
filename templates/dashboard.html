@@ -284,10 +284,23 @@
                         <i class="fas fa-clock text-gray-400"></i>
                         <span class="text-sm text-gray-600" id="currentTime"></span>
                     </div>
-                    <button class="relative p-2 text-gray-600 hover:text-teal-600 transition-colors">
-                        <i class="fas fa-bell text-xl"></i>
-                        <span class="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
-                    </button>
+                    <div class="relative" id="notifWrap">
+                        <button id="notifBtn" type="button" onclick="toggleNotif(event)"
+                                class="relative p-2 text-gray-600 hover:text-teal-600 transition-colors">
+                            <i class="fas fa-bell text-xl"></i>
+                            <span id="notifDot" class="hidden absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
+                        </button>
+                        <div id="notifPanel" class="hidden absolute right-0 mt-2 bg-white rounded-xl shadow-2xl border border-gray-100 z-50"
+                             style="width:340px; max-height:440px; overflow-y:auto;">
+                            <div class="px-4 py-3 border-b border-gray-100 flex justify-between items-center sticky top-0 bg-white">
+                                <span class="font-semibold text-gray-800"><i class="fas fa-bell mr-2 text-teal-600"></i>Notifications</span>
+                                <button type="button" onclick="loadNotif()" class="text-xs text-teal-600 hover:underline">Refresh</button>
+                            </div>
+                            <div id="notifList">
+                                <div class="px-4 py-8 text-center text-gray-400 text-sm">Loading...</div>
+                            </div>
+                        </div>
+                    </div>
                     
                     <!-- User Dropdown -->
                     <div class="user-dropdown">
@@ -684,6 +697,81 @@
                 }, 300);
             }, 3000);
         }
+
+        // ---------------- Notification bell (activity feed) ----------------
+        var NOTIF_SEEN_KEY = 'pmoNotifSeen';
+
+        function escapeHtml(s) {
+            return (s || '').replace(/[&<>"']/g, function (c) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+            });
+        }
+
+        function timeAgo(iso) {
+            if (!iso) return '';
+            var then = new Date(iso).getTime();
+            if (isNaN(then)) return '';
+            var s = Math.floor((Date.now() - then) / 1000);
+            if (s < 60) return 'abhi';
+            var m = Math.floor(s / 60); if (m < 60) return m + ' min pehle';
+            var h = Math.floor(m / 60); if (h < 24) return h + ' ghante pehle';
+            var d = Math.floor(h / 24); return d + ' din pehle';
+        }
+
+        function renderNotif(items) {
+            var list = document.getElementById('notifList');
+            if (!items || !items.length) {
+                list.innerHTML = '<div class="px-4 py-8 text-center text-gray-400 text-sm">Abhi koi activity nahi</div>';
+                return;
+            }
+            list.innerHTML = items.map(function (it) {
+                var sub = timeAgo(it.created_at) + (it.user_email ? ' · ' + escapeHtml(it.user_email) : '');
+                return '<a href="' + escapeHtml(it.link || '#') + '" class="block px-4 py-3 border-b border-gray-50 hover:bg-gray-50">' +
+                    '<div class="text-sm text-gray-800">' + escapeHtml(it.message) + '</div>' +
+                    '<div class="text-xs text-gray-400 mt-1">' + sub + '</div></a>';
+            }).join('');
+        }
+
+        async function loadNotif() {
+            try {
+                var res = await fetch('/api/notifications');
+                var data = await res.json();
+                var items = (data && data.items) || [];
+                renderNotif(items);
+                // red dot if there is something newer than last time the bell was opened
+                var dot = document.getElementById('notifDot');
+                if (items.length) {
+                    var newest = items[0].created_at || '';
+                    var seen = localStorage.getItem(NOTIF_SEEN_KEY) || '';
+                    if (newest > seen) dot.classList.remove('hidden'); else dot.classList.add('hidden');
+                }
+            } catch (e) {
+                document.getElementById('notifList').innerHTML =
+                    '<div class="px-4 py-8 text-center text-red-400 text-sm">Load nahi hua</div>';
+            }
+        }
+
+        function toggleNotif(ev) {
+            if (ev) ev.stopPropagation();
+            var p = document.getElementById('notifPanel');
+            var willOpen = p.classList.contains('hidden');
+            p.classList.toggle('hidden');
+            if (willOpen) {
+                loadNotif();
+                localStorage.setItem(NOTIF_SEEN_KEY, new Date().toISOString());
+                document.getElementById('notifDot').classList.add('hidden');
+            }
+        }
+
+        // Close the panel when clicking outside it
+        document.addEventListener('click', function (e) {
+            var wrap = document.getElementById('notifWrap');
+            var panel = document.getElementById('notifPanel');
+            if (wrap && panel && !wrap.contains(e.target)) panel.classList.add('hidden');
+        });
+
+        // Load once on page open so the red dot shows even before clicking
+        document.addEventListener('DOMContentLoaded', loadNotif);
 
         // Update current time
         function updateTime() {

@@ -111,6 +111,43 @@ def log_report(client_id, report_period, sent_to, subject, status='sent'):
         return None
 
 
+# ---------------- Activity feed (notification bell) ----------------
+def log_activity(activity_type, message, link=None, user_email=None):
+    """Record an activity for the notification bell. Best-effort (never raises)."""
+    if not is_configured():
+        return None
+    try:
+        entry = {
+            'type': activity_type,
+            'message': message,
+            'link': link,
+            'user_email': user_email,
+        }
+        r = requests.post(_rest('activities'),
+                          headers=_headers({'Prefer': 'return=representation'}),
+                          json=entry, timeout=TIMEOUT)
+        r.raise_for_status()
+        rows = r.json()
+        return rows[0] if rows else None
+    except Exception as e:
+        print(f'[db] log_activity failed (non-fatal): {e}')
+        return None
+
+
+def list_activities(limit=20):
+    """Most recent activities, newest first, for the notification bell."""
+    if not is_configured():
+        return []
+    try:
+        r = requests.get(_rest(f'activities?select=*&order=created_at.desc&limit={limit}'),
+                         headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        print(f'[db] list_activities failed (non-fatal): {e}')
+        return []
+
+
 def latest_reports():
     """Return {client_id: latest_report_log} so the portal can show the most
     recent report sent to each client."""
