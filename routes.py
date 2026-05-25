@@ -609,6 +609,89 @@ def init_routes(app):
             print(f'Error deleting client: {e}')
             return jsonify({'success': False, 'message': str(e)}), 500
 
+    # ---- Client profile page (full detail + live data) ----
+    @app.route('/pmo/client/<client_id>')
+    def pmo_client_detail(client_id):
+        if not is_authenticated() or not refresh_token_if_needed():
+            flash('Please log in to access the PMO portal.', 'warning')
+            return redirect(url_for('login'))
+        if not is_pmo_admin():
+            return render_template('pmo_denied.html', email=session.get('user_email')), 403
+        if not db.is_configured():
+            flash('Database not connected.', 'error')
+            return redirect(url_for('pmo_portal'))
+
+        client = db.get_client(client_id)
+        if not client:
+            flash('Client not found.', 'error')
+            return redirect(url_for('pmo_portal'))
+        reports = db.client_reports(client_id)
+        return render_template('client_detail.html', client=client, reports=reports,
+                               session_info=get_session_info())
+
+    @app.route('/pmo/client/<client_id>/data')
+    def pmo_client_data(client_id):
+        """Live GA4 + Search Console quick metrics for one client + date range (JSON)."""
+        if not is_authenticated() or not refresh_token_if_needed():
+            return jsonify({'success': False, 'message': 'Please log in.'}), 401
+        if not is_pmo_admin():
+            return jsonify({'success': False, 'message': 'Not authorized.'}), 403
+        client = db.get_client(client_id)
+        if not client:
+            return jsonify({'success': False, 'message': 'Client not found.'}), 404
+
+        try:
+            start_date, end_date = validate_dates(request.args.get('start'), request.args.get('end'))
+        except Exception:
+            return jsonify({'success': False, 'message': 'Invalid dates.'}), 400
+
+        result = {'success': True, 'ga4': None, 'gsc': None, 'ga4_error': None, 'gsc_error': None,
+                  'start': start_date.strftime('%Y-%m-%d'), 'end': end_date.strftime('%Y-%m-%d')}
+
+        ga4_id = client.get('ga4_property_id')
+        if ga4_id:
+            try:
+                data = get_ga4_data(session['access_token'], ga4_id, start_date, end_date)
+                if data:
+                    t = data['totals']
+                    result['ga4'] = {
+                        'activeUsers': t['totalActiveUsers'],
+                        'newUsers': t['totalNewUsers'],
+                        'views': t['totalViews'],
+                        'events': t['totalEventCount'],
+                    }
+                else:
+                    result['ga4_error'] = 'No data (check GA4 property ID)'
+            except Exception as e:
+                result['ga4_error'] = str(e)
+        else:
+            result['ga4_error'] = 'No GA4 property set for this client'
+
+        gsc_url = client.get('gsc_property_id')
+        if gsc_url:
+            try:
+                credentials = Credentials(
+                    token=session['access_token'], refresh_token=session.get('refresh_token'),
+                    token_uri='https://oauth2.googleapis.com/token',
+                    client_id=CLIENT_ID, client_secret=CLIENT_SECRET, scopes=SCOPES)
+                data = get_gsc_detailed_data(credentials, gsc_url, start_date, end_date)
+                if data:
+                    s = data['summary']
+                    result['gsc'] = {
+                        'clicks': s['total_clicks'],
+                        'impressions': s['total_impressions'],
+                        'ctr': s['average_ctr'],
+                        'position': s['average_position'],
+                    }
+                else:
+                    result['gsc_error'] = 'No data (check Search Console property)'
+            except Exception as e:
+                result['gsc_error'] = str(e)
+        else:
+            result['gsc_error'] = 'No Search Console property set for this client'
+
+        return jsonify(result)
+
 # Initialize the Flask app with routes
 init_routes(app)
 

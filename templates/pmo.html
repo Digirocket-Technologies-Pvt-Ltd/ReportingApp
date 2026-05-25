@@ -101,7 +101,9 @@
                 <tbody>
                     {% for c in clients %}
                     <tr class="border-b border-gray-100 hover:bg-gray-50" data-id="{{ c.id }}">
-                        <td class="px-4 py-3 font-semibold text-gray-800">{{ c.name }}</td>
+                        <td class="px-4 py-3 font-semibold">
+                            <a href="{{ url_for('pmo_client_detail', client_id=c.id) }}" class="text-teal-600 hover:underline">{{ c.name }}</a>
+                        </td>
                         <td class="px-4 py-3 text-gray-600">{{ c.email or '—' }}</td>
                         <td class="px-4 py-3 text-gray-600">{{ c.ga4_property_id or '—' }}</td>
                         <td class="px-4 py-3 text-gray-600">{{ c.gsc_property_id or '—' }}</td>

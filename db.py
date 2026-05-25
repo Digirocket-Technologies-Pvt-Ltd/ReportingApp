@@ -148,6 +148,20 @@ def list_activities(limit=20):
         return []
 
 
+def client_reports(client_id):
+    """All report_logs for one client, newest first (for the client profile page)."""
+    if not is_configured() or not client_id:
+        return []
+    try:
+        r = requests.get(_rest(f'report_logs?client_id=eq.{client_id}&select=*&order=sent_at.desc'),
+                         headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        print(f'[db] client_reports failed (non-fatal): {e}')
+        return []
+
+
 def latest_reports():
     """Return {client_id: latest_report_log} so the portal can show the most
     recent report sent to each client."""

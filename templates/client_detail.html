@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ client.name }} - Client Profile</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="/static/css/brand-theme.css" rel="stylesheet">
+    <link href="/static/css/dark-theme.css" rel="stylesheet">
+    <script src="/static/js/theme-toggle.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #14181a 0%, #0a0d0e 100%); }
+        .badge { display:inline-block; padding:3px 12px; border-radius:9999px; font-size:12px; font-weight:700; }
+        .badge-active { background:#dcfce7; color:#166534; }
+        .badge-churned { background:#fee2e2; color:#991b1b; }
+        .metric-box { border-radius:14px; padding:18px; }
+        .metric-num { font-size:26px; font-weight:800; }
+        .info-label { font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:#9ca3af; }
+        .info-val { font-size:15px; font-weight:600; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-50 via-blue-50 to-teal-50 min-h-screen">
+    <!-- Header -->
+    <header class="gradient-bg shadow-2xl">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-20">
+                <div class="flex items-center space-x-4">
+                    <a href="{{ url_for('pmo_portal') }}" class="w-10 h-10 bg-white bg-opacity-20 rounded-xl flex items-center justify-center text-white hover:bg-opacity-30">
+                        <i class="fas fa-arrow-left"></i>
+                    </a>
+                    <div>
+                        <h1 class="text-white text-2xl font-bold">{{ client.name }}</h1>
+                        <span class="text-white text-xs opacity-75">Client Profile &bull; DigiRocket</span>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4">
+                    <a href="{{ url_for('pmo_portal') }}" class="text-white hover:text-gray-200 text-sm"><i class="fas fa-users-gear mr-1"></i>All Clients</a>
+                    <a href="{{ url_for('dashboard') }}" class="text-white hover:text-gray-200 text-sm"><i class="fas fa-home mr-1"></i>Dashboard</a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+
+        <!-- Profile + quick stats -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Profile -->
+            <div class="section-card bg-white rounded-2xl shadow-lg p-6 lg:col-span-2">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-bold text-gray-800"><i class="fas fa-id-card-clip mr-2 text-teal-600"></i>Profile</h2>
+                    {% if client.status == 'churned' %}
+                        <span class="badge badge-churned">Not Active</span>
+                    {% else %}
+                        <span class="badge badge-active">Active</span>
+                    {% endif %}
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    <div><div class="info-label">Email</div><div class="info-val text-gray-800">{{ client.email or '—' }}</div></div>
+                    <div><div class="info-label">Business</div><div class="info-val text-gray-800">{{ client.nature_of_business or '—' }}</div></div>
+                    <div><div class="info-label">Start Date</div><div class="info-val text-gray-800">{{ client.start_date or '—' }}</div></div>
+                    <div><div class="info-label">GA4 Property</div><div class="info-val text-gray-800">{{ client.ga4_property_id or '—' }}</div></div>
+                    <div><div class="info-label">Search Console</div><div class="info-val text-gray-800">{{ client.gsc_property_id or '—' }}</div></div>
+                    <div><div class="info-label">Billing Day</div><div class="info-val text-gray-800">{{ client.billing_cycle_day or '—' }}</div></div>
+                </div>
+                {% if client.notes %}
+                <div class="mt-4 pt-4 border-t border-gray-100">
+                    <div class="info-label">Notes</div>
+                    <div class="text-gray-700 text-sm mt-1">{{ client.notes }}</div>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Quick stats -->
+            <div class="section-card bg-white rounded-2xl shadow-lg p-6">
+                <h2 class="text-lg font-bold text-gray-800 mb-4"><i class="fas fa-chart-pie mr-2 text-teal-600"></i>Summary</h2>
+                <div class="space-y-4">
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-500 text-sm">Reports sent</span>
+                        <span class="text-2xl font-extrabold" style="color:#7CC92A;">{{ reports|length }}</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-500 text-sm">Last report</span>
+                        <span class="info-val text-gray-800">
+                            {% if reports %}{{ reports[0].report_period or 'Sent' }} <span class="text-xs text-gray-400">({{ (reports[0].sent_at or '')[:10] }})</span>{% else %}Not sent yet{% endif %}
+                        </span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-500 text-sm">Client since</span>
+                        <span class="info-val text-gray-800" id="clientSince">{{ client.start_date or '—' }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Live analytics -->
+        <div class="section-card bg-white rounded-2xl shadow-lg p-6">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <h2 class="text-lg font-bold text-gray-800"><i class="fas fa-chart-line mr-2 text-teal-600"></i>Live Analytics</h2>
+                {% if client.ga4_property_id and client.gsc_property_id %}
+                <button type="button" id="fullReportBtn" onclick="openFullReport()"
+                        class="inline-flex items-center bg-teal-600 px-5 py-2.5 rounded-xl font-bold shadow hover:opacity-90 text-sm">
+                    <i class="fas fa-up-right-from-square mr-2"></i>View Full Report
+                </button>
+                {% endif %}
+            </div>
+
+            <!-- Date filter -->
+            <div class="flex flex-wrap items-end gap-3 mb-4">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 mb-1">Start Date</label>
+                    <input id="startDate" type="date" class="rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-teal-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 mb-1">End Date</label>
+                    <input id="endDate" type="date" class="rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-teal-500">
+                </div>
+                <button type="button" onclick="loadData()" class="bg-teal-600 px-5 py-2.5 rounded-lg font-bold hover:opacity-90 text-sm">
+                    <i class="fas fa-rotate mr-2"></i>Load Data
+                </button>
+                <div class="flex gap-2">
+                    <button type="button" onclick="setPreset(7)" class="preset-btn text-xs border border-gray-300 rounded-lg px-3 py-2 hover:bg-gray-50">7d</button>
+                    <button type="button" onclick="setPreset(30)" class="preset-btn text-xs border border-gray-300 rounded-lg px-3 py-2 hover:bg-gray-50">30d</button>
+                    <button type="button" onclick="setPreset(90)" class="preset-btn text-xs border border-gray-300 rounded-lg px-3 py-2 hover:bg-gray-50">90d</button>
+                    <button type="button" onclick="setPreset(365)" class="preset-btn text-xs border border-gray-300 rounded-lg px-3 py-2 hover:bg-gray-50">1y</button>
+                </div>
+            </div>
+            <p class="text-xs text-gray-400 mb-4" id="rangeLabel"></p>
+
+            <!-- GA4 metrics -->
+            <h3 class="text-sm font-bold text-gray-700 mb-2"><i class="fas fa-chart-simple mr-2"></i>Google Analytics 4</h3>
+            <div id="ga4Box" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-2">
+                <div class="metric-box" style="background:rgba(124,201,42,0.12);"><div class="info-label">Active Users</div><div class="metric-num" id="m_users" style="color:#7CC92A;">—</div></div>
+                <div class="metric-box" style="background:rgba(124,201,42,0.12);"><div class="info-label">New Users</div><div class="metric-num" id="m_newusers" style="color:#7CC92A;">—</div></div>
+                <div class="metric-box" style="background:rgba(124,201,42,0.12);"><div class="info-label">Page Views</div><div class="metric-num" id="m_views" style="color:#7CC92A;">—</div></div>
+                <div class="metric-box" style="background:rgba(124,201,42,0.12);"><div class="info-label">Events</div><div class="metric-num" id="m_events" style="color:#7CC92A;">—</div></div>
+            </div>
+            <p id="ga4Err" class="text-xs text-red-500 mb-4"></p>
+
+            <!-- GSC metrics -->
+            <h3 class="text-sm font-bold text-gray-700 mb-2"><i class="fas fa-magnifying-glass mr-2"></i>Google Search Console</h3>
+            <div id="gscBox" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-2">
+                <div class="metric-box" style="background:rgba(0,174,175,0.12);"><div class="info-label">Clicks</div><div class="metric-num" id="m_clicks" style="color:#00AEAF;">—</div></div>
+                <div class="metric-box" style="background:rgba(0,174,175,0.12);"><div class="info-label">Impressions</div><div class="metric-num" id="m_impr" style="color:#00AEAF;">—</div></div>
+                <div class="metric-box" style="background:rgba(0,174,175,0.12);"><div class="info-label">Avg CTR</div><div class="metric-num" id="m_ctr" style="color:#00AEAF;">—</div></div>
+                <div class="metric-box" style="background:rgba(0,174,175,0.12);"><div class="info-label">Avg Position</div><div class="metric-num" id="m_pos" style="color:#00AEAF;">—</div></div>
+            </div>
+            <p id="gscErr" class="text-xs text-red-500"></p>
+        </div>
+
+        <!-- Timeline + Reports -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Activity timeline -->
+            <div class="section-card bg-white rounded-2xl shadow-lg p-6">
+                <h2 class="text-lg font-bold text-gray-800 mb-4"><i class="fas fa-timeline mr-2 text-teal-600"></i>Activity Timeline</h2>
+                <div class="space-y-4">
+                    {% for r in reports %}
+                    <div class="flex gap-3">
+                        <div class="mt-1"><i class="fas fa-paper-plane text-teal-600"></i></div>
+                        <div>
+                            <div class="text-sm text-gray-800 font-medium">Report emailed{% if r.report_period %} — {{ r.report_period }}{% endif %}</div>
+                            <div class="text-xs text-gray-400">{{ (r.sent_at or '')[:10] }}{% if r.sent_to %} · to {{ r.sent_to }}{% endif %}</div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                    {% if client.status == 'churned' %}
+                    <div class="flex gap-3">
+                        <div class="mt-1"><i class="fas fa-user-slash text-red-500"></i></div>
+                        <div><div class="text-sm text-gray-800 font-medium">Marked Not Active</div></div>
+                    </div>
+                    {% endif %}
+                    <div class="flex gap-3">
+                        <div class="mt-1"><i class="fas fa-flag text-green-600"></i></div>
+                        <div>
+                            <div class="text-sm text-gray-800 font-medium">Client onboarded</div>
+                            <div class="text-xs text-gray-400">{{ client.start_date or 'Date not set' }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Reports sent -->
+            <div class="section-card bg-white rounded-2xl shadow-lg p-6">
+                <h2 class="text-lg font-bold text-gray-800 mb-4"><i class="fas fa-file-pdf mr-2 text-teal-600"></i>Reports Sent ({{ reports|length }})</h2>
+                {% if reports %}
+                <div class="table-container overflow-x-auto">
+                    <table class="w-full text-left text-sm">
+                        <thead class="text-gray-500 border-b border-gray-200">
+                            <tr><th class="py-2 pr-3">Period</th><th class="py-2 pr-3">Sent To</th><th class="py-2">Date</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for r in reports %}
+                            <tr class="border-b border-gray-100">
+                                <td class="py-2 pr-3 font-semibold text-gray-800">{{ r.report_period or '—' }}</td>
+                                <td class="py-2 pr-3 text-gray-600">{{ r.sent_to or '—' }}</td>
+                                <td class="py-2 text-gray-600">{{ (r.sent_at or '')[:10] }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-gray-400 text-sm">No reports sent yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </main>
+
+    <script>
+        var CLIENT_ID = {{ client.id|tojson|safe }};
+        var GA4_ID = {{ (client.ga4_property_id or '')|tojson|safe }};
+        var GSC_URL = {{ (client.gsc_property_id or '')|tojson|safe }};
+        var START_DATE_RAW = {{ (client.start_date or '')|tojson|safe }};
+
+        function fmt(d) { return d.toISOString().slice(0, 10); }
+
+        function setPreset(days) {
+            var end = new Date();
+            var start = new Date();
+            start.setDate(start.getDate() - days);
+            document.getElementById('startDate').value = fmt(start);
+            document.getElementById('endDate').value = fmt(end);
+            loadData();
+        }
+
+        function num(n) { return (n === null || n === undefined) ? '—' : Number(n).toLocaleString(); }
+
+        async function loadData() {
+            var start = document.getElementById('startDate').value;
+            var end = document.getElementById('endDate').value;
+            if (!start || !end) return;
+            document.getElementById('rangeLabel').textContent = 'Loading data for ' + start + ' to ' + end + ' ...';
+            // reset
+            ['m_users', 'm_newusers', 'm_views', 'm_events', 'm_clicks', 'm_impr', 'm_ctr', 'm_pos'].forEach(function (id) {
+                document.getElementById(id).textContent = '…';
+            });
+            document.getElementById('ga4Err').textContent = '';
+            document.getElementById('gscErr').textContent = '';
+            try {
+                var res = await fetch('/pmo/client/' + CLIENT_ID + '/data?start=' + start + '&end=' + end);
+                var d = await res.json();
+                document.getElementById('rangeLabel').textContent = 'Showing ' + start + ' to ' + end;
+                if (d.ga4) {
+                    document.getElementById('m_users').textContent = num(d.ga4.activeUsers);
+                    document.getElementById('m_newusers').textContent = num(d.ga4.newUsers);
+                    document.getElementById('m_views').textContent = num(d.ga4.views);
+                    document.getElementById('m_events').textContent = num(d.ga4.events);
+                } else {
+                    ['m_users', 'm_newusers', 'm_views', 'm_events'].forEach(function (id) { document.getElementById(id).textContent = '—'; });
+                    document.getElementById('ga4Err').textContent = d.ga4_error || 'No GA4 data';
+                }
+                if (d.gsc) {
+                    document.getElementById('m_clicks').textContent = num(d.gsc.clicks);
+                    document.getElementById('m_impr').textContent = num(d.gsc.impressions);
+                    document.getElementById('m_ctr').textContent = d.gsc.ctr;
+                    document.getElementById('m_pos').textContent = d.gsc.position;
+                } else {
+                    ['m_clicks', 'm_impr', 'm_ctr', 'm_pos'].forEach(function (id) { document.getElementById(id).textContent = '—'; });
+                    document.getElementById('gscErr').textContent = d.gsc_error || 'No Search Console data';
+                }
+            } catch (e) {
+                document.getElementById('rangeLabel').textContent = 'Failed to load data.';
+            }
+        }
+
+        function openFullReport() {
+            var start = document.getElementById('startDate').value;
+            var end = document.getElementById('endDate').value;
+            var url = '/view_combined_data?ga4_property=' + encodeURIComponent(GA4_ID) +
+                '&gsc_site=' + encodeURIComponent(GSC_URL) +
+                '&start_date=' + encodeURIComponent(start) + '&end_date=' + encodeURIComponent(end);
+            window.location = url;
+        }
+
+        // "Client since" -> months count
+        (function () {
+            if (START_DATE_RAW) {
+                var s = new Date(START_DATE_RAW);
+                if (!isNaN(s)) {
+                    var now = new Date();
+                    var months = (now.getFullYear() - s.getFullYear()) * 12 + (now.getMonth() - s.getMonth());
+                    if (months >= 0) document.getElementById('clientSince').textContent = START_DATE_RAW + ' (' + months + ' months)';
+                }
+            }
+        })();
+
+        // Default range = last 30 days, load on open
+        document.addEventListener('DOMContentLoaded', function () { setPreset(30); });
+    </script>
+</body>
+</html>
