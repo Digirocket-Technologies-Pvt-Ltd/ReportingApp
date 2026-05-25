@@ -411,7 +411,11 @@ def build_editable_pptx(context, output_pptx, slide_images=None):
         left0 = Inches(0.5)
         card_w = int((SW - Inches(1) - gap * (per_row - 1)) / per_row)
         card_h = Inches(1.9)
-        for i, (label, value) in enumerate(metrics):
+        GREENISH = RGBColor(0x86, 0xEF, 0xAC)
+        REDDISH = RGBColor(0xFE, 0xCA, 0xCA)
+        for i, m in enumerate(metrics):
+            label, value = m[0], m[1]
+            change = m[2] if len(m) > 2 else None
             row = i // per_row
             col = i % per_row
             x = int(left0 + col * (card_w + gap))
@@ -424,15 +428,22 @@ def build_editable_pptx(context, output_pptx, slide_images=None):
             tf.word_wrap = True
             pv = tf.paragraphs[0]
             pv.text = str(value)
-            pv.font.size = Pt(30)
+            pv.font.size = Pt(28)
             pv.font.bold = True
             pv.font.color.rgb = LIME
             pv.alignment = PP_ALIGN.CENTER
             pl = tf.add_paragraph()
             pl.text = label
-            pl.font.size = Pt(13)
+            pl.font.size = Pt(12)
             pl.font.color.rgb = WHITE
             pl.alignment = PP_ALIGN.CENTER
+            if change is not None:
+                pc = tf.add_paragraph()
+                pc.text = ('▲ ' if change >= 0 else '▼ ') + str(abs(change)) + '% vs prev'
+                pc.font.size = Pt(10)
+                pc.font.bold = True
+                pc.font.color.rgb = GREENISH if change >= 0 else REDDISH
+                pc.alignment = PP_ALIGN.CENTER
 
     # ---- Native editable charts (infographics) ----
     charts = context.get('charts') or []

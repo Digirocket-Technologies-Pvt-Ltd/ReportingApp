@@ -1056,6 +1056,11 @@
                     <form id="dateRangeForm" action="{{ url_for('view_combined_data') }}" method="GET" class="flex flex-col space-y-3 bg-gray-50 p-4 rounded-xl">
                         <input type="hidden" name="ga4_property" value="{{ request.args.get('ga4_property') }}">
                         <input type="hidden" name="gsc_site" value="{{ request.args.get('gsc_site') }}">
+                        <!-- preserve selected metrics on in-page Update -->
+                        {% for g in metric_groups %}{% for m in g %}<input type="hidden" name="metrics" value="{{ m }}">{% endfor %}{% endfor %}
+                        <label class="flex items-center gap-2 text-xs font-medium text-gray-600">
+                            <input type="checkbox" name="compare" value="1" {% if compare %}checked{% endif %}> Compare with previous period
+                        </label>
                         <!-- Quick preset ranges (like Google Search Console) -->
                         <div class="flex items-center flex-wrap gap-2">
                             <span class="text-xs font-semibold text-gray-500 mr-1">Quick range:</span>
@@ -1136,10 +1141,18 @@
                             </div>
                         </div>
                         <div class="mt-4">
+                            {% set chg = ov_change.get('active_users') if ov_change else None %}
+                            {% if chg is not none %}
+                            <div class="flex items-center text-sm">
+                                <i class="fas fa-arrow-{{ 'up' if chg >= 0 else 'down' }} {{ 'text-green-300' if chg >= 0 else 'text-red-300' }} mr-1"></i>
+                                <span class="{{ 'text-green-300' if chg >= 0 else 'text-red-300' }}">{{ chg|abs }}% vs prev</span>
+                            </div>
+                            {% else %}
                             <div class="flex items-center text-sm">
                                 <i class="fas fa-arrow-up text-green-300 mr-1"></i>
                                 <span class="text-green-300">Live Data</span>
                             </div>
+                            {% endif %}
                         </div>
                     </div>
 
@@ -1155,10 +1168,18 @@
                             </div>
                         </div>
                         <div class="mt-4">
+                            {% set chg = ov_change.get('views') if ov_change else None %}
+                            {% if chg is not none %}
+                            <div class="flex items-center text-sm">
+                                <i class="fas fa-arrow-{{ 'up' if chg >= 0 else 'down' }} {{ 'text-green-300' if chg >= 0 else 'text-red-300' }} mr-1"></i>
+                                <span class="{{ 'text-green-300' if chg >= 0 else 'text-red-300' }}">{{ chg|abs }}% vs prev</span>
+                            </div>
+                            {% else %}
                             <div class="flex items-center text-sm">
                                 <i class="fas fa-chart-line text-green-300 mr-1"></i>
                                 <span class="text-green-300">Trending</span>
                             </div>
+                            {% endif %}
                         </div>
                     </div>
 
@@ -1174,10 +1195,18 @@
                             </div>
                         </div>
                         <div class="mt-4">
+                            {% set chg = ov_change.get('new_users') if ov_change else None %}
+                            {% if chg is not none %}
+                            <div class="flex items-center text-sm">
+                                <i class="fas fa-arrow-{{ 'up' if chg >= 0 else 'down' }} {{ 'text-green-300' if chg >= 0 else 'text-red-300' }} mr-1"></i>
+                                <span class="{{ 'text-green-300' if chg >= 0 else 'text-red-300' }}">{{ chg|abs }}% vs prev</span>
+                            </div>
+                            {% else %}
                             <div class="flex items-center text-sm">
                                 <i class="fas fa-plus text-green-300 mr-1"></i>
                                 <span class="text-green-300">Growing</span>
                             </div>
+                            {% endif %}
                         </div>
                     </div>
 
@@ -1193,10 +1222,18 @@
                             </div>
                         </div>
                         <div class="mt-4">
+                            {% set chg = ov_change.get('event_count') if ov_change else None %}
+                            {% if chg is not none %}
+                            <div class="flex items-center text-sm">
+                                <i class="fas fa-arrow-{{ 'up' if chg >= 0 else 'down' }} {{ 'text-green-300' if chg >= 0 else 'text-red-300' }} mr-1"></i>
+                                <span class="{{ 'text-green-300' if chg >= 0 else 'text-red-300' }}">{{ chg|abs }}% vs prev</span>
+                            </div>
+                            {% else %}
                             <div class="flex items-center text-sm">
                                 <i class="fas fa-fire text-orange-300 mr-1"></i>
                                 <span class="text-orange-300">Active</span>
                             </div>
+                            {% endif %}
                         </div>
                     </div>
                 </div>

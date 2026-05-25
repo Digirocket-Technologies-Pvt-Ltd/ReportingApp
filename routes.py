@@ -259,6 +259,7 @@ def init_routes(app):
                 'start': start_date.strftime('%Y-%m-%d'),
                 'end': end_date.strftime('%Y-%m-%d'),
                 'metrics': selected_metrics,
+                'compare': compare,
             }
 
             # Get session info for display
@@ -583,7 +584,20 @@ def init_routes(app):
                 return f"{overview.get(k, 0):,}"
 
             selected_m = ctx.get('metrics') or ['new_users', 'active_users', 'returning_users', 'sessions']
-            metrics = [(OVLABELS.get(k, k), _ovdisp(k)) for k in selected_m]
+            ov_change_p = {}
+            if ctx.get('compare') and ctx.get('ga4_property_id'):
+                length = (end_date - start_date).days + 1
+                p_end = start_date - timedelta(days=1)
+                p_start = p_end - timedelta(days=length - 1)
+                prev_ov = get_ga4_overview(session['access_token'], ctx['ga4_property_id'], p_start, p_end)
+                for k in selected_m:
+                    ck = 'avg_engagement_seconds' if k == 'avg_engagement_per_session' else k
+                    cur, prev = overview.get(ck), prev_ov.get(ck)
+                    try:
+                        ov_change_p[k] = round((float(cur) - float(prev)) / float(prev) * 100, 1) if prev else None
+                    except (TypeError, ValueError):
+                        ov_change_p[k] = None
+            metrics = [(OVLABELS.get(k, k), _ovdisp(k), ov_change_p.get(k)) for k in selected_m]
 
             if ga4_data:
                 cm = ga4_data.get('countryMetrics') or []
