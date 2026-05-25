@@ -54,6 +54,48 @@ def get_property_name(access_token, property_id):
     except:
         return property_id
 
+def get_ga4_overview(access_token, property_id, start_date, end_date):
+    """Just the 8 headline overview metrics (lightweight) - used for comparison."""
+    try:
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json',
+            'X-TIMEZONE': 'UTC',
+        }
+        url = f'https://analyticsdata.googleapis.com/v1beta/properties/{property_id}:runReport'
+        body = {
+            "metrics": [
+                {"name": "totalUsers"}, {"name": "newUsers"}, {"name": "activeUsers"},
+                {"name": "sessions"}, {"name": "screenPageViews"}, {"name": "eventCount"},
+                {"name": "bounceRate"}, {"name": "averageSessionDuration"},
+            ],
+            "dateRanges": [{
+                "startDate": start_date.strftime('%Y-%m-%d'),
+                "endDate": end_date.strftime('%Y-%m-%d')}],
+        }
+        r = requests.post(url, headers=headers, json=body, timeout=30)
+        r.raise_for_status()
+        data = r.json()
+        if not data.get('rows'):
+            return {}
+        mv = data['rows'][0]['metricValues']
+        total_users = int(mv[0]['value'])
+        new_users = int(mv[1]['value'])
+        return {
+            'new_users': new_users,
+            'active_users': int(mv[2]['value']),
+            'returning_users': max(total_users - new_users, 0),
+            'sessions': int(mv[3]['value']),
+            'views': int(mv[4]['value']),
+            'event_count': int(mv[5]['value']),
+            'bounce_rate': round(float(mv[6]['value']) * 100, 1),
+            'avg_engagement_seconds': round(float(mv[7]['value']), 1),
+        }
+    except Exception as e:
+        print(f"Error fetching GA4 overview: {e}")
+        return {}
+
+
 def get_ga4_data(access_token, property_id, start_date, end_date):
     try:
         headers = {

@@ -505,6 +505,9 @@
                 var hiddenPaginations = document.querySelectorAll('.report-pagination');
                 hiddenPaginations.forEach(function (p) { p.style.display = 'none'; });
 
+                // Date range shown on every captured slide (so the period is always visible)
+                const REPORT_RANGE = "{{ start_date }} – {{ end_date }}";
+
                 for (const element of elementsToCapture) {
                     const elem = document.getElementById(element.id);
                     if (!elem) {
@@ -518,6 +521,15 @@
                     const originalShadow = elem.style.boxShadow;
                     elem.style.background = 'white';
                     elem.style.boxShadow = '0 4px 25px rgba(0,0,0,0.1)';
+
+                    // Stamp the date range on this slide (top-right), removed after capture
+                    var _dateBadge = document.createElement('div');
+                    _dateBadge.textContent = '📅 ' + REPORT_RANGE;
+                    _dateBadge.style.cssText = 'position:absolute; top:12px; right:16px; background:#14181a; color:#fff; ' +
+                        'padding:5px 14px; border-radius:9px; font-size:12px; font-weight:700; z-index:9;';
+                    var _prevPos = elem.style.position;
+                    if (getComputedStyle(elem).position === 'static') elem.style.position = 'relative';
+                    elem.appendChild(_dateBadge);
 
                     // Capture with retry: if the result is blank, scroll + wait + try again
                     let goodCanvas = null;
@@ -542,9 +554,11 @@
                         }
                     }
 
-                    // Restore original styling
+                    // Restore original styling + remove the date badge
                     elem.style.background = originalBg;
                     elem.style.boxShadow = originalShadow;
+                    if (_dateBadge.parentNode) _dateBadge.parentNode.removeChild(_dateBadge);
+                    elem.style.position = _prevPos;
 
                     if (goodCanvas) {
                         screenshots.push({
@@ -1209,9 +1223,13 @@
             <h2 class="text-2xl font-bold text-gray-800 mb-6"><i class="fas fa-chart-simple mr-2 text-teal-600"></i>Overview Infographic {{ loop.index }}</h2>
             <div class="grid grid-cols-2 md:grid-cols-4 gap-5">
                 {% for key in group %}
+                {% set chg = ov_change.get(key) if ov_change else None %}
                 <div style="border-radius:18px; padding:26px 20px; background:{{ CARD_COLORS[loop.index0 % 8] }}; box-shadow:0 8px 24px rgba(0,0,0,0.18);">
                     <div style="font-size:34px; font-weight:800; color:#ffffff; line-height:1.1;">{{ MVAL.get(key, '-') }}</div>
                     <div style="font-size:13px; font-weight:600; color:rgba(255,255,255,0.9); margin-top:8px;">{{ MLABEL.get(key, key) }}</div>
+                    {% if chg is not none %}
+                    <div style="font-size:12px; font-weight:800; margin-top:6px; color:{{ '#bbf7d0' if chg >= 0 else '#fecaca' }};">{{ '▲' if chg >= 0 else '▼' }} {{ chg|abs }}% vs prev</div>
+                    {% endif %}
                 </div>
                 {% endfor %}
             </div>
@@ -1223,23 +1241,22 @@
         {% if gsc_data and gsc_data.summary %}
         <div class="section-card rounded-2xl p-8 mb-8" id="gsc-infographic">
             <h2 class="text-2xl font-bold text-gray-800 mb-6"><i class="fas fa-magnifying-glass mr-2 text-teal-600"></i>Search Console Overview</h2>
+            {% set gsc_cards = [
+                ("{:,}".format(gsc_data.summary.total_clicks), 'Total Clicks', '#2563eb', 'clicks'),
+                ("{:,}".format(gsc_data.summary.total_impressions), 'Total Impressions', '#7c3aed', 'impressions'),
+                (gsc_data.summary.average_ctr, 'Average CTR', '#059669', 'ctr'),
+                (gsc_data.summary.average_position, 'Average Position', '#ea580c', 'position') ] %}
             <div class="grid grid-cols-2 md:grid-cols-4 gap-5">
-                <div style="border-radius:18px; padding:26px 20px; background:#2563eb; box-shadow:0 8px 24px rgba(0,0,0,0.18);">
-                    <div style="font-size:34px; font-weight:800; color:#fff; line-height:1.1;">{{ "{:,}".format(gsc_data.summary.total_clicks) }}</div>
-                    <div style="font-size:13px; font-weight:600; color:rgba(255,255,255,0.9); margin-top:8px;">Total Clicks</div>
+                {% for val, lbl, col, ck in gsc_cards %}
+                {% set chg = gsc_change.get(ck) if gsc_change else None %}
+                <div style="border-radius:18px; padding:26px 20px; background:{{ col }}; box-shadow:0 8px 24px rgba(0,0,0,0.18);">
+                    <div style="font-size:34px; font-weight:800; color:#fff; line-height:1.1;">{{ val }}</div>
+                    <div style="font-size:13px; font-weight:600; color:rgba(255,255,255,0.9); margin-top:8px;">{{ lbl }}</div>
+                    {% if chg is not none %}
+                    <div style="font-size:12px; font-weight:800; margin-top:6px; color:{{ '#bbf7d0' if chg >= 0 else '#fecaca' }};">{{ '▲' if chg >= 0 else '▼' }} {{ chg|abs }}% vs prev</div>
+                    {% endif %}
                 </div>
-                <div style="border-radius:18px; padding:26px 20px; background:#7c3aed; box-shadow:0 8px 24px rgba(0,0,0,0.18);">
-                    <div style="font-size:34px; font-weight:800; color:#fff; line-height:1.1;">{{ "{:,}".format(gsc_data.summary.total_impressions) }}</div>
-                    <div style="font-size:13px; font-weight:600; color:rgba(255,255,255,0.9); margin-top:8px;">Total Impressions</div>
-                </div>
-                <div style="border-radius:18px; padding:26px 20px; background:#059669; box-shadow:0 8px 24px rgba(0,0,0,0.18);">
-                    <div style="font-size:34px; font-weight:800; color:#fff; line-height:1.1;">{{ gsc_data.summary.average_ctr }}</div>
-                    <div style="font-size:13px; font-weight:600; color:rgba(255,255,255,0.9); margin-top:8px;">Average CTR</div>
-                </div>
-                <div style="border-radius:18px; padding:26px 20px; background:#ea580c; box-shadow:0 8px 24px rgba(0,0,0,0.18);">
-                    <div style="font-size:34px; font-weight:800; color:#fff; line-height:1.1;">{{ gsc_data.summary.average_position }}</div>
-                    <div style="font-size:13px; font-weight:600; color:rgba(255,255,255,0.9); margin-top:8px;">Average Position</div>
-                </div>
+                {% endfor %}
             </div>
         </div>
         {% endif %}

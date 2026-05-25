@@ -55,6 +55,30 @@ def get_gsc_sites(session):
         print(f"Error fetching GSC sites: {e}")
         return []
 
+def get_gsc_summary(credentials, site_url, start_date, end_date):
+    """Just totals (clicks, impressions, ctr, position) - lightweight, for comparison."""
+    try:
+        site_url = normalize_gsc_property(site_url)
+        ws = build('searchconsole', 'v1', credentials=credentials)
+        req = {
+            'startDate': start_date.strftime('%Y-%m-%d'),
+            'endDate': end_date.strftime('%Y-%m-%d'),
+            'dimensions': ['date'],
+            'rowLimit': 1000,
+        }
+        resp = ws.searchanalytics().query(siteUrl=site_url, body=req).execute()
+        rows = resp.get('rows', [])
+        clicks = sum(r['clicks'] for r in rows)
+        impr = sum(r['impressions'] for r in rows)
+        ctr = (clicks / impr * 100) if impr else 0
+        pos = sum(r['position'] for r in rows) / len(rows) if rows else 0
+        return {'clicks': int(clicks), 'impressions': int(impr),
+                'ctr': round(ctr, 2), 'position': round(pos, 1)}
+    except Exception as e:
+        print(f"Error fetching GSC summary: {e}")
+        return {}
+
+
 def get_gsc_detailed_data(credentials, site_url, start_date, end_date):
     """
     Get detailed Google Search Console data including date metrics, top queries,

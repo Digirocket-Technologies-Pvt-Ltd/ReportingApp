@@ -1,8 +1,8 @@
 from flask import Flask, render_template, redirect, url_for, request, jsonify, session, flash, send_file
 from auth import is_authenticated, refresh_token_if_needed, logout_user, get_user_info, get_session_info, is_pmo_admin
 import db
-from ga4 import get_ga4_properties, get_ga4_data, get_property_name
-from gsc import get_gsc_sites, get_gsc_detailed_data, normalize_gsc_property
+from ga4 import get_ga4_properties, get_ga4_data, get_property_name, get_ga4_overview
+from gsc import get_gsc_sites, get_gsc_detailed_data, normalize_gsc_property, get_gsc_summary
 from data_processing import validate_dates
 from google.oauth2.credentials import Credentials
 from config import CLIENT_ID, CLIENT_SECRET, REDIRECT_URI, SCOPES
@@ -10,7 +10,7 @@ import os
 import base64
 from PIL import Image
 import io
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
 from pdf_processing import build_slide_images, build_pdf_from_images, build_editable_pptx
 from werkzeug.utils import secure_filename
@@ -225,6 +225,7 @@ def init_routes(app):
             end_date_str = request.args.get('end_date')
             selected_metrics = request.args.getlist('metrics') or [
                 'new_users', 'active_users', 'returning_users', 'sessions']
+            compare = (request.args.get('compare') or '').lower() in ('1', 'true', 'on', 'yes')
 
             if not all([ga4_property_id, gsc_site_url, start_date_str, end_date_str]):
                 flash('Missing required parameters.', 'error')
@@ -266,6 +267,40 @@ def init_routes(app):
             # Split selected overview metrics into infographics of max 4 each
             metric_groups = [selected_metrics[i:i + 4] for i in range(0, len(selected_metrics), 4)]
 
+            # ---- Comparison with the immediately-previous period (optional) ----
+            ov_change, gsc_change, prev_label = {}, {}, ''
+
+            def _pct(cur, prev):
+                try:
+                    cur = float(cur); prev = float(prev)
+                except (TypeError, ValueError):
+                    return None
+                if prev == 0:
+                    return None
+                return round((cur - prev) / prev * 100, 1)
+
+            if compare:
+                length = (end_date - start_date).days + 1
+                prev_end = start_date - timedelta(days=1)
+                prev_start = prev_end - timedelta(days=length - 1)
+                prev_label = f"{prev_start.strftime('%Y-%m-%d')} – {prev_end.strftime('%Y-%m-%d')}"
+                cur_ov = (ga4_data or {}).get('overview') or {}
+                prev_ov = get_ga4_overview(session['access_token'], ga4_property_id, prev_start, prev_end) if ga4_property_id else {}
+                for k in ['new_users', 'active_users', 'returning_users', 'sessions',
+                          'bounce_rate', 'views', 'event_count']:
+                    ov_change[k] = _pct(cur_ov.get(k), prev_ov.get(k))
+                ov_change['avg_engagement_per_session'] = _pct(cur_ov.get('avg_engagement_seconds'),
+                                                               prev_ov.get('avg_engagement_seconds'))
+                if gsc_data and gsc_data.get('summary'):
+                    cur_s = gsc_data['summary']
+                    prev_s = get_gsc_summary(credentials, gsc_site_url, prev_start, prev_end)
+                    gsc_change = {
+                        'clicks': _pct(cur_s.get('total_clicks'), prev_s.get('clicks')),
+                        'impressions': _pct(cur_s.get('total_impressions'), prev_s.get('impressions')),
+                        'ctr': _pct(str(cur_s.get('average_ctr', '0')).replace('%', ''), prev_s.get('ctr')),
+                        'position': _pct(prev_s.get('position'), str(cur_s.get('average_position', '0'))),
+                    }
+
             return render_template(
                 'combined_data.html',
                 ga4_property_name=ga4_property_name,
@@ -275,6 +310,10 @@ def init_routes(app):
                 ga4_data=ga4_data,
                 gsc_data=gsc_data,
                 metric_groups=metric_groups,
+                compare=compare,
+                prev_label=prev_label,
+                ov_change=ov_change,
+                gsc_change=gsc_change,
                 session_info=session_info
             )
 
