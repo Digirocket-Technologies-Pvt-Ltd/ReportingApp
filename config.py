@@ -14,4 +14,6 @@ SCOPES = [
     'https://www.googleapis.com/auth/analytics',
     # Google Business Profile (GMB) - calls, directions, website clicks, impressions
     'https://www.googleapis.com/auth/business.manage',
+    # Google Merchant Center (GMC) - product/shopping data (only if an account exists)
+    'https://www.googleapis.com/auth/content',
 ]

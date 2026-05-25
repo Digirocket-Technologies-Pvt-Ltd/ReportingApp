@@ -4,6 +4,7 @@ import db
 from ga4 import get_ga4_properties, get_ga4_data, get_property_name, get_ga4_overview, get_ga4_acquisition, get_ga4_extra
 from gsc import get_gsc_sites, get_gsc_detailed_data, normalize_gsc_property, get_gsc_summary
 from gmb import get_gmb_data
+from gmc import get_gmc_data
 from data_processing import validate_dates
 from google.oauth2.credentials import Credentials
 from config import CLIENT_ID, CLIENT_SECRET, REDIRECT_URI, SCOPES
@@ -312,6 +313,15 @@ def init_routes(app):
                     print(f"GMB fetch error: {e}")
                     gmb_data = {}
 
+            # Google Merchant Center (GMC) - only if an account exists for this site
+            gmc_data = {}
+            if (request.args.get('gmc') or '').lower() in ('1', 'true', 'on', 'yes'):
+                try:
+                    gmc_data = get_gmc_data(session['access_token'], gsc_site_url, start_date, end_date)
+                except Exception as e:
+                    print(f"GMC fetch error: {e}")
+                    gmc_data = {}
+
             # AI Insights & Action Plan (optional, Kimi) - only when requested
             ai_text = ''
             if (request.args.get('ai_insights') or '').lower() in ('1', 'true', 'on', 'yes'):
@@ -371,6 +381,7 @@ def init_routes(app):
                 indexed_pages=indexed_pages,
                 ai_text=ai_text,
                 gmb_data=gmb_data,
+                gmc_data=gmc_data,
                 session_info=session_info
             )
 
