@@ -484,8 +484,9 @@
                     name: '13-gsc-device-performance',
                     title: 'Search Console Device Performance'
                 },
-                { id: 'indexed-pages', type: 'div', name: '14-gsc-indexed-pages', title: 'Indexed Pages' },
-                { id: 'ai-insights', type: 'div', name: '15-ai-insights-action-plan', title: 'AI Insights & Action Plan' }
+                { id: 'gmb-overview', type: 'div', name: '14-google-business-profile', title: 'Google Business Profile' },
+                { id: 'indexed-pages', type: 'div', name: '15-gsc-indexed-pages', title: 'Indexed Pages' },
+                { id: 'ai-insights', type: 'div', name: '16-ai-insights-action-plan', title: 'AI Insights & Action Plan' }
             ];
 
             const screenshots = [];
@@ -1079,6 +1080,9 @@
                         </label>
                         <label class="flex items-center gap-2 text-xs font-medium text-gray-600">
                             <input type="checkbox" name="ai_insights" value="1" {% if ai_text %}checked{% endif %}> Add AI Insights &amp; Action Plan
+                        </label>
+                        <label class="flex items-center gap-2 text-xs font-medium text-gray-600">
+                            <input type="checkbox" name="gmb" value="1" {% if gmb_data %}checked{% endif %}> Add Google Business Profile (GMB)
                         </label>
                         <!-- Quick preset ranges (like Google Search Console) -->
                         <div class="flex items-center flex-wrap gap-2">
@@ -1875,6 +1879,28 @@
         </section>
 
         <!-- Call to Action Section -->
+        <!-- Google Business Profile (GMB) -->
+        {% if gmb_data %}
+        <div class="section-card rounded-2xl p-8 mb-8" id="gmb-overview">
+            <h2 class="text-2xl font-bold text-gray-800 mb-6"><i class="fas fa-store mr-2 text-teal-600"></i>Google Business Profile{% if gmb_data.title %} &mdash; {{ gmb_data.title }}{% endif %}</h2>
+            {% set gmb_cards = [
+                (gmb_data.calls, 'Calls', '#2563eb'),
+                (gmb_data.website_clicks, 'Website Clicks', '#7c3aed'),
+                (gmb_data.directions, 'Direction Requests', '#059669'),
+                (gmb_data.bookings, 'Bookings', '#ea580c'),
+                (gmb_data.conversations, 'Messages', '#0ea5e9'),
+                (gmb_data.impressions, 'Total Impressions', '#ec4899') ] %}
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-5">
+                {% for val, lbl, col in gmb_cards %}
+                <div style="border-radius:18px; padding:24px 20px; background:{{ col }}; box-shadow:0 8px 24px rgba(0,0,0,0.18);">
+                    <div style="font-size:32px; font-weight:800; color:#ffffff; line-height:1.1;">{{ "{:,}".format(val) }}</div>
+                    <div style="font-size:13px; font-weight:600; color:rgba(255,255,255,0.9); margin-top:8px;">{{ lbl }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
         <!-- Search Console - Indexed Pages (manual number) -->
         {% if indexed_pages %}
         <div class="section-card rounded-2xl p-8 mb-8" id="indexed-pages">

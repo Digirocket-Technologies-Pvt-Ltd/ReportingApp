@@ -11,5 +11,7 @@ SCOPES = [
     'https://www.googleapis.com/auth/userinfo.profile',
     'https://www.googleapis.com/auth/analytics.readonly',
     'https://www.googleapis.com/auth/webmasters.readonly',
-    'https://www.googleapis.com/auth/analytics'
+    'https://www.googleapis.com/auth/analytics',
+    # Google Business Profile (GMB) - calls, directions, website clicks, impressions
+    'https://www.googleapis.com/auth/business.manage',
 ]

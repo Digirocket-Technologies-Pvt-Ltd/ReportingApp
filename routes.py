@@ -3,6 +3,7 @@ from auth import is_authenticated, refresh_token_if_needed, logout_user, get_use
 import db
 from ga4 import get_ga4_properties, get_ga4_data, get_property_name, get_ga4_overview, get_ga4_acquisition, get_ga4_extra
 from gsc import get_gsc_sites, get_gsc_detailed_data, normalize_gsc_property, get_gsc_summary
+from gmb import get_gmb_data
 from data_processing import validate_dates
 from google.oauth2.credentials import Credentials
 from config import CLIENT_ID, CLIENT_SECRET, REDIRECT_URI, SCOPES
@@ -302,6 +303,15 @@ def init_routes(app):
             # Manual indexed pages count (user types it from Search Console)
             indexed_pages = (request.args.get('indexed_pages') or '').strip()
 
+            # Google Business Profile (GMB) metrics (optional - needs business.manage scope)
+            gmb_data = {}
+            if (request.args.get('gmb') or '').lower() in ('1', 'true', 'on', 'yes'):
+                try:
+                    gmb_data = get_gmb_data(session['access_token'], start_date, end_date)
+                except Exception as e:
+                    print(f"GMB fetch error: {e}")
+                    gmb_data = {}
+
             # AI Insights & Action Plan (optional, Kimi) - only when requested
             ai_text = ''
             if (request.args.get('ai_insights') or '').lower() in ('1', 'true', 'on', 'yes'):
@@ -360,6 +370,7 @@ def init_routes(app):
                 ga4_extra=ga4_extra,
                 indexed_pages=indexed_pages,
                 ai_text=ai_text,
+                gmb_data=gmb_data,
                 session_info=session_info
             )
 
