@@ -10,6 +10,7 @@ working (e.g. emailing a report still succeeds even without logging).
 """
 import os
 import requests
+from datetime import datetime, timezone
 
 TIMEOUT = 20
 
@@ -176,3 +177,97 @@ def latest_reports():
         if cid and cid not in latest:
             latest[cid] = log
     return latest
+
+
+# ---------------- Client lookup (for the client portal) ----------------
+def get_client_by_email(email):
+    """Find the client whose email matches the given address (case-insensitive).
+    Used to recognise a portal visitor as a client. Returns the row or None."""
+    if not is_configured() or not email:
+        return None
+    try:
+        e = email.strip().lower()
+        r = requests.get(_rest(f'clients?email=ilike.{e}&select=*'),
+                         headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        rows = r.json()
+        return rows[0] if rows else None
+    except Exception as e:
+        print(f'[db] get_client_by_email failed (non-fatal): {e}')
+        return None
+
+
+# ---------------- Client queries ----------------
+def add_query(data):
+    """Insert a query raised by a client from the portal. Returns the new row."""
+    if not is_configured():
+        return None
+    r = requests.post(_rest('report_queries'),
+                      headers=_headers({'Prefer': 'return=representation'}),
+                      json=data, timeout=TIMEOUT)
+    r.raise_for_status()
+    rows = r.json()
+    return rows[0] if rows else None
+
+
+def client_queries(client_id):
+    """All queries raised by one client, newest first (client portal)."""
+    if not is_configured() or not client_id:
+        return []
+    try:
+        r = requests.get(_rest(f'report_queries?client_id=eq.{client_id}&select=*&order=created_at.desc'),
+                         headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        print(f'[db] client_queries failed (non-fatal): {e}')
+        return []
+
+
+def list_queries(status=None):
+    """Every query (newest first) with the client's name/email embedded, for the
+    PMO queries dashboard. Optionally filter by status (open/answered/resolved)."""
+    if not is_configured():
+        return []
+    try:
+        q = 'report_queries?select=*,client:clients(name,email)&order=created_at.desc'
+        if status:
+            q += f'&status=eq.{status}'
+        r = requests.get(_rest(q), headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        print(f'[db] list_queries failed (non-fatal): {e}')
+        return []
+
+
+def respond_query(query_id, response, status, responded_by):
+    """PMO answers a query: store the response, status, and who/when."""
+    if not is_configured() or not query_id:
+        return None
+    data = {
+        'response': response,
+        'status': status or 'answered',
+        'responded_by': responded_by,
+        'responded_at': datetime.now(timezone.utc).isoformat(),
+    }
+    r = requests.patch(_rest(f'report_queries?id=eq.{query_id}'),
+                       headers=_headers({'Prefer': 'return=representation'}),
+                       json=data, timeout=TIMEOUT)
+    r.raise_for_status()
+    rows = r.json()
+    return rows[0] if rows else None
+
+
+def count_open_queries():
+    """Number of queries still awaiting a response (for the PMO badge)."""
+    if not is_configured():
+        return 0
+    try:
+        r = requests.get(_rest('report_queries?status=eq.open&select=id'),
+                         headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        return len(r.json())
+    except Exception as e:
+        print(f'[db] count_open_queries failed (non-fatal): {e}')
+        return 0

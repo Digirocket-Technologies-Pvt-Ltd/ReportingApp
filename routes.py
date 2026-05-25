@@ -115,8 +115,15 @@ def init_routes(app):
 
             # Get user information
             get_user_info()
-            
+
             flash('Successfully logged in!', 'success')
+            # Recognised clients land on their portal; team/admins keep the dashboard.
+            try:
+                if not is_pmo_admin() and db.is_configured() \
+                        and db.get_client_by_email(session.get('user_email')):
+                    return redirect(url_for('client_portal'))
+            except Exception as e:
+                print(f'[login] client redirect check failed (non-fatal): {e}')
             return redirect(url_for('dashboard'))
         except requests.exceptions.RequestException as e:
             flash(f'Login error: {str(e)}', 'error')
@@ -944,6 +951,134 @@ def init_routes(app):
         return jsonify({'success': True, 'items': items})
 
     # ============================================================
+    #  CLIENT PORTAL  (clients see their own reports + raise queries)
+    # ============================================================
+    def _current_client():
+        """The client whose email matches the logged-in Google account, or None."""
+        email = (session.get('user_email') or '').strip()
+        if not email:
+            return None
+        try:
+            return db.get_client_by_email(email)
+        except Exception as e:
+            print(f'[portal] client lookup failed (non-fatal): {e}')
+            return None
+
+    @app.route('/portal')
+    def client_portal():
+        """A client's own portal: reports received + queries they've raised."""
+        if not is_authenticated() or not refresh_token_if_needed():
+            flash('Please log in to access your portal.', 'warning')
+            return redirect(url_for('login'))
+
+        if not db.is_configured():
+            return render_template('client_portal.html', db_ready=False,
+                                   client=None, reports=[], queries=[],
+                                   session_info=get_session_info())
+
+        client = _current_client()
+        if not client:
+            # Admins manage everything from the PMO side; send them there.
+            if is_pmo_admin():
+                return redirect(url_for('pmo_portal'))
+            # A logged-in Google user whose email isn't linked to any client.
+            return render_template('client_portal.html', db_ready=True,
+                                   client=None, reports=[], queries=[],
+                                   session_info=get_session_info())
+
+        try:
+            reports = db.client_reports(client['id'])
+            queries = db.client_queries(client['id'])
+        except Exception as e:
+            print(f'Error loading client portal: {e}')
+            reports, queries = [], []
+
+        return render_template('client_portal.html', db_ready=True,
+                               client=client, reports=reports, queries=queries,
+                               session_info=get_session_info())
+
+    @app.route('/portal/query', methods=['POST'])
+    def client_raise_query():
+        """A client submits a doubt/question about a report."""
+        if not is_authenticated():
+            return redirect(url_for('login'))
+        client = _current_client()
+        if not client:
+            flash('Your account is not linked to a client profile.', 'warning')
+            return redirect(url_for('client_portal'))
+
+        message = (request.form.get('message') or '').strip()
+        subject = (request.form.get('subject') or '').strip() or None
+        report_log_id = (request.form.get('report_log_id') or '').strip() or None
+        report_period = (request.form.get('report_period') or '').strip() or None
+
+        if not message:
+            flash('Please type your question before submitting.', 'warning')
+            return redirect(url_for('client_portal'))
+
+        try:
+            db.add_query({
+                'client_id': client['id'],
+                'report_log_id': report_log_id,
+                'report_period': report_period,
+                'subject': subject,
+                'message': message,
+                'status': 'open',
+            })
+            who = client.get('name') or client.get('email') or 'A client'
+            db.log_activity('query_raised',
+                            f"New query from {who}" + (f' ({report_period})' if report_period else ''),
+                            url_for('pmo_queries'), session.get('user_email'))
+            flash('Your query has been submitted. Our team will get back to you soon.', 'success')
+        except Exception as e:
+            print(f'Error raising query: {e}')
+            flash('Could not submit your query. Please try again.', 'error')
+        return redirect(url_for('client_portal'))
+
+    # ============================================================
+    #  PMO QUERIES DASHBOARD  (admins view & answer client queries)
+    # ============================================================
+    @app.route('/pmo/queries')
+    def pmo_queries():
+        if not is_authenticated() or not refresh_token_if_needed():
+            flash('Please log in.', 'warning')
+            return redirect(url_for('login'))
+        if not is_pmo_admin():
+            return render_template('pmo_denied.html', email=session.get('user_email')), 403
+        if not db.is_configured():
+            return render_template('pmo_queries.html', db_ready=False, queries=[],
+                                   session_info=get_session_info())
+        try:
+            queries = db.list_queries()
+        except Exception as e:
+            print(f'Error loading queries: {e}')
+            return render_template('pmo_queries.html', db_ready=True, queries=[],
+                                   load_error=str(e), session_info=get_session_info())
+        return render_template('pmo_queries.html', db_ready=True, queries=queries,
+                               session_info=get_session_info())
+
+    @app.route('/pmo/queries/<query_id>/respond', methods=['POST'])
+    def pmo_respond_query(query_id):
+        if not is_pmo_admin():
+            return render_template('pmo_denied.html', email=session.get('user_email')), 403
+        response = (request.form.get('response') or '').strip()
+        status = (request.form.get('status') or 'answered').strip()
+        if status not in ('open', 'answered', 'resolved'):
+            status = 'answered'
+        if not response:
+            flash('Please type a response before sending.', 'warning')
+            return redirect(url_for('pmo_queries'))
+        try:
+            db.respond_query(query_id, response, status, session.get('user_email'))
+            db.log_activity('query_answered', 'A client query was answered',
+                            url_for('client_portal'), session.get('user_email'))
+            flash('Response saved — it is now visible on the client portal.', 'success')
+        except Exception as e:
+            print(f'Error responding to query: {e}')
+            flash('Could not save the response. Please try again.', 'error')
+        return redirect(url_for('pmo_queries'))
+
+    # ============================================================
     #  PMO PORTAL  (client database) - admins only
     # ============================================================
     @app.route('/pmo')
@@ -965,12 +1100,14 @@ def init_routes(app):
             latest = db.latest_reports()
             for c in clients:
                 c['last_report'] = latest.get(c['id'])
+            open_queries = db.count_open_queries()
         except Exception as e:
             print(f'Error loading PMO portal: {e}')
             return render_template('pmo.html', clients=[], db_ready=True,
                                    load_error=str(e), session_info=get_session_info())
 
         return render_template('pmo.html', clients=clients, db_ready=True,
+                               open_queries=open_queries,
                                session_info=get_session_info())
 
     # ---- Client CRUD (JSON APIs, admin only) ----

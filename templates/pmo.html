@@ -36,9 +36,17 @@
                         <span class="text-white text-xs opacity-75">Client Database &bull; DigiRocket</span>
                     </div>
                 </div>
-                <a href="{{ url_for('dashboard') }}" class="text-white hover:text-gray-200 p-2 rounded-lg hover:bg-white hover:bg-opacity-10">
-                    <i class="fas fa-home mr-2"></i>Dashboard
-                </a>
+                <div class="flex items-center gap-2">
+                    <a href="{{ url_for('pmo_queries') }}" class="relative text-white hover:text-gray-200 p-2 rounded-lg hover:bg-white hover:bg-opacity-10">
+                        <i class="fas fa-comments mr-2"></i>Client Queries
+                        {% if open_queries and open_queries > 0 %}
+                        <span class="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full px-2 py-0.5">{{ open_queries }}</span>
+                        {% endif %}
+                    </a>
+                    <a href="{{ url_for('dashboard') }}" class="text-white hover:text-gray-200 p-2 rounded-lg hover:bg-white hover:bg-opacity-10">
+                        <i class="fas fa-home mr-2"></i>Dashboard
+                    </a>
+                </div>
             </div>
         </div>
     </header>
