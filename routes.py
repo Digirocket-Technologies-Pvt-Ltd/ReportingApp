@@ -1,4 +1,4 @@
-from flask import Flask, render_template, redirect, url_for, request, jsonify, session, flash
+from flask import Flask, render_template, redirect, url_for, request, jsonify, session, flash, send_file
 from auth import is_authenticated, refresh_token_if_needed, logout_user, get_user_info, get_session_info, is_pmo_admin
 import db
 from ga4 import get_ga4_properties, get_ga4_data, get_property_name
@@ -12,7 +12,7 @@ from PIL import Image
 import io
 from datetime import datetime
 import requests
-from pdf_processing import build_slide_images, build_pdf_from_images, build_pptx_from_images
+from pdf_processing import build_slide_images, build_pdf_from_images, build_editable_pptx
 import shutil
 from image_explanation import explain_image_with_gemini
 
@@ -246,6 +246,16 @@ def init_routes(app):
                 flash('Failed to fetch data from both GA4 and Search Console.', 'error')
                 return redirect(url_for('dashboard'))
 
+            # Remember what this report is for, so the editable PPTX can be built
+            # on demand later (re-fetches the data) from /download-report-pptx.
+            session['report_ctx'] = {
+                'ga4_property_id': ga4_property_id,
+                'ga4_property_name': ga4_property_name,
+                'gsc_site': gsc_site_url,
+                'start': start_date.strftime('%Y-%m-%d'),
+                'end': end_date.strftime('%Y-%m-%d'),
+            }
+
             # Get session info for display
             session_info = get_session_info()
 
@@ -354,13 +364,8 @@ def init_routes(app):
             # Build the downloadable PDF report from the slides
             report_pdf = os.path.join(image_dir, "analytics_report.pdf")
             build_pdf_from_images(aivideo_dir, report_pdf)
-
-            # Also build an editable-deck (PPTX) from the same slides (best-effort)
-            try:
-                report_pptx = os.path.join(image_dir, "analytics_report.pptx")
-                build_pptx_from_images(aivideo_dir, report_pptx)
-            except Exception as e:
-                print(f"PPTX build failed (non-fatal): {e}")
+            # (The editable PPTX is built on demand from the live data in
+            #  /download-report-pptx, so it has real text/tables - not images.)
 
             # Activity feed: a report was generated
             who = session.get('user_name') or session.get('user_email') or 'Someone'
@@ -460,15 +465,104 @@ def init_routes(app):
             except Exception as e:
                 print(f'Error loading clients for report modal: {e}')
 
-        pptx_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                 'static', 'images', 'analytics_report.pptx')
-        pptx_url = url_for('static', filename='images/analytics_report.pptx') if os.path.exists(pptx_path) else None
+        # Editable PPTX is built on demand (native text + tables) when this link
+        # is clicked - only offer it if we still know which report this is for.
+        pptx_url = url_for('download_report_pptx') if session.get('report_ctx') else None
 
         return render_template('report_display.html',
                                pdf_url=url_for('static', filename='images/analytics_report.pdf'),
                                pptx_url=pptx_url,
                                clients=clients,
                                session_info=get_session_info())
+
+    @app.route('/download-report-pptx')
+    def download_report_pptx():
+        """Build and download a fully EDITABLE PowerPoint (native text + tables).
+
+        Re-fetches the report's GA4 + Search Console data using the params saved
+        in the session when the combined view was opened.
+        """
+        if not is_authenticated() or not refresh_token_if_needed():
+            flash('Please log in.', 'warning')
+            return redirect(url_for('login'))
+
+        ctx = session.get('report_ctx')
+        if not ctx:
+            flash('Open a report (View Combined Data) first, then download the PPT.', 'error')
+            return redirect(url_for('dashboard'))
+
+        try:
+            start_date, end_date = validate_dates(ctx['start'], ctx['end'])
+
+            ga4_data = None
+            if ctx.get('ga4_property_id'):
+                ga4_data = get_ga4_data(session['access_token'], ctx['ga4_property_id'], start_date, end_date)
+
+            gsc_data = None
+            if ctx.get('gsc_site'):
+                credentials = Credentials(
+                    token=session['access_token'], refresh_token=session.get('refresh_token'),
+                    token_uri='https://oauth2.googleapis.com/token',
+                    client_id=CLIENT_ID, client_secret=CLIENT_SECRET, scopes=SCOPES)
+                gsc_data = get_gsc_detailed_data(credentials, ctx['gsc_site'], start_date, end_date)
+
+            metrics, tables = [], []
+            if ga4_data:
+                t = ga4_data['totals']
+                metrics = [
+                    ('Active Users', f"{t['totalActiveUsers']:,}"),
+                    ('Page Views', f"{t['totalViews']:,}"),
+                    ('New Users', f"{t['totalNewUsers']:,}"),
+                    ('Total Events', f"{t['totalEventCount']:,}"),
+                ]
+                cm = ga4_data.get('countryMetrics') or []
+                if cm:
+                    tables.append({'title': 'GA4 - Geographic Distribution',
+                                   'headers': ['Country', 'Users', 'New Users', 'Engaged Sessions', 'Engagement Rate'],
+                                   'rows': [[c['country'], f"{c['users']:,}", f"{c['newUsers']:,}", c['engagedSessions'], c['engagementRate']] for c in cm]})
+                pm = ga4_data.get('pageMetrics') or []
+                if pm:
+                    tables.append({'title': 'GA4 - Top Pages',
+                                   'headers': ['Page', 'Views', 'Users', 'Avg Duration'],
+                                   'rows': [[p['page'], f"{p['views']:,}", f"{p['users']:,}", p['avgDuration']] for p in pm]})
+                em = ga4_data.get('eventMetrics') or []
+                if em:
+                    tables.append({'title': 'GA4 - Top Events',
+                                   'headers': ['Event', 'Count', 'Per User'],
+                                   'rows': [[e['event'], f"{e['count']:,}", f"{e['perUser']:.2f}"] for e in em]})
+                chm = ga4_data.get('channelMetrics') or []
+                if chm:
+                    tables.append({'title': 'GA4 - Acquisition Channels',
+                                   'headers': ['Source', 'New Users', '% of Total', 'Sessions/User', 'Avg Engagement'],
+                                   'rows': [[c['source'], f"{c['newUsers']:,}", c['percentage'], f"{c['sessionsPerUser']:.2f}", c['avgEngagementTime']] for c in chm]})
+            if gsc_data:
+                summ = gsc_data.get('summary') or {}
+                tables.append({'title': 'Search Console - Summary',
+                               'headers': ['Clicks', 'Impressions', 'Avg CTR', 'Avg Position'],
+                               'rows': [[f"{summ.get('total_clicks', 0):,}", f"{summ.get('total_impressions', 0):,}",
+                                         summ.get('average_ctr', ''), summ.get('average_position', '')]]})
+                for key, title in [('daily_metrics', 'Daily Performance'), ('top_queries', 'Top Queries'),
+                                   ('top_pages', 'Top Pages'), ('country_data', 'Country'), ('device_data', 'Device')]:
+                    blk = gsc_data.get(key) or {}
+                    if blk.get('rows'):
+                        tables.append({'title': f'Search Console - {title}',
+                                       'headers': blk.get('headers', []), 'rows': blk['rows']})
+
+            context = {
+                'title': 'Analytics Report',
+                'subtitle': f"{ctx.get('ga4_property_name', '')}  |  {ctx['start']} to {ctx['end']}",
+                'metrics': metrics,
+                'tables': tables,
+            }
+            out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                    'static', 'images', 'analytics_report.pptx')
+            build_editable_pptx(context, out_path)
+            return send_file(out_path, as_attachment=True, download_name='analytics_report.pptx',
+                             mimetype='application/vnd.openxmlformats-officedocument.presentationml.presentation')
+        except Exception as e:
+            print(f'Error building editable PPTX: {e}')
+            flash(f'Could not build PPT: {e}', 'error')
+            return redirect(url_for('display_report'))
 
     @app.route('/send-report-email', methods=['POST'])
     def send_report_email_route():

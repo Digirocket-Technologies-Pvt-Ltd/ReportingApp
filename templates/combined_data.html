@@ -126,10 +126,10 @@
         }
         
         .stat-number {
-            background: linear-gradient(135deg, #00AEAF, #7CC92A);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            /* Solid colour (NOT gradient-clip text) so the numbers render fully in
+               html2canvas captures - the gradient-clip cut the digits off in PDF/PPT. */
+            color: #7CC92A;
+            -webkit-text-fill-color: #7CC92A;
             font-weight: 800;
         }
         

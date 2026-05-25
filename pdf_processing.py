@@ -319,3 +319,132 @@ def build_pptx_from_images(images_dir, output_pptx):
     prs.save(output_pptx)
     print(f"PPTX report saved: {output_pptx} ({len(images)} slides)")
     return output_pptx
+
+
+def build_editable_pptx(context, output_pptx):
+    """Build a fully EDITABLE PowerPoint report (native text + tables, NOT images).
+
+    Every element is real PowerPoint content, so the PMO team can edit text,
+    change numbers, move things, add their own slides, etc.
+
+    context = {
+        'title': str,
+        'subtitle': str,
+        'metrics': [(label, value), ...],
+        'tables': [{'title': str, 'headers': [...], 'rows': [[...], ...]}, ...],
+    }
+    """
+    from pptx import Presentation
+    from pptx.util import Inches, Pt, Emu
+    from pptx.dml.color import RGBColor
+    from pptx.enum.text import PP_ALIGN
+    from pptx.enum.shapes import MSO_SHAPE
+
+    NAVY = RGBColor(0x00, 0x20, 0x60)
+    LIME = RGBColor(0x6F, 0xA8, 0x1F)
+    DARK = RGBColor(0x1F, 0x29, 0x37)
+    GREY = RGBColor(0x6B, 0x72, 0x80)
+    WHITE = RGBColor(0xFF, 0xFF, 0xFF)
+    LIGHT = RGBColor(0xF1, 0xF5, 0xF9)
+
+    prs = Presentation()
+    prs.slide_width = Emu(12192000)   # 13.333in -> 16:9
+    prs.slide_height = Emu(6858000)   # 7.5in
+    blank = prs.slide_layouts[6]
+    SW, SH = int(prs.slide_width), int(prs.slide_height)
+
+    def title_bar(slide, text):
+        box = slide.shapes.add_textbox(Inches(0.5), Inches(0.3), SW - Inches(1), Inches(0.9))
+        tf = box.text_frame
+        tf.word_wrap = True
+        p = tf.paragraphs[0]
+        p.text = text
+        p.font.size = Pt(24)
+        p.font.bold = True
+        p.font.color.rgb = NAVY
+
+    # ---- Title slide ----
+    s = prs.slides.add_slide(blank)
+    tb = s.shapes.add_textbox(Inches(0.7), Inches(2.4), SW - Inches(1.4), Inches(2))
+    tf = tb.text_frame
+    tf.word_wrap = True
+    p = tf.paragraphs[0]
+    p.text = context.get('title', 'Analytics Report')
+    p.font.size = Pt(44)
+    p.font.bold = True
+    p.font.color.rgb = NAVY
+    p.alignment = PP_ALIGN.CENTER
+    p2 = tf.add_paragraph()
+    p2.text = context.get('subtitle', '')
+    p2.font.size = Pt(20)
+    p2.font.color.rgb = GREY
+    p2.alignment = PP_ALIGN.CENTER
+
+    # ---- Overview metrics slide ----
+    metrics = context.get('metrics') or []
+    if metrics:
+        s = prs.slides.add_slide(blank)
+        title_bar(s, 'Overview')
+        n = len(metrics)
+        gap = Inches(0.3)
+        left0 = Inches(0.5)
+        card_w = int((SW - Inches(1) - gap * (n - 1)) / n)
+        card_h = Inches(2)
+        top = Inches(2.2)
+        for i, (label, value) in enumerate(metrics):
+            x = int(left0 + i * (card_w + gap))
+            shp = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, x, top, card_w, card_h)
+            shp.fill.solid()
+            shp.fill.fore_color.rgb = DARK
+            shp.line.color.rgb = DARK
+            tf = shp.text_frame
+            tf.word_wrap = True
+            pv = tf.paragraphs[0]
+            pv.text = str(value)
+            pv.font.size = Pt(30)
+            pv.font.bold = True
+            pv.font.color.rgb = LIME
+            pv.alignment = PP_ALIGN.CENTER
+            pl = tf.add_paragraph()
+            pl.text = label
+            pl.font.size = Pt(13)
+            pl.font.color.rgb = WHITE
+            pl.alignment = PP_ALIGN.CENTER
+
+    # ---- One slide per table ----
+    for t in context.get('tables', []):
+        headers = t.get('headers') or []
+        rows = (t.get('rows') or [])[:14]
+        if not headers or not rows:
+            continue
+        s = prs.slides.add_slide(blank)
+        title_bar(s, t.get('title', ''))
+        nrows = len(rows) + 1
+        ncols = len(headers)
+        left = Inches(0.5)
+        top = Inches(1.4)
+        width = SW - Inches(1)
+        height = min(SH - Inches(1.7), Inches(0.4) * nrows)
+        table = s.shapes.add_table(nrows, ncols, left, top, width, int(height)).table
+        for c, h in enumerate(headers):
+            cell = table.cell(0, c)
+            cell.fill.solid()
+            cell.fill.fore_color.rgb = NAVY
+            cp = cell.text_frame.paragraphs[0]
+            cp.text = str(h)
+            cp.font.size = Pt(11)
+            cp.font.bold = True
+            cp.font.color.rgb = WHITE
+        for r, row in enumerate(rows, start=1):
+            for c in range(ncols):
+                cell = table.cell(r, c)
+                cell.fill.solid()
+                cell.fill.fore_color.rgb = WHITE if r % 2 else LIGHT
+                cp = cell.text_frame.paragraphs[0]
+                cp.text = str(row[c]) if c < len(row) else ''
+                cp.font.size = Pt(10)
+                cp.font.color.rgb = DARK
+
+    prs.save(output_pptx)
+    print(f"Editable PPTX saved: {output_pptx}")
+    return output_pptx
