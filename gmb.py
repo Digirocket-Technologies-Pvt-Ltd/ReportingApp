@@ -95,3 +95,90 @@ def get_gmb_data(access_token, start_date, end_date):
         return {}
     perf['title'] = loc.get('title', '')
     return perf
+
+
+def gmb_debug(access_token, start_date=None, end_date=None):
+    """Step-by-step diagnostic of the GMB API chain. Returns a dict of raw results
+    so we can see exactly where it breaks (accounts / locations / performance)."""
+    headers = {'Authorization': f'Bearer {access_token}'}
+    out = {'steps': []}
+
+    # Step 1: list accounts
+    try:
+        r = requests.get(f'{ACCT_BASE}/accounts', headers=headers, timeout=30)
+        body = r.json()
+        accounts = body.get('accounts', [])
+        out['steps'].append({
+            'step': '1. List accounts (Account Management API)',
+            'http_status': r.status_code,
+            'account_count': len(accounts),
+            'accounts': [{'name': a.get('name'), 'accountName': a.get('accountName'),
+                          'type': a.get('type'), 'role': a.get('role')} for a in accounts],
+            'error': body.get('error'),
+            'raw': body if r.status_code != 200 else None,
+        })
+    except Exception as e:
+        out['steps'].append({'step': '1. List accounts', 'exception': str(e)})
+        return out
+
+    if not accounts:
+        out['conclusion'] = ("No Business Profile accounts found for this Google account. "
+                             "This account does not manage any Google Business Profile, OR the "
+                             "Account Management API is not enabled / scope not granted.")
+        return out
+
+    # Step 2: list locations for each account
+    found_loc = None
+    for acct in accounts:
+        acc_name = acct.get('name')
+        if not acc_name:
+            continue
+        try:
+            r = requests.get(f'{INFO_BASE}/{acc_name}/locations', headers=headers,
+                             params={'readMask': 'name,title', 'pageSize': 100}, timeout=30)
+            body = r.json()
+            locs = body.get('locations', [])
+            out['steps'].append({
+                'step': f'2. List locations for {acc_name} (Business Information API)',
+                'http_status': r.status_code,
+                'location_count': len(locs),
+                'locations': [{'name': l.get('name'), 'title': l.get('title')} for l in locs],
+                'error': body.get('error'),
+                'raw': body if r.status_code != 200 else None,
+            })
+            if locs and not found_loc:
+                found_loc = locs[0]
+        except Exception as e:
+            out['steps'].append({'step': f'2. List locations for {acc_name}', 'exception': str(e)})
+
+    if not found_loc:
+        out['conclusion'] = ("Accounts exist but NO locations returned. This account can see the "
+                             "Business Profile account but has no managed business locations, OR the "
+                             "Business Information API is not enabled.")
+        return out
+
+    # Step 3: fetch performance for the first location
+    if start_date and end_date:
+        params = [('dailyMetrics', m) for m in _ALL_METRICS]
+        params += [
+            ('dailyRange.start_date.year', start_date.year),
+            ('dailyRange.start_date.month', start_date.month),
+            ('dailyRange.start_date.day', start_date.day),
+            ('dailyRange.end_date.year', end_date.year),
+            ('dailyRange.end_date.month', end_date.month),
+            ('dailyRange.end_date.day', end_date.day),
+        ]
+        try:
+            url = f"{PERF_BASE}/{found_loc.get('name')}:fetchMultiDailyMetricsTimeSeries"
+            r = requests.get(url, headers=headers, params=params, timeout=30)
+            body = r.json()
+            out['steps'].append({
+                'step': f"3. Performance for {found_loc.get('name')} (Performance API)",
+                'http_status': r.status_code,
+                'error': body.get('error'),
+                'raw': body,
+            })
+        except Exception as e:
+            out['steps'].append({'step': '3. Performance', 'exception': str(e)})
+
+    return out

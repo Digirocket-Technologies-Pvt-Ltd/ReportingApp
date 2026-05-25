@@ -3,7 +3,7 @@ from auth import is_authenticated, refresh_token_if_needed, logout_user, get_use
 import db
 from ga4 import get_ga4_properties, get_ga4_data, get_property_name, get_ga4_overview, get_ga4_acquisition, get_ga4_extra
 from gsc import get_gsc_sites, get_gsc_detailed_data, normalize_gsc_property, get_gsc_summary
-from gmb import get_gmb_data
+from gmb import get_gmb_data, gmb_debug
 from gmc import get_gmc_data
 from data_processing import validate_dates
 from google.oauth2.credentials import Credentials
@@ -37,6 +37,30 @@ def init_routes(app):
         if is_authenticated():
             return redirect(url_for('dashboard'))
         return render_template('index.html')
+
+    @app.route('/debug-gmb')
+    def debug_gmb():
+        """Browser-visitable diagnostic: shows exactly where the GMB API chain breaks.
+        Open /debug-gmb after logging in and share the JSON output."""
+        if not is_authenticated():
+            return redirect(url_for('login'))
+        refresh_token_if_needed()
+        token = session.get('access_token')
+        # also report which scopes the token actually has
+        scope_info = {}
+        try:
+            ti = requests.get('https://www.googleapis.com/oauth2/v3/tokeninfo',
+                              params={'access_token': token}, timeout=30).json()
+            scope_info = {'granted_scopes': ti.get('scope', ''), 'email': ti.get('email')}
+        except Exception as e:
+            scope_info = {'error': str(e)}
+        try:
+            start = datetime.now() - timedelta(days=30)
+            end = datetime.now() - timedelta(days=3)
+            result = gmb_debug(token, start, end)
+        except Exception as e:
+            result = {'fatal': str(e)}
+        return jsonify({'token_scopes': scope_info, 'gmb_diagnostic': result})
 
     @app.route('/login')
     def login():
