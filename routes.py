@@ -669,10 +669,34 @@ def init_routes(app):
                                    'rows': [[c['source'], f"{c['newUsers']:,}", c['percentage'], f"{c['sessionsPerUser']:.2f}", c['avgEngagementTime']] for c in chm]})
             if gsc_data:
                 summ = gsc_data.get('summary') or {}
-                tables.append({'title': 'Search Console - Summary',
-                               'headers': ['Clicks', 'Impressions', 'Avg CTR', 'Avg Position'],
-                               'rows': [[f"{summ.get('total_clicks', 0):,}", f"{summ.get('total_impressions', 0):,}",
-                                         summ.get('average_ctr', ''), summ.get('average_position', '')]]})
+                gsc_rows = [['Current', f"{summ.get('total_clicks', 0):,}", f"{summ.get('total_impressions', 0):,}",
+                             str(summ.get('average_ctr', '')), str(summ.get('average_position', ''))]]
+                if ctx.get('compare') and acq_ps and acq_pe:
+                    psum = get_gsc_summary(credentials, ctx['gsc_site'], acq_ps, acq_pe) if ctx.get('gsc_site') else {}
+                    if psum:
+                        cur_clicks = summ.get('total_clicks', 0); cur_impr = summ.get('total_impressions', 0)
+                        cur_ctr = float(str(summ.get('average_ctr', '0')).replace('%', '') or 0)
+                        cur_pos = float(str(summ.get('average_position', '0')) or 0)
+
+                        def _fc2(v):
+                            if v is None:
+                                return '-'
+                            return ('+' if v >= 0 else '') + str(v) + '%'
+
+                        def _pc(c, p):
+                            try:
+                                return round((c - p) / p * 100, 1) if p else None
+                            except (TypeError, ZeroDivisionError):
+                                return None
+                        gsc_rows.append(['Previous', f"{psum.get('clicks', 0):,}", f"{psum.get('impressions', 0):,}",
+                                         f"{psum.get('ctr', 0)}%", str(psum.get('position', 0))])
+                        gsc_rows.append(['% change', _fc2(_pc(cur_clicks, psum.get('clicks', 0))),
+                                         _fc2(_pc(cur_impr, psum.get('impressions', 0))),
+                                         _fc2(_pc(cur_ctr, psum.get('ctr', 0))),
+                                         _fc2(_pc(psum.get('position', 0), cur_pos))])
+                tables.append({'title': 'Search Console - Overview',
+                               'headers': ['Period', 'Clicks', 'Impressions', 'Avg CTR', 'Avg Position'],
+                               'rows': gsc_rows})
                 for key, title in [('daily_metrics', 'Daily Performance'), ('top_queries', 'Top Queries'),
                                    ('top_pages', 'Top Pages'), ('country_data', 'Country'), ('device_data', 'Device')]:
                     blk = gsc_data.get(key) or {}
