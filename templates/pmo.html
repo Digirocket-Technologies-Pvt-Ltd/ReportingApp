@@ -48,9 +48,9 @@
         {% if not db_ready %}
         <div class="section-card bg-white rounded-2xl shadow-lg p-8 text-center">
             <i class="fas fa-database text-teal-500 text-3xl mb-3"></i>
-            <h2 class="text-xl font-bold text-gray-800 mb-2">Supabase abhi connect nahi hua</h2>
-            <p class="text-gray-600">Database setup karne ke baad ye portal kaam karega.<br>
-               (SUPABASE_URL aur SUPABASE_KEY env variables set karo.)</p>
+            <h2 class="text-xl font-bold text-gray-800 mb-2">Supabase not connected yet</h2>
+            <p class="text-gray-600">This portal will work once the database is set up.<br>
+               (Set the SUPABASE_URL and SUPABASE_KEY environment variables.)</p>
         </div>
         {% else %}
 
@@ -133,7 +133,7 @@
                     {% endfor %}
                     {% if clients|length == 0 %}
                     <tr><td colspan="10" class="px-4 py-10 text-center text-gray-400">
-                        Abhi koi client nahi. Upar <b>"Add Client"</b> se pehla client add karo.
+                        No clients yet. Add your first client using <b>"Add Client"</b> above.
                     </td></tr>
                     {% endif %}
                 </tbody>
@@ -266,7 +266,7 @@
             var id = document.getElementById('cId').value;
             var name = document.getElementById('cName').value.trim();
             var err = document.getElementById('cError');
-            if (!name) { err.textContent = 'Client name zaroori hai.'; return; }
+            if (!name) { err.textContent = 'Client name is required.'; return; }
 
             var payload = {
                 name: name,
@@ -304,7 +304,7 @@
         }
 
         async function deleteClient(id, name) {
-            if (!confirm('Delete client "' + name + '"? Ye wapas nahi aayega.')) return;
+            if (!confirm('Delete client "' + name + '"? This cannot be undone.')) return;
             try {
                 var res = await fetch('/pmo/api/clients/' + id + '/delete', { method: 'POST' });
                 var data = await res.json();

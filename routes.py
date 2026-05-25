@@ -357,7 +357,7 @@ def init_routes(app):
 
             # Activity feed: a report was generated
             who = session.get('user_name') or session.get('user_email') or 'Someone'
-            db.log_activity('report_generated', f'{who} ne ek PDF report generate ki',
+            db.log_activity('report_generated', f'{who} generated a PDF report',
                             url_for('display_report'), session.get('user_email'))
 
             # Show the PDF report page (video/voice removed)
@@ -489,7 +489,7 @@ def init_routes(app):
 
             # Activity feed: a report was emailed
             period_txt = f' ({report_period})' if report_period else ''
-            db.log_activity('report_emailed', f'Report email bheji {to_email} ko{period_txt}',
+            db.log_activity('report_emailed', f'Report emailed to {to_email}{period_txt}',
                             url_for('display_report'), session.get('user_email'))
 
             return jsonify({'success': True, 'message': f'Report sent to {to_email}'})
@@ -571,7 +571,7 @@ def init_routes(app):
             if not payload.get('name'):
                 return jsonify({'success': False, 'message': 'Client name is required.'}), 400
             row = db.add_client(payload)
-            db.log_activity('client_added', f"Naya client add hua: {payload['name']}",
+            db.log_activity('client_added', f"New client added: {payload['name']}",
                             url_for('pmo_portal'), session.get('user_email'))
             return jsonify({'success': True, 'client': row})
         except Exception as e:
@@ -587,7 +587,7 @@ def init_routes(app):
             if not payload.get('name'):
                 return jsonify({'success': False, 'message': 'Client name is required.'}), 400
             row = db.update_client(client_id, payload)
-            db.log_activity('client_updated', f"Client update hua: {payload['name']}",
+            db.log_activity('client_updated', f"Client updated: {payload['name']}",
                             url_for('pmo_portal'), session.get('user_email'))
             return jsonify({'success': True, 'client': row})
         except Exception as e:
@@ -602,7 +602,7 @@ def init_routes(app):
             existing = db.get_client(client_id)
             db.delete_client(client_id)
             name = (existing or {}).get('name', 'client')
-            db.log_activity('client_deleted', f'Client delete hua: {name}',
+            db.log_activity('client_deleted', f'Client deleted: {name}',
                             url_for('pmo_portal'), session.get('user_email'))
             return jsonify({'success': True})
         except Exception as e:

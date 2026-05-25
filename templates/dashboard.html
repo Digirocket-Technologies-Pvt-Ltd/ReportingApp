@@ -733,10 +733,10 @@
             var then = new Date(iso).getTime();
             if (isNaN(then)) return '';
             var s = Math.floor((Date.now() - then) / 1000);
-            if (s < 60) return 'abhi';
-            var m = Math.floor(s / 60); if (m < 60) return m + ' min pehle';
-            var h = Math.floor(m / 60); if (h < 24) return h + ' ghante pehle';
-            var d = Math.floor(h / 24); return d + ' din pehle';
+            if (s < 60) return 'just now';
+            var m = Math.floor(s / 60); if (m < 60) return m + (m === 1 ? ' min ago' : ' mins ago');
+            var h = Math.floor(m / 60); if (h < 24) return h + (h === 1 ? ' hour ago' : ' hours ago');
+            var d = Math.floor(h / 24); return d + (d === 1 ? ' day ago' : ' days ago');
         }
 
         function getSeen() { return localStorage.getItem(NOTIF_SEEN_KEY) || ''; }
@@ -763,7 +763,7 @@
             var unreadBg = dark ? '#243018' : '#f0fdf4';
             var list = document.getElementById('notifList');
             if (!items || !items.length) {
-                list.innerHTML = '<div style="padding:34px;text-align:center;color:' + subColor + ';font-size:13px;">Abhi koi activity nahi</div>';
+                list.innerHTML = '<div style="padding:34px;text-align:center;color:' + subColor + ';font-size:13px;">No activity yet</div>';
                 return;
             }
             list.innerHTML = items.map(function (it) {
@@ -799,7 +799,7 @@
                 updateDot(items);
             } catch (e) {
                 document.getElementById('notifList').innerHTML =
-                    '<div class="px-4 py-8 text-center text-red-400 text-sm">Load nahi hua</div>';
+                    '<div class="px-4 py-8 text-center text-red-400 text-sm">Failed to load</div>';
             }
         }
 

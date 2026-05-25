@@ -43,7 +43,7 @@
                 <i class="fas fa-check text-white text-2xl"></i>
             </div>
             <h2 class="text-2xl font-bold text-gray-800 mb-2">🎉 Your PDF Report is Ready!</h2>
-            <p class="text-gray-600 mb-6">Aapki analytics report PDF mein taiyaar hai. Download karo ya niche preview dekho.</p>
+            <p class="text-gray-600 mb-6">Your analytics report PDF is ready. Download it or preview it below.</p>
             <div class="flex flex-wrap gap-3 justify-center">
                 <a href="{{ pdf_url }}" download="analytics-report.pdf"
                    class="inline-flex items-center bg-gradient-to-r from-red-600 to-rose-600 text-white px-8 py-4 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl transition">
@@ -87,7 +87,7 @@
                         <option value="{{ c.id }}" data-email="{{ c.email or '' }}">{{ c.name }}{% if c.email %} ({{ c.email }}){% endif %}</option>
                         {% endfor %}
                     </select>
-                    <p class="text-xs text-gray-400 mt-1">Client choose karoge to portal me auto-log ho jaayega.</p>
+                    <p class="text-xs text-gray-400 mt-1">Choose a client to auto-log this report in the portal.</p>
                 </div>
                 {% endif %}
                 <div>
@@ -167,12 +167,12 @@
         async function sendReportEmail() {
             var to = document.getElementById('emTo').value.trim();
             var status = document.getElementById('emStatus');
-            if (!to) { status.innerHTML = '<span style="color:#dc2626">Client email zaroori hai.</span>'; return; }
+            if (!to) { status.innerHTML = '<span style="color:#dc2626">Client email is required.</span>'; return; }
 
             var btn = document.getElementById('emSendBtn');
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Sending...';
-            status.innerHTML = '<span style="color:#6b7280">Bhej rahe hain...</span>';
+            status.innerHTML = '<span style="color:#6b7280">Sending...</span>';
 
             try {
                 var res = await fetch('/send-report-email', {
