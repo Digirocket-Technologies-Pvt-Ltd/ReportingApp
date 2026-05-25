@@ -741,19 +741,42 @@
 
         function getSeen() { return localStorage.getItem(NOTIF_SEEN_KEY) || ''; }
 
-        // Render items; `seen` = timestamp used to decide read vs unread highlight.
+        function isDark() { return document.body.classList.contains('dark-mode'); }
+
+        // Apply the right background/border to the panel for the current theme.
+        function themePanel() {
+            var dark = isDark();
+            var panel = document.getElementById('notifPanel');
+            panel.style.background = dark ? '#25282b' : '#ffffff';
+            panel.style.borderColor = dark ? '#3a4045' : '#e5e7eb';
+            var head = panel.querySelector('.notif-head');
+            if (head) { head.style.background = dark ? '#25282b' : '#ffffff'; head.style.color = dark ? '#e2e8f0' : '#1f2937'; }
+        }
+
+        // Render items with inline colors so they are ALWAYS readable (no CSS clashes).
         function renderNotif(items, seen) {
+            themePanel();
+            var dark = isDark();
+            var msgColor = dark ? '#e2e8f0' : '#1f2937';
+            var subColor = dark ? '#9aa6b2' : '#9ca3af';
+            var rowBorder = dark ? '#33383c' : '#f1f5f9';
+            var unreadBg = dark ? '#243018' : '#f0fdf4';
             var list = document.getElementById('notifList');
             if (!items || !items.length) {
-                list.innerHTML = '<div class="px-4 py-8 text-center text-gray-400 text-sm">Abhi koi activity nahi</div>';
+                list.innerHTML = '<div style="padding:34px;text-align:center;color:' + subColor + ';font-size:13px;">Abhi koi activity nahi</div>';
                 return;
             }
             list.innerHTML = items.map(function (it) {
                 var unread = (it.created_at || '') > seen;
                 var sub = timeAgo(it.created_at) + (it.user_email ? ' · ' + escapeHtml(it.user_email) : '');
-                return '<a href="' + escapeHtml(it.link || '#') + '" class="notif-item' + (unread ? ' notif-unread' : '') + '">' +
-                    '<div class="notif-msg">' + escapeHtml(it.message) + '</div>' +
-                    '<div class="notif-sub">' + sub + '</div></a>';
+                var bg = unread ? unreadBg : 'transparent';
+                var leftBar = unread ? '3px solid #84cc16' : '3px solid transparent';
+                var weight = unread ? '700' : '400';
+                return '<a href="' + escapeHtml(it.link || '#') +
+                    '" style="display:block;padding:12px 16px;border-bottom:1px solid ' + rowBorder +
+                    ';border-left:' + leftBar + ';background:' + bg + ';text-decoration:none;">' +
+                    '<div style="color:' + msgColor + ';font-size:14px;font-weight:' + weight + ';">' + escapeHtml(it.message) + '</div>' +
+                    '<div style="color:' + subColor + ';font-size:12px;margin-top:4px;">' + sub + '</div></a>';
             }).join('');
         }
 
@@ -786,6 +809,7 @@
             var willOpen = p.classList.contains('hidden');
             p.classList.toggle('hidden');
             if (willOpen) {
+                themePanel();
                 var oldSeen = getSeen();
                 // mark everything seen now -> next open they read as "read", dot clears
                 localStorage.setItem(NOTIF_SEEN_KEY, new Date().toISOString());
