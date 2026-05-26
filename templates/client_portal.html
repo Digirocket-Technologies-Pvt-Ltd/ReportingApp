@@ -139,13 +139,18 @@
         .thread { background: #25282b; }   /* "light black" chat box */
         .bubble.client { background: #1f2a36; color: #f3f4f6; border-color: #2d3a4a; }
         .bubble.admin  { background: #C9F31D; color: #0c1206; }
-        /* Client (dark) bubble's meta is light grey on dark - readable. */
-        .bubble.client .meta { color: #9ca3af; }
-        .bubble.client .meta .who { color: #6b7280; }
-        /* Admin (lime) bubble needs DARK meta + DARK attachments so the
-           text actually shows up against the bright lime background. */
-        .bubble.admin .meta { color: rgba(12,18,6,0.70); }
-        .bubble.admin .meta .who { color: rgba(12,18,6,0.55); }
+        /* Body text: nudge up to medium weight so the words read crisp
+           (default 400 was a bit thin on both dark + lime backgrounds). */
+        .bubble .body { font-weight: 500; }
+        /* Client (dark) bubble's meta is lighter grey now so the date /
+           sender labels are clearly visible against the charcoal bubble. */
+        .bubble.client .meta { color: #d1d5db; font-weight: 500; }
+        .bubble.client .meta .who { color: #9ca3af; }
+        /* Admin (lime) bubble needs DARK meta + DARK attachments. Bumping
+           the dark to ~0.88 alpha so the email + timestamp are clearly
+           readable on the lime background. */
+        .bubble.admin .meta { color: rgba(12,18,6,0.88); font-weight: 500; }
+        .bubble.admin .meta .who { color: rgba(12,18,6,0.78); }
         .bubble.admin .atts .att { background: rgba(12,18,6,0.10); color: #0c1206; }
         .bubble.admin .atts .att:hover { background: rgba(12,18,6,0.20); }
         .bubble.admin .atts .att small { color: rgba(12,18,6,0.55) !important; }
