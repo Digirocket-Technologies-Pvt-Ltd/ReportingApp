@@ -1026,14 +1026,14 @@ def init_routes(app):
         try:
             reports = db.client_reports(client['id'])
             messages = db.client_messages(client['id'])
+            # Hide reports whose files weren't archived (sent before the
+            # storage-upload code was added). They're not openable, so
+            # showing them only clutters the dropdown with red errors.
+            reports = [r for r in reports if r.get('files') and len(r['files']) > 0]
             # "NEW" badge = the client hasn't opened this report yet.
-            # Unviewed reports float to the top of the dropdown, then the
-            # read ones below (newest first within each group).
             for r in reports:
                 r['is_new'] = not r.get('viewed_at')
-            reports.sort(key=lambda r: (not r['is_new'], -(r.get('sent_at') or '').__hash__()))
-            # Simpler stable sort: unviewed group first, viewed group second,
-            # each ordered by sent_at desc.
+            # Unviewed group first, viewed group second; newest first in each.
             unviewed = sorted([r for r in reports if r['is_new']],
                               key=lambda r: r.get('sent_at') or '', reverse=True)
             viewed = sorted([r for r in reports if not r['is_new']],
