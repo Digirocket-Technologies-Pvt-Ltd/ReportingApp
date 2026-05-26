@@ -364,6 +364,172 @@ def update_query_status(query_id, status, responded_by=None):
         return None
 
 
+# ---------------- One chat per client (WhatsApp-style) ----------------
+def _seed_messages_from_query(q):
+    """Synthesise message rows from the legacy report_queries.message /
+    response fields, for queries that don't have any query_messages yet."""
+    out = []
+    if q.get('message') and q['message'] != '(attachment)' and q['message'] != '(chat thread)':
+        out.append({
+            'id': f"seed-{q['id']}-c",
+            'query_id': q['id'],
+            'sender_type': 'client',
+            'sender_email': None,
+            'body': q['message'],
+            'attachments': [],
+            'created_at': q.get('created_at'),
+        })
+    if q.get('response'):
+        out.append({
+            'id': f"seed-{q['id']}-a",
+            'query_id': q['id'],
+            'sender_type': 'admin',
+            'sender_email': q.get('responded_by'),
+            'body': q['response'],
+            'attachments': [],
+            'created_at': q.get('responded_at') or q.get('created_at'),
+        })
+    return out
+
+
+def client_messages(client_id):
+    """One unified timeline (chronological) of every message between this
+    client and the team -- across all of their queries. Includes synthesised
+    bubbles for legacy queries that don't have query_messages rows yet."""
+    if not is_configured() or not client_id:
+        return []
+    try:
+        r = requests.get(_rest(f'report_queries?client_id=eq.{client_id}&select=*&order=created_at.asc'),
+                         headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        queries = r.json()
+        if not queries:
+            return []
+        ids = ','.join(q['id'] for q in queries)
+        r2 = requests.get(_rest(f'query_messages?query_id=in.({ids})&select=*&order=created_at.asc'),
+                          headers=_headers(), timeout=TIMEOUT)
+        r2.raise_for_status()
+        by_query = {}
+        for m in r2.json():
+            by_query.setdefault(m['query_id'], []).append(m)
+        timeline = []
+        for q in queries:
+            if q['id'] in by_query:
+                timeline.extend(by_query[q['id']])
+            else:
+                timeline.extend(_seed_messages_from_query(q))
+        timeline.sort(key=lambda m: m.get('created_at') or '')
+        return timeline
+    except Exception as e:
+        print(f'[db] client_messages failed (non-fatal): {e}')
+        return []
+
+
+def get_or_create_thread_query(client_id, subject='Chat'):
+    """Find the most-recent query for this client (the chat 'container')
+    and reuse it for new messages, or create one if none exists. Returns
+    the query_id to attach new messages to."""
+    if not is_configured() or not client_id:
+        return None
+    try:
+        r = requests.get(_rest(
+            f'report_queries?client_id=eq.{client_id}&select=id&order=created_at.desc&limit=1'),
+            headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        rows = r.json()
+        if rows:
+            return rows[0]['id']
+    except Exception as e:
+        print(f'[db] thread query lookup failed: {e}')
+    try:
+        new_q = add_query({
+            'client_id': client_id,
+            'message': '(chat thread)',
+            'subject': subject,
+            'status': 'open',
+        })
+        return new_q['id'] if new_q else None
+    except Exception as e:
+        print(f'[db] thread query create failed: {e}')
+        return None
+
+
+def list_chats():
+    """One row per CLIENT for the PMO dashboard. Returns a list of
+    {client, messages, status, last_at, last_query_id} sorted by most
+    recent activity first."""
+    if not is_configured():
+        return []
+    try:
+        r = requests.get(_rest(
+            'report_queries?select=*,client:clients(id,name,email)&order=created_at.asc'),
+            headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        queries = r.json()
+        if not queries:
+            return []
+        ids = ','.join(q['id'] for q in queries)
+        r2 = requests.get(_rest(f'query_messages?query_id=in.({ids})&select=*&order=created_at.asc'),
+                          headers=_headers(), timeout=TIMEOUT)
+        r2.raise_for_status()
+        by_query = {}
+        for m in r2.json():
+            by_query.setdefault(m['query_id'], []).append(m)
+
+        by_client = {}
+        for q in queries:
+            client = q.get('client') or {}
+            cid = client.get('id') or q.get('client_id')
+            if not cid:
+                continue
+            chat = by_client.setdefault(cid, {
+                'client': client,
+                'messages': [],
+                'last_query_id': q['id'],
+                'has_resolved': False,
+            })
+            # Track the most-recent query id for this client (queries are
+            # iterated oldest->newest so each assignment beats the previous).
+            chat['last_query_id'] = q['id']
+            if q.get('status') == 'resolved':
+                chat['has_resolved'] = True
+            if q['id'] in by_query:
+                chat['messages'].extend(by_query[q['id']])
+            else:
+                chat['messages'].extend(_seed_messages_from_query(q))
+
+        chats = []
+        for cid, chat in by_client.items():
+            chat['messages'].sort(key=lambda m: m.get('created_at') or '')
+            chat['last_at'] = chat['messages'][-1].get('created_at') if chat['messages'] else None
+            if chat['messages']:
+                last = chat['messages'][-1]
+                if chat['has_resolved'] and last.get('sender_type') == 'admin':
+                    chat['status'] = 'resolved'
+                elif last.get('sender_type') == 'admin':
+                    chat['status'] = 'answered'
+                else:
+                    chat['status'] = 'open'
+            else:
+                chat['status'] = 'open'
+            chats.append(chat)
+        chats.sort(key=lambda c: c.get('last_at') or '', reverse=True)
+        return chats
+    except Exception as e:
+        print(f'[db] list_chats failed (non-fatal): {e}')
+        return []
+
+
+def count_open_chats():
+    """Number of client chats whose latest message is from the client
+    (i.e., awaiting a reply)."""
+    try:
+        return len([c for c in list_chats() if c.get('status') == 'open'])
+    except Exception as e:
+        print(f'[db] count_open_chats failed (non-fatal): {e}')
+        return 0
+
+
 def upload_attachment(query_id, filename, content, content_type=None):
     """Upload a file to the Supabase 'query-attachments' bucket and return
     {name, url, size, type}. Returns None if upload fails or DB not configured.

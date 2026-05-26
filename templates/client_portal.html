@@ -14,13 +14,11 @@
         body { font-family: 'Barlow', sans-serif; }
         .gradient-bg { background: linear-gradient(135deg, #14181a 0%, #0a0d0e 100%); }
         .badge { display:inline-block; padding:3px 12px; border-radius:9999px; font-size:12px; font-weight:700; }
-        .badge-open      { background:#fef3c7; color:#92400e; }
-        .badge-answered  { background:#dbeafe; color:#1e40af; }
-        .badge-resolved  { background:#dcfce7; color:#166534; }
         .badge-sent      { background:#eefccd; color:#3f6212; }
 
-        /* --- WhatsApp-style chat bubbles ----------------------------- */
-        .thread { padding: 10px 4px; max-height: 480px; overflow-y: auto; background: #fafaf9; border-radius: 12px; }
+        /* --- WhatsApp-style single chat thread ----------------------- */
+        .chat-card { background: #fff; border-radius: 18px; box-shadow: 0 4px 12px rgba(0,0,0,0.06); padding: 18px; }
+        .thread { padding: 12px 4px; height: 540px; overflow-y: auto; background: #fafaf9; border-radius: 12px; }
         .row    { display: flex; margin-bottom: 8px; }
         .row.right { justify-content: flex-end; }
         .row.left  { justify-content: flex-start; }
@@ -32,9 +30,8 @@
         .bubble.admin  { background: #eaf7c1; color: #1f2937; }
         .bubble .body  { white-space: pre-wrap; font-size: 14px; line-height: 1.5; }
         .bubble .meta  { font-size: 11px; color: #6b7280; margin-top: 4px; text-align: right; }
-        .bubble .meta  .who { color: #9ca3af; margin-right: 6px; }
+        .bubble .meta .who { color: #9ca3af; margin-right: 6px; }
 
-        /* attachment chips */
         .atts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
         .att  { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px;
                 background: rgba(0,0,0,0.04); border-radius: 8px; font-size: 12px;
@@ -43,8 +40,7 @@
         .att img { width: 80px; height: 80px; object-fit: cover; border-radius: 6px; display: block; }
         .att.image { padding: 0; background: transparent; }
 
-        /* compose bar (text + plus + send) */
-        .compose { display: flex; align-items: center; gap: 8px; margin-top: 10px;
+        .compose { display: flex; align-items: center; gap: 8px; margin-top: 12px;
                    background: #ffffff; border: 1px solid #e5e7eb; border-radius: 9999px; padding: 6px 8px; }
         .compose textarea { flex: 1; border: 0; outline: 0; resize: none; padding: 6px 10px;
                             font-size: 14px; font-family: inherit; min-height: 24px; max-height: 120px; }
@@ -55,13 +51,13 @@
         .compose .send-btn { background: #C9F31D; color: #0c1206; }
         .compose .send-btn:hover { background: #b6dd1a; }
         .files-pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px;
-                      background: #eef2ff; color: #3730a3; border-radius: 9999px; font-size: 12px; margin-right: 6px; margin-top: 6px; }
-        .files-pill button { background: transparent; border: 0; color: #6366f1; cursor: pointer; font-weight: 700; }
+                      background: #eef2ff; color: #3730a3; border-radius: 9999px;
+                      font-size: 12px; margin-right: 6px; margin-top: 6px; }
+        .empty-hint { text-align: center; color: #9ca3af; padding: 60px 20px; font-size: 14px; }
     </style>
 </head>
 <body class="bg-gradient-to-br from-slate-50 via-blue-50 to-teal-50 min-h-screen">
 
-    <!-- ---------- Header ---------- -->
     <header class="gradient-bg shadow-2xl">
         <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between items-center h-20">
@@ -83,10 +79,9 @@
 
     <main class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
-        <!-- Flash messages -->
-        {% with messages = get_flashed_messages(with_categories=true) %}
-          {% if messages %}
-            {% for category, message in messages %}
+        {% with msgs = get_flashed_messages(with_categories=true) %}
+          {% if msgs %}
+            {% for category, message in msgs %}
             <div class="mb-4 rounded-xl p-4 text-sm font-medium
                 {% if category == 'success' %}bg-green-50 text-green-700 border border-green-200
                 {% elif category == 'error' %}bg-red-50 text-red-700 border border-red-200
@@ -120,7 +115,6 @@
 
         {% else %}
 
-        <!-- Helpers used by the rest of the page -->
         {% macro fmt_size(b) -%}
           {%- if not b -%}{%- elif b < 1024 -%}{{ b }} B
           {%- elif b < 1048576 -%}{{ (b / 1024)|round(1) }} KB
@@ -131,13 +125,13 @@
         {%- endmacro %}
 
         <!-- Welcome -->
-        <div class="mb-8">
+        <div class="mb-6">
             <h2 class="text-3xl font-bold text-gray-800">Welcome, {{ client.name }} 👋</h2>
-            <p class="text-gray-500">Here are the reports we've shared with you, and your conversations with our team.</p>
+            <p class="text-gray-500">Here are the reports we've shared with you, and your chat with our team.</p>
         </div>
 
         <!-- Your Reports -->
-        <section class="bg-white rounded-2xl shadow-lg p-6 mb-8">
+        <section class="bg-white rounded-2xl shadow-lg p-6 mb-6">
             <h3 class="text-lg font-bold text-gray-800 mb-4"><i class="fas fa-file-lines text-teal-600 mr-2"></i>Your Reports</h3>
             {% if reports %}
             <div class="overflow-x-auto">
@@ -148,7 +142,6 @@
                             <th class="px-3 py-2">Received On</th>
                             <th class="px-3 py-2">Subject</th>
                             <th class="px-3 py-2">Status</th>
-                            <th class="px-3 py-2 text-right">Action</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -158,13 +151,6 @@
                             <td class="px-3 py-3 text-gray-600">{{ (r.sent_at or '')[:10] or '—' }}</td>
                             <td class="px-3 py-3 text-gray-600">{{ r.subject or '—' }}</td>
                             <td class="px-3 py-3"><span class="badge badge-sent">{{ r.status or 'sent' }}</span></td>
-                            <td class="px-3 py-3 text-right">
-                                <button type="button"
-                                    onclick="askAbout('{{ r.id }}', '{{ (r.report_period or '')|e }}')"
-                                    class="text-teal-600 hover:underline text-sm font-semibold">
-                                    <i class="fas fa-circle-question mr-1"></i>Ask about this
-                                </button>
-                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -175,154 +161,67 @@
             {% endif %}
         </section>
 
-        <!-- ============ START A NEW CONVERSATION ============ -->
-        <section id="newQuery" class="bg-white rounded-2xl shadow-lg p-6 mb-8">
-            <h3 class="text-lg font-bold text-gray-800 mb-2"><i class="fas fa-comment-medical text-teal-600 mr-2"></i>Start a new conversation</h3>
-            <p class="text-gray-500 text-sm mb-4">Have a doubt about a report? Attach files (optional) and send — our team will reply right here.</p>
-            <form method="POST" action="{{ url_for('client_raise_query') }}" enctype="multipart/form-data" class="space-y-3 chat-form" data-allow-empty-text="files">
-                <input type="hidden" name="report_period" id="report_period">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-xs font-semibold text-gray-600 mb-1">About which report? <span class="text-gray-400 font-normal">(optional)</span></label>
-                        <select name="report_log_id" id="report_log_id" onchange="syncPeriod()"
-                                class="w-full rounded-xl border border-gray-300 px-4 py-2 outline-none focus:border-teal-500 text-sm">
-                            <option value="" data-period="">General (not about a specific report)</option>
-                            {% for r in reports %}
-                            <option value="{{ r.id }}" data-period="{{ (r.report_period or '')|e }}">
-                                {{ r.report_period or 'Report' }}{% if r.sent_at %} — sent {{ (r.sent_at or '')[:10] }}{% endif %}
-                            </option>
-                            {% endfor %}
-                        </select>
+        <!-- ============ THE ONE CHAT ============ -->
+        <section class="chat-card">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-comments text-teal-600 mr-2"></i>Chat with our team</h3>
+                <span class="text-xs text-gray-400">Reply right here — we'll see your messages instantly.</span>
+            </div>
+
+            <div class="thread" id="mainThread">
+                {% if messages %}
+                    {% for m in messages %}
+                        {% set side = 'right' if m.sender_type == 'client' else 'left' %}
+                        <div class="row {{ side }}">
+                            <div class="bubble {{ side }} {{ m.sender_type }}">
+                                {% if m.body %}<div class="body">{{ m.body }}</div>{% endif %}
+                                {% if m.attachments %}
+                                <div class="atts">
+                                    {% for a in m.attachments %}
+                                        {% if a.type and a.type.startswith('image/') %}
+                                        <a href="{{ a.url }}" target="_blank" class="att image" title="{{ a.name }}">
+                                            <img src="{{ a.url }}" alt="{{ a.name }}">
+                                        </a>
+                                        {% else %}
+                                        <a href="{{ a.url }}" target="_blank" class="att" title="{{ a.name }}">
+                                            <i class="fas fa-paperclip"></i><span>{{ a.name }}</span>
+                                            <small style="color:#9ca3af;">{{ fmt_size(a.size) }}</small>
+                                        </a>
+                                        {% endif %}
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
+                                <div class="meta">
+                                    {% if m.sender_type == 'admin' %}<span class="who">DigiRocket</span>{% endif %}
+                                    {{ fmt_time(m.created_at) }}
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="empty-hint">
+                        <i class="fas fa-comments text-3xl mb-2 text-gray-300"></i><br>
+                        No messages yet — say hello below and our team will get back to you.
                     </div>
-                    <div>
-                        <label class="block text-xs font-semibold text-gray-600 mb-1">Subject <span class="text-gray-400 font-normal">(optional)</span></label>
-                        <input type="text" name="subject" placeholder="Short title"
-                               class="w-full rounded-xl border border-gray-300 px-4 py-2 outline-none focus:border-teal-500 text-sm">
-                    </div>
-                </div>
+                {% endif %}
+            </div>
+
+            <form method="POST" action="{{ url_for('client_send_message') }}"
+                  enctype="multipart/form-data" class="chat-form">
                 <div class="files-list"></div>
                 <div class="compose">
                     <input type="file" name="files" multiple hidden class="files-input">
                     <button type="button" class="icon-btn files-btn" title="Attach files"><i class="fas fa-plus"></i></button>
-                    <textarea name="message" rows="1" placeholder="Type your message... (optional if you attach a file)" class="autosize"></textarea>
+                    <textarea name="message" rows="1" placeholder="Type a message... (optional if you attach a file)" class="autosize"></textarea>
                     <button type="submit" class="icon-btn send-btn" title="Send"><i class="fas fa-paper-plane"></i></button>
                 </div>
             </form>
-        </section>
-
-        <!-- ============ EXISTING CONVERSATIONS (chat threads) ============ -->
-        <section>
-            <h3 class="text-lg font-bold text-gray-800 mb-4"><i class="fas fa-comments text-teal-600 mr-2"></i>Your Conversations</h3>
-            {% if queries %}
-            <div class="space-y-5">
-                {% for q in queries %}
-                <div class="bg-white rounded-2xl shadow-lg p-5">
-                    <!-- Thread header -->
-                    <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-                        <div>
-                            <span class="font-bold text-gray-800">{{ q.subject or 'Conversation' }}</span>
-                            {% if q.report_period %}<span class="text-gray-400 text-sm ml-1">• {{ q.report_period }}</span>{% endif %}
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs text-gray-400">{{ (q.created_at or '')[:10] }}</span>
-                            {% if q.status == 'resolved' %}<span class="badge badge-resolved">Resolved</span>
-                            {% elif q.status == 'answered' %}<span class="badge badge-answered">Answered</span>
-                            {% else %}<span class="badge badge-open">Open</span>{% endif %}
-                        </div>
-                    </div>
-
-                    <!-- Thread (WhatsApp-style: client right, admin left) -->
-                    <div class="thread">
-                        {# Legacy fallback: if no messages rows yet but the seed exists #}
-                        {% set has_thread = q.messages and q.messages|length > 0 %}
-                        {% if not has_thread and q.message and q.message != '(attachment)' %}
-                            <div class="row right">
-                                <div class="bubble right client">
-                                    <div class="body">{{ q.message }}</div>
-                                    <div class="meta">{{ fmt_time(q.created_at) }}</div>
-                                </div>
-                            </div>
-                            {% if q.response %}
-                            <div class="row left">
-                                <div class="bubble left admin">
-                                    <div class="body">{{ q.response }}</div>
-                                    <div class="meta"><span class="who">DigiRocket</span>{{ fmt_time(q.responded_at) }}</div>
-                                </div>
-                            </div>
-                            {% endif %}
-                        {% endif %}
-
-                        {% for m in q.messages %}
-                            {% set side = 'right' if m.sender_type == 'client' else 'left' %}
-                            <div class="row {{ side }}">
-                                <div class="bubble {{ side }} {{ m.sender_type }}">
-                                    {% if m.body %}<div class="body">{{ m.body }}</div>{% endif %}
-                                    {% if m.attachments %}
-                                    <div class="atts">
-                                        {% for a in m.attachments %}
-                                            {% if a.type and a.type.startswith('image/') %}
-                                            <a href="{{ a.url }}" target="_blank" class="att image" title="{{ a.name }}">
-                                                <img src="{{ a.url }}" alt="{{ a.name }}">
-                                            </a>
-                                            {% else %}
-                                            <a href="{{ a.url }}" target="_blank" class="att" title="{{ a.name }}">
-                                                <i class="fas fa-paperclip"></i><span>{{ a.name }}</span>
-                                                <small style="color:#9ca3af;">{{ fmt_size(a.size) }}</small>
-                                            </a>
-                                            {% endif %}
-                                        {% endfor %}
-                                    </div>
-                                    {% endif %}
-                                    <div class="meta">
-                                        {% if m.sender_type == 'admin' %}<span class="who">DigiRocket</span>{% endif %}
-                                        {{ fmt_time(m.created_at) }}
-                                    </div>
-                                </div>
-                            </div>
-                        {% endfor %}
-                    </div>
-
-                    <!-- Compose / follow-up -->
-                    <form method="POST" action="{{ url_for('client_send_message', query_id=q.id) }}"
-                          enctype="multipart/form-data" class="chat-form">
-                        <div class="files-list"></div>
-                        <div class="compose">
-                            <input type="file" name="files" multiple hidden class="files-input">
-                            <button type="button" class="icon-btn files-btn" title="Attach files"><i class="fas fa-plus"></i></button>
-                            <textarea name="message" rows="1" placeholder="Type a message... (optional if you attach a file)" class="autosize"></textarea>
-                            <button type="submit" class="icon-btn send-btn" title="Send"><i class="fas fa-paper-plane"></i></button>
-                        </div>
-                    </form>
-                </div>
-                {% endfor %}
-            </div>
-            {% else %}
-            <p class="text-gray-500 text-sm bg-white rounded-2xl shadow-lg p-6">You haven't started any conversations yet. Use the box above to ask your first question.</p>
-            {% endif %}
         </section>
 
         {% endif %}
     </main>
 
     <script>
-        // Keep the hidden report_period in sync with the selected report.
-        function syncPeriod() {
-            var sel = document.getElementById('report_log_id');
-            if (!sel) return;
-            var opt = sel.options[sel.selectedIndex];
-            document.getElementById('report_period').value = opt ? (opt.getAttribute('data-period') || '') : '';
-        }
-        // "Ask about this" button on a report row: preselect + scroll to the new-query box.
-        function askAbout(reportId, period) {
-            var sel = document.getElementById('report_log_id');
-            if (sel) { sel.value = reportId; syncPeriod(); }
-            var sec = document.getElementById('newQuery');
-            if (sec) sec.scrollIntoView({ behavior: 'smooth' });
-            var ta = sec ? sec.querySelector('textarea[name="message"]') : null;
-            if (ta) setTimeout(function () { ta.focus(); }, 300);
-        }
-
-        // Wire up every chat-form: plus button -> file picker, show selected files.
         document.querySelectorAll('form.chat-form').forEach(function (form) {
             var input = form.querySelector('.files-input');
             var btn   = form.querySelector('.files-btn');
@@ -338,7 +237,6 @@
                     list.appendChild(span);
                 });
             });
-            // Block submit only when there's NOTHING (no text AND no files).
             form.addEventListener('submit', function (e) {
                 var ta = form.querySelector('textarea[name="message"]');
                 var hasText = ta && ta.value.trim().length > 0;
@@ -350,16 +248,23 @@
             });
         });
 
-        // Auto-grow textareas as the user types.
         document.querySelectorAll('textarea.autosize').forEach(function (ta) {
             ta.addEventListener('input', function () {
                 ta.style.height = 'auto';
                 ta.style.height = Math.min(120, ta.scrollHeight) + 'px';
             });
+            // Send on Enter (Shift+Enter for newline) - same as WhatsApp.
+            ta.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    ta.form.requestSubmit ? ta.form.requestSubmit() : ta.form.submit();
+                }
+            });
         });
 
-        // Scroll each thread to the bottom on load (newest messages visible).
-        document.querySelectorAll('.thread').forEach(function (el) { el.scrollTop = el.scrollHeight; });
+        // Scroll chat to bottom on load so newest is visible.
+        var t = document.getElementById('mainThread');
+        if (t) t.scrollTop = t.scrollHeight;
     </script>
 </body>
 </html>

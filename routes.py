@@ -987,45 +987,39 @@ def init_routes(app):
 
     @app.route('/portal')
     def client_portal():
-        """A client's own portal: reports received + chat threads with queries."""
+        """A client's own portal: reports + ONE unified chat with the team."""
         if not is_authenticated() or not refresh_token_if_needed():
             flash('Please log in to access your portal.', 'warning')
             return redirect(url_for('login'))
 
         if not db.is_configured():
             return render_template('client_portal.html', db_ready=False,
-                                   client=None, reports=[], queries=[],
+                                   client=None, reports=[], messages=[],
                                    session_info=get_session_info())
 
         client = _current_client()
         if not client:
-            # Admins manage everything from the PMO side; send them there.
             if is_pmo_admin():
                 return redirect(url_for('pmo_portal'))
-            # A logged-in Google user whose email isn't linked to any client.
             return render_template('client_portal.html', db_ready=True,
-                                   client=None, reports=[], queries=[],
+                                   client=None, reports=[], messages=[],
                                    session_info=get_session_info())
 
         try:
             reports = db.client_reports(client['id'])
-            queries = db.client_queries(client['id'])
-            # Attach the full message thread to every query so the template
-            # can render WhatsApp-style bubbles in one render pass.
-            msg_map = db.messages_by_query([q['id'] for q in queries])
-            for q in queries:
-                q['messages'] = msg_map.get(q['id'], [])
+            messages = db.client_messages(client['id'])
         except Exception as e:
             print(f'Error loading client portal: {e}')
-            reports, queries = [], []
+            reports, messages = [], []
 
         return render_template('client_portal.html', db_ready=True,
-                               client=client, reports=reports, queries=queries,
+                               client=client, reports=reports, messages=messages,
                                session_info=get_session_info())
 
-    @app.route('/portal/query', methods=['POST'])
-    def client_raise_query():
-        """A client starts a new query thread (text and/or files)."""
+    @app.route('/portal/message', methods=['POST'])
+    def client_send_message():
+        """Single endpoint: client sends a message (text and/or files) to
+        the team. Auto-finds or creates the chat thread for this client."""
         if not is_authenticated():
             return redirect(url_for('login'))
         client = _current_client()
@@ -1034,79 +1028,23 @@ def init_routes(app):
             return redirect(url_for('client_portal'))
 
         body = (request.form.get('message') or '').strip()
-        subject = (request.form.get('subject') or '').strip() or None
-        report_log_id = (request.form.get('report_log_id') or '').strip() or None
-        report_period = (request.form.get('report_period') or '').strip() or None
         files = request.files.getlist('files')
         has_files = any(f and f.filename for f in files)
-
         if not body and not has_files:
             flash('Type a message or attach a file before sending.', 'warning')
             return redirect(url_for('client_portal'))
 
         try:
-            # 1) Create the query row. report_queries.message is NOT NULL, so
-            #    we mirror the body there (empty string for files-only) for
-            #    list-view previews. The canonical thread lives in query_messages.
-            new_q = db.add_query({
-                'client_id': client['id'],
-                'report_log_id': report_log_id,
-                'report_period': report_period,
-                'subject': subject,
-                'message': body or '(attachment)',
-                'status': 'open',
-            })
-            if not new_q:
-                raise RuntimeError('add_query returned no row')
-            qid = new_q['id']
-
-            # 2) Upload any attachments, then 3) insert the first message.
+            qid = db.get_or_create_thread_query(client['id'], subject='Chat')
+            if not qid:
+                raise RuntimeError('Could not open chat thread')
             attachments = _process_uploads(qid, files) if has_files else []
             db.add_message(qid, 'client', session.get('user_email'),
                            body, attachments)
-
+            # Client wrote -> chat is "open" (awaiting reply).
+            db.update_query_status(qid, 'open')
             who = client.get('name') or client.get('email') or 'A client'
-            db.log_activity('query_raised',
-                            f"New query from {who}" + (f' ({report_period})' if report_period else ''),
-                            url_for('pmo_queries'), session.get('user_email'))
-            flash('Your message has been sent. Our team will get back to you soon.', 'success')
-        except Exception as e:
-            print(f'[portal] raise query failed: {e}')
-            flash(f'Could not send your message: {e}', 'error')
-        return redirect(url_for('client_portal'))
-
-    @app.route('/portal/query/<query_id>/message', methods=['POST'])
-    def client_send_message(query_id):
-        """A client adds a follow-up message (text and/or files) to one of
-        their existing query threads."""
-        if not is_authenticated():
-            return redirect(url_for('login'))
-        client = _current_client()
-        if not client:
-            flash('Your account is not linked to a client profile.', 'warning')
-            return redirect(url_for('client_portal'))
-
-        # Ownership check: the query must belong to this client.
-        q = db.get_query(query_id)
-        if not q or q.get('client_id') != client['id']:
-            flash('Query not found.', 'error')
-            return redirect(url_for('client_portal'))
-
-        body = (request.form.get('message') or '').strip()
-        files = request.files.getlist('files')
-        has_files = any(f and f.filename for f in files)
-        if not body and not has_files:
-            flash('Type a message or attach a file before sending.', 'warning')
-            return redirect(url_for('client_portal'))
-
-        try:
-            attachments = _process_uploads(query_id, files) if has_files else []
-            db.add_message(query_id, 'client', session.get('user_email'),
-                           body, attachments)
-            # Client wrote back -> reopen so the PMO team notices.
-            db.update_query_status(query_id, 'open')
-            db.log_activity('query_message',
-                            f"{(client.get('name') or client.get('email') or 'Client')} replied on a query",
+            db.log_activity('query_message', f'New message from {who}',
                             url_for('pmo_queries'), session.get('user_email'))
             flash('Message sent.', 'success')
         except Exception as e:
@@ -1114,35 +1052,38 @@ def init_routes(app):
             flash(f'Could not send your message: {e}', 'error')
         return redirect(url_for('client_portal'))
 
+    # Legacy aliases so older forms / bookmarks still work.
+    @app.route('/portal/query', methods=['POST'])
+    def client_raise_query():
+        return client_send_message()
+
     # ============================================================
     #  PMO QUERIES DASHBOARD  (admins view & answer client queries)
     # ============================================================
     @app.route('/pmo/queries')
     def pmo_queries():
+        """One chat card PER CLIENT, with their full unified message timeline."""
         if not is_authenticated() or not refresh_token_if_needed():
             flash('Please log in.', 'warning')
             return redirect(url_for('login'))
         if not is_pmo_admin():
             return render_template('pmo_denied.html', email=session.get('user_email')), 403
         if not db.is_configured():
-            return render_template('pmo_queries.html', db_ready=False, queries=[],
+            return render_template('pmo_queries.html', db_ready=False, chats=[],
                                    session_info=get_session_info())
         try:
-            queries = db.list_queries()
-            msg_map = db.messages_by_query([q['id'] for q in queries])
-            for q in queries:
-                q['messages'] = msg_map.get(q['id'], [])
+            chats = db.list_chats()
         except Exception as e:
             print(f'Error loading queries: {e}')
-            return render_template('pmo_queries.html', db_ready=True, queries=[],
+            return render_template('pmo_queries.html', db_ready=True, chats=[],
                                    load_error=str(e), session_info=get_session_info())
-        return render_template('pmo_queries.html', db_ready=True, queries=queries,
+        return render_template('pmo_queries.html', db_ready=True, chats=chats,
                                session_info=get_session_info())
 
-    @app.route('/pmo/queries/<query_id>/message', methods=['POST'])
-    def pmo_send_message(query_id):
-        """Admin replies in a query thread (text and/or files) and optionally
-        updates the status. Replaces the older /respond endpoint."""
+    @app.route('/pmo/chats/<client_id>/message', methods=['POST'])
+    def pmo_send_chat_message(client_id):
+        """Admin sends a message into one client's chat (text and/or files),
+        optionally updates the status (Answered / Resolved)."""
         if not is_pmo_admin():
             return render_template('pmo_denied.html', email=session.get('user_email')), 403
 
@@ -1157,22 +1098,33 @@ def init_routes(app):
             return redirect(url_for('pmo_queries'))
 
         try:
-            attachments = _process_uploads(query_id, files) if has_files else []
-            db.add_message(query_id, 'admin', session.get('user_email'),
+            qid = db.get_or_create_thread_query(client_id, subject='Chat')
+            if not qid:
+                raise RuntimeError('Could not open chat thread for client')
+            attachments = _process_uploads(qid, files) if has_files else []
+            db.add_message(qid, 'admin', session.get('user_email'),
                            body, attachments)
-            # Keep the legacy report_queries fields in sync (preview + status).
-            db.respond_query(query_id, body or '(attachment)', status,
+            db.respond_query(qid, body or '(attachment)', status,
                              session.get('user_email'))
             db.log_activity('query_answered', 'A client query was answered',
                             url_for('client_portal'), session.get('user_email'))
-            flash('Message sent — it is now visible on the client portal.', 'success')
+            flash('Message sent — visible on the client portal.', 'success')
         except Exception as e:
-            print(f'[pmo] send message failed: {e}')
+            print(f'[pmo] send chat message failed: {e}')
             flash(f'Could not send the message: {e}', 'error')
         return redirect(url_for('pmo_queries'))
 
-    # Legacy alias: older versions of the template posted to /respond. Kept
-    # so existing forms / bookmarks still work; just delegates.
+    # Legacy aliases: older templates / bookmarks posted to the per-query
+    # endpoints. Forward them to the per-client endpoint so nothing breaks.
+    @app.route('/pmo/queries/<query_id>/message', methods=['POST'])
+    def pmo_send_message(query_id):
+        q = db.get_query(query_id)
+        cid = q.get('client_id') if q else None
+        if not cid:
+            flash('Query not found.', 'error')
+            return redirect(url_for('pmo_queries'))
+        return pmo_send_chat_message(cid)
+
     @app.route('/pmo/queries/<query_id>/respond', methods=['POST'])
     def pmo_respond_query(query_id):
         return pmo_send_message(query_id)
@@ -1199,7 +1151,7 @@ def init_routes(app):
             latest = db.latest_reports()
             for c in clients:
                 c['last_report'] = latest.get(c['id'])
-            open_queries = db.count_open_queries()
+            open_queries = db.count_open_chats()
         except Exception as e:
             print(f'Error loading PMO portal: {e}')
             return render_template('pmo.html', clients=[], db_ready=True,
