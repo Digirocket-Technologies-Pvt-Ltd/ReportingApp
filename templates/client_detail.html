@@ -103,7 +103,7 @@
                 {% if client.ga4_property_id and client.gsc_property_id %}
                 <button type="button" id="fullReportBtn" onclick="openFullReport()"
                         class="inline-flex items-center bg-teal-600 px-5 py-2.5 rounded-xl font-bold shadow hover:opacity-90 text-sm">
-                    <i class="fas fa-up-right-from-square mr-2"></i>View Full Report
+                    <i class="fas fa-up-right-from-square mr-2"></i>Open in Dashboard
                 </button>
                 {% endif %}
             </div>
@@ -267,12 +267,11 @@
         }
 
         function openFullReport() {
-            var start = document.getElementById('startDate').value;
-            var end = document.getElementById('endDate').value;
-            var url = '/view_combined_data?ga4_property=' + encodeURIComponent(GA4_ID) +
-                '&gsc_site=' + encodeURIComponent(GSC_URL) +
-                '&start_date=' + encodeURIComponent(start) + '&end_date=' + encodeURIComponent(end);
-            window.location = url;
+            // Send the admin to the main Analytics Dashboard so they can
+            // pick the GA4 property, GSC site, date range, and any extra
+            // toggles themselves -- instead of jumping straight to the
+            // already-rendered Analytics Intelligence report page.
+            window.location = '/dashboard';
         }
 
         // "Client since" -> months count
