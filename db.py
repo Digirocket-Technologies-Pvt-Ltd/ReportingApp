@@ -93,8 +93,9 @@ def delete_client(client_id):
 
 
 # ---------------- Report logs ----------------
-def log_report(client_id, report_period, sent_to, subject, status='sent'):
-    """Record that a report email was sent. Never raises - logging is best-effort."""
+def log_report(client_id, report_period, sent_to, subject, status='sent', files=None):
+    """Record that a report email was sent. Optionally store the files (list of
+    {name, url, size, type}) so the client portal can open them. Never raises."""
     if not is_configured() or not client_id:
         return None
     try:
@@ -105,6 +106,8 @@ def log_report(client_id, report_period, sent_to, subject, status='sent'):
             'subject': subject,
             'status': status,
         }
+        if files:
+            entry['files'] = files
         r = requests.post(_rest('report_logs'),
                           headers=_headers({'Prefer': 'return=representation'}),
                           json=entry, timeout=TIMEOUT)
@@ -113,6 +116,27 @@ def log_report(client_id, report_period, sent_to, subject, status='sent'):
         return rows[0] if rows else None
     except Exception as e:
         print(f'[db] log_report failed (non-fatal): {e}')
+        return None
+
+
+def mark_report_viewed(report_id, client_id=None):
+    """Stamp viewed_at on a report so the client portal can demote it
+    below unread reports. Optional client_id filter for ownership safety."""
+    if not is_configured() or not report_id:
+        return None
+    try:
+        filt = f'id=eq.{report_id}'
+        if client_id:
+            filt += f'&client_id=eq.{client_id}'
+        r = requests.patch(_rest(f'report_logs?{filt}'),
+                           headers=_headers({'Prefer': 'return=representation'}),
+                           json={'viewed_at': datetime.now(timezone.utc).isoformat()},
+                           timeout=TIMEOUT)
+        r.raise_for_status()
+        rows = r.json()
+        return rows[0] if rows else None
+    except Exception as e:
+        print(f'[db] mark_report_viewed failed (non-fatal): {e}')
         return None
 
 
@@ -612,3 +636,9 @@ def upload_attachment(query_id, filename, content, content_type=None):
         'size': len(content),
         'type': content_type or '',
     }
+
+
+def upload_report_file(client_id, filename, content, content_type=None):
+    """Upload a report file (PDF/PPT/etc) so the client can open it from
+    the portal. Stored under reports/<client_id>/... in the same bucket."""
+    return upload_attachment(f'reports/{client_id}', filename, content, content_type)

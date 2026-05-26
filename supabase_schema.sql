@@ -30,6 +30,11 @@ create table if not exists report_logs (
 
 create index if not exists idx_report_logs_client on report_logs(client_id);
 
+-- Columns added later for the Client Portal so each report shows up as a
+-- clickable card with the actual file(s) attached and a "viewed" state.
+alter table report_logs add column if not exists files     jsonb;
+alter table report_logs add column if not exists viewed_at timestamptz;
+
 -- 3) Activity feed (powers the notification bell) -----------------
 create table if not exists activities (
     id          uuid primary key default gen_random_uuid(),

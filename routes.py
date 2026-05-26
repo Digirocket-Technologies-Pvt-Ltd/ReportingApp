@@ -888,22 +888,29 @@ def init_routes(app):
                 return jsonify({'success': False, 'message': 'Client email is required.'}), 400
 
             # Attachments are now MANUAL: only attach the report PDF if the user
-            # ticked the box; plus any files they added.
+            # ticked the box; plus any files they added. We also keep the
+            # content_type alongside the bytes so we can re-upload to Supabase
+            # Storage afterwards (so the client portal can open the same file).
             include_report = (form.get('include_report') or '').lower() in ('1', 'true', 'yes', 'on')
             attachments = []
+            file_records = []   # list of (bytes, filename, content_type)
             if include_report:
                 pdf_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                         'static', 'images', 'analytics_report.pdf')
                 if not os.path.exists(pdf_path):
                     return jsonify({'success': False, 'message': 'No report found. Generate one first.'}), 404
                 with open(pdf_path, 'rb') as f:
-                    attachments.append((f.read(), 'analytics_report.pdf'))
+                    b = f.read()
+                attachments.append((b, 'analytics_report.pdf'))
+                file_records.append((b, 'analytics_report.pdf', 'application/pdf'))
 
             for up in request.files.getlist('extra_files'):
                 if up and up.filename:
                     b = up.read()
                     if b:
-                        attachments.append((b, secure_filename(up.filename) or 'attachment'))
+                        safe = secure_filename(up.filename) or 'attachment'
+                        attachments.append((b, safe))
+                        file_records.append((b, safe, up.content_type or 'application/octet-stream'))
 
             if not attachments:
                 return jsonify({'success': False, 'message': 'Please attach at least one file (or tick "Include the report PDF").'}), 400
@@ -922,9 +929,20 @@ def init_routes(app):
             from email_sender import send_email_with_attachments
             send_email_with_attachments(to_email, final_subject, message, attachments, reply_to=reply_to)
 
-            # Best-effort: log this send against the chosen client in the PMO portal.
+            # Best-effort: upload each file to Supabase Storage so the client
+            # portal can open it, then log this send against the chosen client.
             if client_id:
-                db.log_report(client_id, report_period, to_email, subject or 'Your Analytics Report')
+                uploaded_files = []
+                for b, fname, ctype in file_records:
+                    try:
+                        meta = db.upload_report_file(client_id, fname, b, ctype)
+                        if meta:
+                            uploaded_files.append(meta)
+                    except Exception as up_err:
+                        print(f'[send-report-email] upload {fname!r} failed: {up_err}')
+                db.log_report(client_id, report_period, to_email,
+                              subject or 'Your Analytics Report',
+                              files=uploaded_files or None)
 
             # Activity feed: a report was emailed
             period_txt = f' ({report_period})' if report_period else ''
@@ -1008,16 +1026,19 @@ def init_routes(app):
         try:
             reports = db.client_reports(client['id'])
             messages = db.client_messages(client['id'])
-            # Flag reports received in the last 7 days as NEW so the
-            # client portal can show a clear "new report arrived" badge.
-            cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+            # "NEW" badge = the client hasn't opened this report yet.
+            # Unviewed reports float to the top of the dropdown, then the
+            # read ones below (newest first within each group).
             for r in reports:
-                sent = r.get('sent_at')
-                try:
-                    dt = datetime.fromisoformat((sent or '').replace('Z', '+00:00'))
-                    r['is_new'] = dt >= cutoff
-                except Exception:
-                    r['is_new'] = False
+                r['is_new'] = not r.get('viewed_at')
+            reports.sort(key=lambda r: (not r['is_new'], -(r.get('sent_at') or '').__hash__()))
+            # Simpler stable sort: unviewed group first, viewed group second,
+            # each ordered by sent_at desc.
+            unviewed = sorted([r for r in reports if r['is_new']],
+                              key=lambda r: r.get('sent_at') or '', reverse=True)
+            viewed = sorted([r for r in reports if not r['is_new']],
+                            key=lambda r: r.get('sent_at') or '', reverse=True)
+            reports = unviewed + viewed
         except Exception as e:
             print(f'Error loading client portal: {e}')
             reports, messages = [], []
@@ -1025,6 +1046,22 @@ def init_routes(app):
         return render_template('client_portal.html', db_ready=True,
                                client=client, reports=reports, messages=messages,
                                session_info=get_session_info())
+
+    @app.route('/portal/report/<report_id>/viewed', methods=['POST'])
+    def client_mark_report_viewed(report_id):
+        """AJAX: client clicked a report -> stamp it viewed so it stops
+        showing as NEW and demotes below unread reports next refresh."""
+        if not is_authenticated():
+            return jsonify({'success': False, 'message': 'login required'}), 401
+        client = _current_client()
+        if not client:
+            return jsonify({'success': False, 'message': 'not a client'}), 403
+        try:
+            db.mark_report_viewed(report_id, client['id'])
+            return jsonify({'success': True})
+        except Exception as e:
+            print(f'[portal] mark report viewed failed: {e}')
+            return jsonify({'success': False, 'message': str(e)}), 500
 
     @app.route('/portal/settings')
     def client_settings():

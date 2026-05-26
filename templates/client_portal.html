@@ -82,23 +82,47 @@
         .profile-dropdown .menu-item.logout { color: #b91c1c; }
         .profile-dropdown .menu-item.logout i { color: #b91c1c; }
 
-        /* --- Report cards ------------------------------------------- */
-        .reports-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
-        @media (min-width: 768px) { .reports-grid { grid-template-columns: 1fr 1fr; } }
-        @media (min-width: 1100px) { .reports-grid { grid-template-columns: 1fr 1fr 1fr; } }
-        .report-card { position: relative; display: flex; gap: 12px; padding: 14px;
-                       border: 1px solid #e5e7eb; border-radius: 14px; background: #f9fafb;
-                       align-items: flex-start; transition: box-shadow .15s ease, transform .15s ease; }
-        .report-card:hover { box-shadow: 0 6px 14px rgba(0,0,0,0.06); transform: translateY(-1px); }
-        .report-card.is-new { background: #fdfff0; border-color: #d3ee5b; }
-        .report-icon { width: 44px; height: 44px; flex-shrink: 0; background: #C9F31D; color: #0c1206;
-                       border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; }
-        .report-body { flex: 1; min-width: 0; }
-        .report-period { font-weight: 700; color: #1f2937; font-size: 15px; line-height: 1.2; }
-        .report-reason { font-size: 13px; color: #4b5563; margin-top: 4px; word-break: break-word; line-height: 1.4; }
-        .report-time { font-size: 11px; color: #6b7280; margin-top: 8px; display: flex; align-items: center; gap: 4px; }
-        .report-new-pill { position: absolute; top: 10px; right: 10px; background: #C9F31D; color: #0c1206;
-                           font-size: 10px; font-weight: 800; padding: 3px 8px; border-radius: 9999px; letter-spacing: .04em; }
+        /* --- Reports header icon + dropdown (timeline list) --------- */
+        .reports-menu { position: relative; }
+        .reports-btn { position: relative; width: 40px; height: 40px; border-radius: 50%;
+                       background: rgba(255,255,255,0.10); border: 0; color: white;
+                       cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+                       font-size: 16px; }
+        .reports-btn:hover { background: rgba(255,255,255,0.16); }
+        .reports-btn .count-pill { position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px;
+                                    background: #ef4444; color: white; font-size: 10px; font-weight: 800;
+                                    border-radius: 9999px; padding: 0 5px; display: inline-flex;
+                                    align-items: center; justify-content: center; border: 2px solid #0a0d0e; }
+        .reports-dropdown { display: none; position: absolute; top: calc(100% + 8px); right: 0;
+                            background: white; border-radius: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+                            width: 400px; max-height: 540px; overflow: hidden; z-index: 60;
+                            flex-direction: column; }
+        .reports-dropdown.open { display: flex; }
+        .reports-head { display: flex; align-items: baseline; justify-content: space-between;
+                        padding: 14px 16px; border-bottom: 1px solid #f3f4f6; flex-shrink: 0; }
+        .reports-head h3 { font-weight: 700; color: #1f2937; }
+        .reports-head .total { font-size: 12px; color: #9ca3af; }
+        .reports-list { overflow-y: auto; padding: 4px; }
+        .reports-row { display: flex; gap: 12px; align-items: flex-start; padding: 10px 12px;
+                        border-radius: 10px; color: #1f2937; text-decoration: none; transition: background .12s ease; }
+        .reports-row:hover { background: #f3f4f6; }
+        .reports-row.is-new  { background: #fdfff0; }
+        .reports-row.is-new:hover { background: #f4fbcf; }
+        .reports-row.no-file { opacity: 0.55; cursor: default; }
+        .reports-row.no-file:hover { background: transparent; }
+        .reports-row .row-icon { width: 38px; height: 38px; flex-shrink: 0; background: #C9F31D; color: #0c1206;
+                                  border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 15px; }
+        .reports-row .row-body { flex: 1; min-width: 0; }
+        .reports-row .row-period { font-weight: 700; font-size: 14px; line-height: 1.2; }
+        .reports-row .row-reason { font-size: 12px; color: #4b5563; margin-top: 2px;
+                                    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .reports-row .row-time { font-size: 11px; color: #9ca3af; margin-top: 4px; }
+        .reports-row .row-new { background: #C9F31D; color: #0c1206; font-size: 9px; font-weight: 800;
+                                 padding: 2px 6px; border-radius: 9999px; letter-spacing: .04em;
+                                 align-self: flex-start; margin-top: 4px; }
+        .reports-empty { padding: 40px 20px; text-align: center; color: #9ca3af; font-size: 13px; }
+        .reports-sep { font-size: 10px; font-weight: 700; color: #9ca3af; text-transform: uppercase;
+                        letter-spacing: .05em; padding: 8px 14px 4px; }
 
         /* --- Image lightbox (click outside / ESC to close, like WhatsApp) --- */
         .lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.88);
@@ -133,7 +157,62 @@
                         <span class="text-white text-xs opacity-75">Your reports &amp; support &bull; DigiRocket</span>
                     </div>
                 </div>
+                <div class="flex items-center gap-3">
                 {% if client %}
+                <!-- Reports icon (timeline dropdown) -->
+                <div class="reports-menu">
+                    {% set new_count = reports|selectattr('is_new')|list|length %}
+                    <button class="reports-btn" type="button" onclick="toggleReports(event)" title="Your reports">
+                        <i class="fas fa-file-lines"></i>
+                        {% if new_count %}<span class="count-pill">{{ new_count }}</span>{% endif %}
+                    </button>
+                    <div id="reportsDropdown" class="reports-dropdown">
+                        <div class="reports-head">
+                            <h3><i class="fas fa-file-lines text-teal-600 mr-1"></i>Your Reports</h3>
+                            <span class="total">{{ reports|length }} total{% if new_count %} • <b class="text-yellow-600">{{ new_count }} new</b>{% endif %}</span>
+                        </div>
+                        <div class="reports-list">
+                            {% if reports %}
+                                {% set ns = namespace(seen_unread=false, seen_read=false) %}
+                                {% for r in reports %}
+                                    {% if r.is_new and not ns.seen_unread %}
+                                        {% set ns.seen_unread = true %}
+                                        <div class="reports-sep">New</div>
+                                    {% endif %}
+                                    {% if (not r.is_new) and not ns.seen_read %}
+                                        {% set ns.seen_read = true %}
+                                        <div class="reports-sep">Previously opened</div>
+                                    {% endif %}
+                                    {% set primary = (r.files[0] if r.files and r.files|length > 0 else None) %}
+                                    {% if primary and primary.url %}
+                                    <a href="{{ primary.url }}" target="_blank" rel="noopener"
+                                       onclick="markReportViewed('{{ r.id }}')"
+                                       class="reports-row {% if r.is_new %}is-new{% endif %}">
+                                    {% else %}
+                                    <div class="reports-row no-file" title="File not available">
+                                    {% endif %}
+                                        <div class="row-icon"><i class="fas fa-file-pdf"></i></div>
+                                        <div class="row-body">
+                                            <div class="row-period">{{ r.report_period or 'Analytics Report' }}</div>
+                                            <div class="row-reason">{{ r.subject or 'Your analytics report' }}</div>
+                                            <div class="row-time">
+                                                <i class="fas fa-clock mr-1"></i>{{ (r.sent_at or '')[:16]|replace('T', ' ') }}
+                                                {% if r.files and r.files|length > 1 %} • {{ r.files|length }} files{% endif %}
+                                            </div>
+                                        </div>
+                                        {% if r.is_new %}<span class="row-new">NEW</span>{% endif %}
+                                    {% if primary and primary.url %}</a>{% else %}</div>{% endif %}
+                                {% endfor %}
+                            {% else %}
+                                <div class="reports-empty">
+                                    <i class="fas fa-folder-open text-2xl mb-2 text-gray-300"></i><br>
+                                    No reports yet. They'll appear here as soon as our team sends one.
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
                 <div class="profile-menu">
                     <button class="profile-btn" type="button" onclick="toggleProfile(event)">
                         <span class="profile-avatar">
@@ -173,6 +252,7 @@
                     <i class="fas fa-sign-out-alt mr-2"></i>Logout
                 </a>
                 {% endif %}
+                </div>   <!-- /reports+profile wrapper -->
             </div>
         </div>
     </header>
@@ -227,43 +307,13 @@
         <!-- Welcome -->
         <div class="mb-6">
             <h2 class="text-3xl font-bold text-gray-800">Welcome, {{ client.name }} 👋</h2>
-            <p class="text-gray-500">Here are the reports we've shared with you, and your chat with our team.</p>
+            <p class="text-gray-500">
+                Chat with our team below. Your reports are in the
+                <i class="fas fa-file-lines text-teal-600 mx-1"></i>icon at the top-right.
+            </p>
         </div>
 
-        <!-- Your Reports -->
-        <section class="bg-white rounded-2xl shadow-lg p-6 mb-6">
-            <div class="flex items-center justify-between mb-4">
-                <h3 class="text-lg font-bold text-gray-800">
-                    <i class="fas fa-file-lines text-teal-600 mr-2"></i>Your Reports
-                </h3>
-                {% set new_count = reports|selectattr('is_new')|list|length %}
-                {% if new_count %}
-                <span class="text-xs font-bold text-lime-700 bg-lime-100 px-3 py-1 rounded-full">
-                    {{ new_count }} NEW
-                </span>
-                {% endif %}
-            </div>
-            {% if reports %}
-            <div class="reports-grid">
-                {% for r in reports %}
-                <div class="report-card {% if r.is_new %}is-new{% endif %}">
-                    {% if r.is_new %}<span class="report-new-pill">NEW</span>{% endif %}
-                    <div class="report-icon"><i class="fas fa-file-pdf"></i></div>
-                    <div class="report-body">
-                        <div class="report-period">{{ r.report_period or 'Analytics Report' }}</div>
-                        <div class="report-reason">{{ r.subject or 'Your analytics report from DigiRocket' }}</div>
-                        <div class="report-time">
-                            <i class="fas fa-clock"></i>
-                            Received {{ (r.sent_at or '')[:16]|replace('T', ' ') }}
-                        </div>
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-            {% else %}
-            <p class="text-gray-500 text-sm">No reports have been shared with you yet. They'll appear here as soon as our team sends one.</p>
-            {% endif %}
-        </section>
+<!-- Reports now live in the header dropdown (top-right, paper icon left of profile). -->
 
         <!-- ============ THE ONE CHAT ============ -->
         <section class="chat-card">
@@ -334,17 +384,38 @@
     </div>
 
     <script>
-        // ---- Profile dropdown ----
+        // ---- Header dropdowns (Reports + Profile) ----
         function toggleProfile(e) {
             if (e) e.stopPropagation();
             var dd = document.getElementById('profileDropdown');
+            var rd = document.getElementById('reportsDropdown');
+            if (rd) rd.classList.remove('open');
             if (dd) dd.classList.toggle('open');
         }
-        document.addEventListener('click', function (e) {
-            var menu = document.querySelector('.profile-menu');
+        function toggleReports(e) {
+            if (e) e.stopPropagation();
             var dd = document.getElementById('profileDropdown');
-            if (menu && dd && !menu.contains(e.target)) dd.classList.remove('open');
+            var rd = document.getElementById('reportsDropdown');
+            if (dd) dd.classList.remove('open');
+            if (rd) rd.classList.toggle('open');
+        }
+        document.addEventListener('click', function (e) {
+            var pmenu = document.querySelector('.profile-menu');
+            var pdd = document.getElementById('profileDropdown');
+            if (pmenu && pdd && !pmenu.contains(e.target)) pdd.classList.remove('open');
+            var rmenu = document.querySelector('.reports-menu');
+            var rdd = document.getElementById('reportsDropdown');
+            if (rmenu && rdd && !rmenu.contains(e.target)) rdd.classList.remove('open');
         });
+
+        // Mark a report as viewed when the client opens it. Best-effort,
+        // doesn't block the file opening in the new tab.
+        function markReportViewed(reportId) {
+            try {
+                fetch('/portal/report/' + reportId + '/viewed',
+                      { method: 'POST', credentials: 'same-origin' }).catch(function () {});
+            } catch (e) { /* ignore */ }
+        }
 
         // ---- Lightbox ----
         function openLightbox(url) {
