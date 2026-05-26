@@ -1191,6 +1191,11 @@ def init_routes(app):
                                    session_info=get_session_info())
 
         try:
+            # Mark every admin message in this client's queries as "read by
+            # client" BEFORE fetching, so the freshly-loaded chat shows the
+            # correct read_at state on incoming messages.
+            db.mark_messages_read_for_client(client['id'], 'admin')
+
             reports = db.client_reports(client['id'])
             messages = db.client_messages(client['id'])
             # Hide reports whose files weren't archived (sent before the
@@ -1384,6 +1389,8 @@ def init_routes(app):
             return render_template('pmo_queries.html', db_ready=False, chats=[],
                                    session_info=get_session_info())
         try:
+            # Admin just opened this page -> every client message is now read.
+            db.mark_all_messages_read('client')
             chats = db.list_chats()
         except Exception as e:
             print(f'Error loading queries: {e}')

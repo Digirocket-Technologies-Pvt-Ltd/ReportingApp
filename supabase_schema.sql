@@ -79,6 +79,11 @@ create table if not exists query_messages (
 );
 create index if not exists idx_query_messages_query on query_messages(query_id, created_at);
 
+-- WhatsApp-style read receipts: stamped when the other party loads the
+-- portal/dashboard and sees the message. NULL = single tick (sent),
+-- set = double tick (read).
+alter table query_messages add column if not exists read_at timestamptz;
+
 -- 6) Security: lock the tables so only our backend (service_role key)
 --    can touch them. The Flask app uses the service_role key, which
 --    bypasses RLS; the public anon key gets no access.

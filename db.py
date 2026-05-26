@@ -392,7 +392,8 @@ def update_query_status(query_id, status, responded_by=None):
 # ---------------- One chat per client (WhatsApp-style) ----------------
 def _seed_messages_from_query(q):
     """Synthesise message rows from the legacy report_queries.message /
-    response fields, for queries that don't have any query_messages yet."""
+    response fields, for queries that don't have any query_messages yet.
+    These are treated as already-read (read_at = created_at)."""
     out = []
     if q.get('message') and q['message'] != '(attachment)' and q['message'] != '(chat thread)':
         out.append({
@@ -403,6 +404,7 @@ def _seed_messages_from_query(q):
             'body': q['message'],
             'attachments': [],
             'created_at': q.get('created_at'),
+            'read_at': q.get('created_at'),   # legacy -> assume read
         })
     if q.get('response'):
         out.append({
@@ -413,6 +415,7 @@ def _seed_messages_from_query(q):
             'body': q['response'],
             'attachments': [],
             'created_at': q.get('responded_at') or q.get('created_at'),
+            'read_at': q.get('responded_at') or q.get('created_at'),
         })
     return out
 
@@ -553,6 +556,57 @@ def count_open_chats():
     except Exception as e:
         print(f'[db] count_open_chats failed (non-fatal): {e}')
         return 0
+
+
+# ---------------- Read receipts (WhatsApp-style ticks) ----------------
+def mark_messages_read_for_client(client_id, sender_type):
+    """Stamp read_at on every unread message of `sender_type` belonging to
+    one client's queries. Call this when the OTHER party loads the page:
+      - client_portal load -> mark sender_type='admin' (client just saw them)
+      - pmo_queries  load  -> mark sender_type='client' (admin just saw them)."""
+    if not is_configured() or not client_id:
+        return None
+    try:
+        r = requests.get(_rest(f'report_queries?client_id=eq.{client_id}&select=id'),
+                         headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        qids = [row['id'] for row in r.json()]
+        if not qids:
+            return None
+        ids = ','.join(qids)
+        r2 = requests.patch(
+            _rest(f'query_messages?query_id=in.({ids})&sender_type=eq.{sender_type}&read_at=is.null'),
+            headers=_headers({'Prefer': 'return=minimal'}),
+            json={'read_at': datetime.now(timezone.utc).isoformat()},
+            timeout=TIMEOUT,
+        )
+        # 204 No Content is the success code with Prefer: return=minimal.
+        if r2.status_code not in (200, 204):
+            print(f'[db] mark_messages_read patch status: {r2.status_code} {r2.text[:200]}')
+        return True
+    except Exception as e:
+        print(f'[db] mark_messages_read_for_client failed (non-fatal): {e}')
+        return None
+
+
+def mark_all_messages_read(sender_type):
+    """Mark every unread message of `sender_type` globally as read. Used
+    when an admin loads /pmo/queries (they see all clients at once)."""
+    if not is_configured():
+        return None
+    try:
+        r = requests.patch(
+            _rest(f'query_messages?sender_type=eq.{sender_type}&read_at=is.null'),
+            headers=_headers({'Prefer': 'return=minimal'}),
+            json={'read_at': datetime.now(timezone.utc).isoformat()},
+            timeout=TIMEOUT,
+        )
+        if r.status_code not in (200, 204):
+            print(f'[db] mark_all_messages_read status: {r.status_code} {r.text[:200]}')
+        return True
+    except Exception as e:
+        print(f'[db] mark_all_messages_read failed (non-fatal): {e}')
+        return None
 
 
 def _ensure_attachment_bucket():
