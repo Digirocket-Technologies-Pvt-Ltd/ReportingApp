@@ -91,3 +91,14 @@ alter table query_messages  enable row level security;
 -- 7) Storage bucket for query attachments. Must also be created in the
 --    Supabase Dashboard (Storage -> New bucket) with name 'query-attachments'
 --    and "Public bucket" enabled so the public URLs work.
+
+-- 8) Service credentials (long-lived agency tokens, etc.) ---------
+--    Used so client dashboards can fetch GA4/GSC data via the agency's
+--    Google account credentials (since clients themselves usually don't
+--    have Google access to their property).
+create table if not exists service_credentials (
+    key        text primary key,
+    value      text not null,
+    updated_at timestamptz not null default now()
+);
+alter table service_credentials enable row level security;

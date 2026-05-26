@@ -642,3 +642,44 @@ def upload_report_file(client_id, filename, content, content_type=None):
     """Upload a report file (PDF/PPT/etc) so the client can open it from
     the portal. Stored under reports/<client_id>/... in the same bucket."""
     return upload_attachment(f'reports/{client_id}', filename, content, content_type)
+
+
+# ---------------- Service credentials (e.g. agency refresh_token) ----
+def save_service_credential(key, value):
+    """Upsert a service credential. Safe on missing config / errors."""
+    if not is_configured() or not key or value is None:
+        return None
+    try:
+        # PostgREST upsert via the 'resolution=merge-duplicates' Prefer header,
+        # which uses the primary key (key) to decide insert vs update.
+        r = requests.post(
+            _rest('service_credentials'),
+            headers=_headers({
+                'Prefer': 'resolution=merge-duplicates,return=representation',
+            }),
+            json={'key': key, 'value': value,
+                  'updated_at': datetime.now(timezone.utc).isoformat()},
+            timeout=TIMEOUT,
+        )
+        r.raise_for_status()
+        return True
+    except Exception as e:
+        print(f'[db] save_service_credential failed (non-fatal): {e}')
+        return None
+
+
+def get_service_credential(key):
+    """Look up a stored service credential. Returns the value string or None."""
+    if not is_configured() or not key:
+        return None
+    try:
+        r = requests.get(
+            _rest(f'service_credentials?key=eq.{key}&select=value'),
+            headers=_headers(), timeout=TIMEOUT,
+        )
+        r.raise_for_status()
+        rows = r.json()
+        return rows[0]['value'] if rows else None
+    except Exception as e:
+        print(f'[db] get_service_credential failed (non-fatal): {e}')
+        return None

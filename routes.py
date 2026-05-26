@@ -1,4 +1,4 @@
-from flask import Flask, render_template, redirect, url_for, request, jsonify, session, flash, send_file
+from flask import Flask, render_template, redirect, url_for, request, jsonify, session, flash, send_file, g
 from auth import is_authenticated, refresh_token_if_needed, logout_user, get_user_info, get_session_info, is_pmo_admin
 import db
 from ga4 import get_ga4_properties, get_ga4_data, get_property_name, get_ga4_overview, get_ga4_acquisition, get_ga4_extra
@@ -23,6 +23,89 @@ app = Flask(__name__, static_folder='static')
 
 
 def init_routes(app):
+    # =====================================================================
+    #  AGENCY GOOGLE TOKEN (used to fetch GA4/GSC for clients)
+    # =====================================================================
+    # When a PMO admin logs in we save their OAuth refresh_token to
+    # service_credentials. Client dashboards then mint a fresh access_token
+    # from it on demand (cached in-process for the token's lifetime ~1h).
+    # This lets clients see THEIR property's data even though their own
+    # Google account doesn't have direct access to it.
+    _agency_cache = {'token': None, 'expires_at': 0.0}
+
+    def _agency_access_token():
+        rt = db.get_service_credential('agency_refresh_token')
+        if not rt:
+            return None
+        now = datetime.now().timestamp()
+        if _agency_cache['token'] and _agency_cache['expires_at'] > now + 60:
+            return _agency_cache['token']
+        try:
+            resp = requests.post('https://oauth2.googleapis.com/token', data={
+                'client_id': CLIENT_ID,
+                'client_secret': CLIENT_SECRET,
+                'refresh_token': rt,
+                'grant_type': 'refresh_token',
+            }, timeout=20)
+            if resp.status_code != 200:
+                print(f'[agency] token refresh failed: {resp.status_code} {resp.text[:200]}')
+                return None
+            data = resp.json()
+            _agency_cache['token'] = data['access_token']
+            _agency_cache['expires_at'] = now + data.get('expires_in', 3600)
+            return _agency_cache['token']
+        except Exception as e:
+            print(f'[agency] token refresh exception: {e}')
+            return None
+
+    @app.before_request
+    def _maybe_use_agency_token():
+        """For client (non-admin) requests, swap session's access_token to the
+        agency's token for the duration of this request, so Google API calls
+        succeed even though the client's own Google account has no access.
+        Restored in after_request so we don't persist the swap."""
+        # One-time backfill: existing sessions logged in before this code
+        # shipped won't have 'is_client'. Compute and cache it once.
+        if 'is_client' not in session and is_authenticated():
+            try:
+                if is_pmo_admin():
+                    session['is_client'] = False
+                elif db.is_configured() and db.get_client_by_email(session.get('user_email')):
+                    session['is_client'] = True
+                else:
+                    session['is_client'] = False
+            except Exception:
+                session['is_client'] = False
+        if not session.get('is_client'):
+            return
+        agency_token = _agency_access_token()
+        if not agency_token:
+            return  # no agency creds yet; let downstream code surface the error
+        g._original_access_token = session.get('access_token')
+        g._original_refresh_token = session.get('refresh_token')
+        session['access_token'] = agency_token
+        rt = db.get_service_credential('agency_refresh_token')
+        if rt:
+            session['refresh_token'] = rt
+        g._token_swapped = True
+
+    @app.after_request
+    def _restore_user_token(response):
+        """Undo the agency-token swap so the user's own tokens are what gets
+        persisted back to the session cookie."""
+        if getattr(g, '_token_swapped', False):
+            orig_at = getattr(g, '_original_access_token', None)
+            orig_rt = getattr(g, '_original_refresh_token', None)
+            if orig_at is not None:
+                session['access_token'] = orig_at
+            elif 'access_token' in session:
+                session.pop('access_token', None)
+            if orig_rt is not None:
+                session['refresh_token'] = orig_rt
+            elif 'refresh_token' in session:
+                session.pop('refresh_token', None)
+        return response
+
     @app.after_request
     def add_no_cache_headers(response):
         """Disable browser caching during development so every page reload
@@ -116,14 +199,27 @@ def init_routes(app):
             # Get user information
             get_user_info()
 
-            flash('Successfully logged in!', 'success')
-            # Recognised clients land on their portal; team/admins keep the dashboard.
+            # Cache the user's role on the session so before_request can decide
+            # whether to swap to agency credentials without a DB hit per request.
+            session['is_client'] = False
             try:
-                if not is_pmo_admin() and db.is_configured() \
+                if is_pmo_admin():
+                    # Save this admin's refresh_token as the "agency" credentials
+                    # so client dashboards can fetch GA4/GSC data on the
+                    # client's behalf (clients usually don't have direct access).
+                    rt = session.get('refresh_token')
+                    if rt and db.is_configured():
+                        db.save_service_credential('agency_refresh_token', rt)
+                elif db.is_configured() \
                         and db.get_client_by_email(session.get('user_email')):
-                    return redirect(url_for('client_portal'))
+                    session['is_client'] = True
             except Exception as e:
-                print(f'[login] client redirect check failed (non-fatal): {e}')
+                print(f'[login] role/agency setup failed (non-fatal): {e}')
+
+            flash('Successfully logged in!', 'success')
+            # Recognised clients land on their portal; team/admins go to dashboard.
+            if session.get('is_client'):
+                return redirect(url_for('client_portal'))
             return redirect(url_for('dashboard'))
         except requests.exceptions.RequestException as e:
             flash(f'Login error: {str(e)}', 'error')
@@ -134,6 +230,11 @@ def init_routes(app):
         if not is_authenticated():
             flash('Please log in to access the dashboard.', 'warning')
             return redirect(url_for('login'))
+
+        # Clients must use their own filtered portal dashboard so they never
+        # see other clients' properties in the dropdowns.
+        if session.get('is_client'):
+            return redirect(url_for('client_dashboard'))
 
         if not refresh_token_if_needed():
             flash('Session expired. Please log in again.', 'warning')
@@ -259,6 +360,33 @@ def init_routes(app):
             selected_metrics = request.args.getlist('metrics') or [
                 'new_users', 'active_users', 'returning_users', 'sessions']
             compare = (request.args.get('compare') or '').lower() in ('1', 'true', 'on', 'yes')
+
+            # PRIVACY: a logged-in client can only ever see data for the GA4
+            # property and GSC site that the team has linked to them. Override
+            # whatever was in the URL so a crafted link can't leak another
+            # client's data.
+            if session.get('is_client'):
+                client = _current_client()
+                if not client:
+                    flash('Your account is not linked to a client profile.', 'warning')
+                    return redirect(url_for('client_portal'))
+                client_ga4 = (client.get('ga4_property_id') or '').strip()
+                client_gsc = normalize_gsc_property((client.get('gsc_property_id') or '').strip())
+                # If the client has multiple comma-separated IDs, the requested
+                # one must be in that allowed set; otherwise we lock to the first.
+                allowed_ga4_set = {x.strip() for x in client_ga4.split(',') if x.strip()}
+                if allowed_ga4_set:
+                    req_ga4 = (ga4_property_id or '').strip()
+                    if req_ga4 not in allowed_ga4_set:
+                        ga4_property_id = sorted(allowed_ga4_set)[0]
+                else:
+                    flash('No GA4 property is linked to your account. Please contact your account manager.', 'warning')
+                    return redirect(url_for('client_dashboard'))
+                if client_gsc:
+                    gsc_site_url = client_gsc
+                elif not gsc_site_url:
+                    flash('No Search Console site is linked to your account.', 'warning')
+                    return redirect(url_for('client_dashboard'))
 
             if not all([ga4_property_id, gsc_site_url, start_date_str, end_date_str]):
                 flash('Missing required parameters.', 'error')
@@ -1080,9 +1208,14 @@ def init_routes(app):
             flash('Your account is not linked to a client profile.', 'warning')
             return redirect(url_for('client_portal'))
 
-        allowed_ga4 = (client.get('ga4_property_id') or '').strip()
+        raw_ga4 = (client.get('ga4_property_id') or '').strip()
+        # Support comma-separated GA4 IDs so one client can have multiple
+        # properties listed in the dropdown.
+        allowed_ga4_set = {x.strip() for x in raw_ga4.split(',') if x.strip()}
         allowed_gsc = normalize_gsc_property((client.get('gsc_property_id') or '').strip())
 
+        # The before_request hook has already swapped session's access_token
+        # to the agency's, so these calls fetch with the agency's permissions.
         try:
             ga4_properties, ga4_error = get_ga4_properties(session)
         except Exception as e:
@@ -1092,18 +1225,25 @@ def init_routes(app):
         except Exception as e:
             gsc_sites = []
 
+        # If we haven't received the agency refresh_token yet, tell the user.
+        if not db.get_service_credential('agency_refresh_token'):
+            flash('Live data fetching is not configured yet — ask your account '
+                  'manager to log in once (so the agency credentials get saved).',
+                  'warning')
+
         # --- Privacy filter: only the client's own assigned property/site. ---
-        if allowed_ga4:
+        if allowed_ga4_set:
             ga4_properties = [p for p in (ga4_properties or [])
-                              if str(p.get('property_id', '')).strip() == allowed_ga4]
-            # If their Google account can't see their assigned property,
-            # still show the row so they know which one is theirs.
+                              if str(p.get('property_id', '')).strip() in allowed_ga4_set]
+            # Found in agency's list? Great. If not, still show synthesized rows
+            # for each assigned ID so the client sees what's linked to them.
             if not ga4_properties:
-                ga4_properties = [{'property_id': allowed_ga4,
-                                   'display_name': 'Your GA4 Property (grant Read access in Google Analytics)',
-                                   'account_name': '', 'property_type': 'GA4'}]
+                ga4_properties = [{'property_id': pid,
+                                   'display_name': f'Your GA4 Property ({pid})',
+                                   'account_name': '', 'property_type': 'GA4'}
+                                  for pid in sorted(allowed_ga4_set)]
         else:
-            ga4_properties = []   # client has no GA4 assigned -> show nothing
+            ga4_properties = []
             ga4_error = ga4_error or 'No GA4 property is linked to your account yet. Please contact your account manager.'
 
         if allowed_gsc:
