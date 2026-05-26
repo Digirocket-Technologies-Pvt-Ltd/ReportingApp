@@ -982,7 +982,7 @@ def init_routes(app):
                 attachments.append(meta)
             else:
                 flash(f"Could not upload '{up.filename}'. "
-                      "Check that the 'query-attachments' bucket exists in Supabase Storage.", 'error')
+                      "See server logs for details (the bucket auto-creates on first use).", 'error')
         return attachments
 
     @app.route('/portal')

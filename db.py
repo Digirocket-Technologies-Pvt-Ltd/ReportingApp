@@ -16,6 +16,7 @@ from werkzeug.utils import secure_filename
 
 TIMEOUT = 20
 ATTACHMENT_BUCKET = 'query-attachments'
+_bucket_ready = False  # cache: don't hit Supabase on every upload
 
 
 def _config():
@@ -530,11 +531,56 @@ def count_open_chats():
         return 0
 
 
+def _ensure_attachment_bucket():
+    """Make sure the Supabase Storage bucket exists and is public.
+    Auto-creates it on first use; cached for the rest of the process.
+    Returns True if the bucket is ready, False otherwise (logs why)."""
+    global _bucket_ready
+    if _bucket_ready:
+        return True
+    url, key = _config()
+    if not url or not key:
+        return False
+    headers = {'Authorization': f'Bearer {key}', 'apikey': key,
+               'Content-Type': 'application/json'}
+    bucket_url = f"{url}/storage/v1/bucket/{ATTACHMENT_BUCKET}"
+    try:
+        # Already there?
+        r = requests.get(bucket_url, headers=headers, timeout=TIMEOUT)
+        if r.status_code == 200:
+            info = r.json() or {}
+            if not info.get('public'):
+                # Flip it public so the URLs we hand out actually work.
+                pr = requests.put(bucket_url, headers=headers,
+                                  json={'id': ATTACHMENT_BUCKET, 'public': True},
+                                  timeout=TIMEOUT)
+                if pr.status_code >= 400:
+                    print(f"[db] could not make bucket public: {pr.status_code} {pr.text[:300]}")
+            _bucket_ready = True
+            return True
+        # Not there -> create as public.
+        cr = requests.post(f"{url}/storage/v1/bucket", headers=headers,
+                           json={'id': ATTACHMENT_BUCKET, 'name': ATTACHMENT_BUCKET,
+                                 'public': True}, timeout=TIMEOUT)
+        if cr.status_code in (200, 201):
+            print(f"[db] auto-created Supabase Storage bucket '{ATTACHMENT_BUCKET}' (public)")
+            _bucket_ready = True
+            return True
+        print(f"[db] bucket create failed: {cr.status_code} {cr.text[:300]}")
+        return False
+    except Exception as e:
+        print(f'[db] _ensure_attachment_bucket exception: {e}')
+        return False
+
+
 def upload_attachment(query_id, filename, content, content_type=None):
     """Upload a file to the Supabase 'query-attachments' bucket and return
-    {name, url, size, type}. Returns None if upload fails or DB not configured.
-    The bucket must exist + be Public (Supabase Dashboard -> Storage)."""
+    {name, url, size, type}. Returns None if anything fails (logs why).
+    The bucket is auto-created (public) on first use, so no manual setup."""
     if not is_configured() or not content:
+        return None
+    if not _ensure_attachment_bucket():
+        print('[db] attachment bucket not available')
         return None
     url, key = _config()
     safe = secure_filename(filename) or 'file'
@@ -548,9 +594,11 @@ def upload_attachment(query_id, filename, content, content_type=None):
     }
     try:
         r = requests.post(upload_url, headers=headers, data=content, timeout=60)
-        r.raise_for_status()
+        if r.status_code >= 400:
+            print(f"[db] upload failed for {filename!r}: {r.status_code} {r.text[:300]}")
+            return None
     except Exception as e:
-        print(f'[db] upload_attachment failed: {e}')
+        print(f'[db] upload_attachment exception: {e}')
         return None
     public_url = f"{url}/storage/v1/object/public/{ATTACHMENT_BUCKET}/{path}"
     return {
