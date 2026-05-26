@@ -63,7 +63,11 @@ def init_routes(app):
         """For client (non-admin) requests, swap session's access_token to the
         agency's token for the duration of this request, so Google API calls
         succeed even though the client's own Google account has no access.
-        Restored in after_request so we don't persist the swap."""
+        Restored in after_request so we don't persist the swap.
+
+        For admins, opportunistically save their refresh_token as the agency
+        credential (idempotent, once per session) so they don't have to
+        log out + log back in after deploying this feature."""
         # One-time backfill: existing sessions logged in before this code
         # shipped won't have 'is_client'. Compute and cache it once.
         if 'is_client' not in session and is_authenticated():
@@ -76,6 +80,23 @@ def init_routes(app):
                     session['is_client'] = False
             except Exception:
                 session['is_client'] = False
+
+        # Admin path: silently mirror their refresh_token into the
+        # service_credentials table so client dashboards can use it. Done at
+        # most once per admin session via the _agency_creds_synced flag.
+        if (is_authenticated() and is_pmo_admin()
+                and not session.get('_agency_creds_synced')):
+            rt = session.get('refresh_token')
+            if rt and db.is_configured():
+                try:
+                    if not db.get_service_credential('agency_refresh_token'):
+                        db.save_service_credential('agency_refresh_token', rt)
+                        print(f"[agency] saved refresh_token from "
+                              f"{session.get('user_email')}'s session")
+                except Exception as e:
+                    print(f'[agency] opportunistic save failed: {e}')
+            session['_agency_creds_synced'] = True
+
         if not session.get('is_client'):
             return
         agency_token = _agency_access_token()
@@ -408,6 +429,12 @@ def init_routes(app):
             gsc_data = get_gsc_detailed_data(credentials, gsc_site_url, start_date, end_date)
 
             if ga4_data is None and gsc_data is None:
+                if session.get('is_client'):
+                    flash('Could not fetch your live data. Most likely the agency '
+                          'credentials are not saved yet (an admin needs to log in '
+                          'once) or your GA4 property ID is wrong. The team has '
+                          'been notified in the logs.', 'error')
+                    return redirect(url_for('client_dashboard'))
                 flash('Failed to fetch data from both GA4 and Search Console.', 'error')
                 return redirect(url_for('dashboard'))
 
