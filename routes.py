@@ -82,20 +82,32 @@ def init_routes(app):
                 session['is_client'] = False
 
         # Admin path: silently mirror their refresh_token into the
-        # service_credentials table so client dashboards can use it. Done at
-        # most once per admin session via the _agency_creds_synced flag.
+        # service_credentials table so client dashboards can use it.
+        # ALWAYS overwrites (latest admin login wins -> no stale tokens).
+        # The session flag is only set on a successful save, so an admin
+        # whose first request fails will retry on the next one.
         if (is_authenticated() and is_pmo_admin()
                 and not session.get('_agency_creds_synced')):
             rt = session.get('refresh_token')
             if rt and db.is_configured():
                 try:
-                    if not db.get_service_credential('agency_refresh_token'):
-                        db.save_service_credential('agency_refresh_token', rt)
+                    ok = db.save_service_credential('agency_refresh_token', rt)
+                    if ok:
                         print(f"[agency] saved refresh_token from "
-                              f"{session.get('user_email')}'s session")
+                              f"{session.get('user_email')}'s session "
+                              f"(len={len(rt)})")
+                        session['_agency_creds_synced'] = True
+                    else:
+                        print('[agency] save returned None - will retry next request')
                 except Exception as e:
                     print(f'[agency] opportunistic save failed: {e}')
-            session['_agency_creds_synced'] = True
+            elif not rt:
+                # No refresh_token in this admin session -> they need a fresh
+                # login (Google only hands out refresh_tokens with prompt=consent,
+                # which our /login route already requests).
+                print(f"[agency] admin {session.get('user_email')} has no "
+                      f"refresh_token in session - ask them to log out + log in")
+                session['_agency_creds_synced'] = True   # don't retry; can't fix automatically
 
         if not session.get('is_client'):
             return
@@ -391,11 +403,9 @@ def init_routes(app):
                 if not client:
                     flash('Your account is not linked to a client profile.', 'warning')
                     return redirect(url_for('client_portal'))
-                client_ga4 = (client.get('ga4_property_id') or '').strip()
-                client_gsc = normalize_gsc_property((client.get('gsc_property_id') or '').strip())
-                # If the client has multiple comma-separated IDs, the requested
-                # one must be in that allowed set; otherwise we lock to the first.
-                allowed_ga4_set = {x.strip() for x in client_ga4.split(',') if x.strip()}
+                allowed_ga4_set = {x.strip() for x in (client.get('ga4_property_id') or '').split(',') if x.strip()}
+                allowed_gsc_set = {normalize_gsc_property(x.strip())
+                                   for x in (client.get('gsc_property_id') or '').split(',') if x.strip()}
                 if allowed_ga4_set:
                     req_ga4 = (ga4_property_id or '').strip()
                     if req_ga4 not in allowed_ga4_set:
@@ -403,8 +413,10 @@ def init_routes(app):
                 else:
                     flash('No GA4 property is linked to your account. Please contact your account manager.', 'warning')
                     return redirect(url_for('client_dashboard'))
-                if client_gsc:
-                    gsc_site_url = client_gsc
+                if allowed_gsc_set:
+                    req_gsc = (gsc_site_url or '').strip()
+                    if req_gsc not in allowed_gsc_set:
+                        gsc_site_url = sorted(allowed_gsc_set)[0]
                 elif not gsc_site_url:
                     flash('No Search Console site is linked to your account.', 'warning')
                     return redirect(url_for('client_dashboard'))
@@ -1236,13 +1248,16 @@ def init_routes(app):
             return redirect(url_for('client_portal'))
 
         raw_ga4 = (client.get('ga4_property_id') or '').strip()
-        # Support comma-separated GA4 IDs so one client can have multiple
-        # properties listed in the dropdown.
+        raw_gsc = (client.get('gsc_property_id') or '').strip()
+        # Support comma-separated IDs so one client can have multiple
+        # properties / sites listed in the dropdowns.
         allowed_ga4_set = {x.strip() for x in raw_ga4.split(',') if x.strip()}
-        allowed_gsc = normalize_gsc_property((client.get('gsc_property_id') or '').strip())
+        allowed_gsc_set = {normalize_gsc_property(x.strip())
+                           for x in raw_gsc.split(',') if x.strip()}
 
         # The before_request hook has already swapped session's access_token
         # to the agency's, so these calls fetch with the agency's permissions.
+        agency_ready = bool(db.get_service_credential('agency_refresh_token'))
         try:
             ga4_properties, ga4_error = get_ga4_properties(session)
         except Exception as e:
@@ -1252,19 +1267,24 @@ def init_routes(app):
         except Exception as e:
             gsc_sites = []
 
-        # If we haven't received the agency refresh_token yet, tell the user.
-        if not db.get_service_credential('agency_refresh_token'):
-            flash('Live data fetching is not configured yet — ask your account '
-                  'manager to log in once (so the agency credentials get saved).',
-                  'warning')
+        print(f"[portal/dashboard] client={client.get('name')} "
+              f"agency_ready={agency_ready} "
+              f"ga4_fetched={len(ga4_properties or [])} "
+              f"gsc_fetched={len(gsc_sites or [])} "
+              f"allowed_ga4={allowed_ga4_set} allowed_gsc={allowed_gsc_set}")
+
+        if not agency_ready:
+            flash('Live data fetching is not configured yet — your DigiRocket '
+                  'account manager must sign in to the app once so the central '
+                  'agency credentials get saved.', 'warning')
 
         # --- Privacy filter: only the client's own assigned property/site. ---
         if allowed_ga4_set:
             ga4_properties = [p for p in (ga4_properties or [])
                               if str(p.get('property_id', '')).strip() in allowed_ga4_set]
-            # Found in agency's list? Great. If not, still show synthesized rows
-            # for each assigned ID so the client sees what's linked to them.
             if not ga4_properties:
+                # Synthesize rows so the dropdown still lists the IDs we have
+                # on file even if the agency token can't see them yet.
                 ga4_properties = [{'property_id': pid,
                                    'display_name': f'Your GA4 Property ({pid})',
                                    'account_name': '', 'property_type': 'GA4'}
@@ -1273,11 +1293,12 @@ def init_routes(app):
             ga4_properties = []
             ga4_error = ga4_error or 'No GA4 property is linked to your account yet. Please contact your account manager.'
 
-        if allowed_gsc:
+        if allowed_gsc_set:
             gsc_sites = [s for s in (gsc_sites or [])
-                         if str(s.get('site_url', '')).strip() == allowed_gsc]
+                         if str(s.get('site_url', '')).strip() in allowed_gsc_set]
             if not gsc_sites:
-                gsc_sites = [{'site_url': allowed_gsc, 'permission_level': 'siteOwner'}]
+                gsc_sites = [{'site_url': url, 'permission_level': 'siteOwner'}
+                             for url in sorted(allowed_gsc_set)]
         else:
             gsc_sites = []
 
