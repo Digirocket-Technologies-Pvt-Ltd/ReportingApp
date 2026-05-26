@@ -551,11 +551,16 @@ def _ensure_attachment_bucket():
             info = r.json() or {}
             if not info.get('public'):
                 # Flip it public so the URLs we hand out actually work.
+                # Supabase update API expects ONLY the fields you want to change.
                 pr = requests.put(bucket_url, headers=headers,
-                                  json={'id': ATTACHMENT_BUCKET, 'public': True},
-                                  timeout=TIMEOUT)
+                                  json={'public': True}, timeout=TIMEOUT)
                 if pr.status_code >= 400:
-                    print(f"[db] could not make bucket public: {pr.status_code} {pr.text[:300]}")
+                    print(f"[db] could not auto-flip bucket to public: "
+                          f"{pr.status_code} {pr.text[:300]} -- please toggle "
+                          f"'Public bucket' ON in Supabase Dashboard -> Storage -> "
+                          f"{ATTACHMENT_BUCKET} -> Edit bucket")
+                else:
+                    print(f"[db] flipped bucket '{ATTACHMENT_BUCKET}' to public")
             _bucket_ready = True
             return True
         # Not there -> create as public.

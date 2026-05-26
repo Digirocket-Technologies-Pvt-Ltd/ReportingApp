@@ -54,6 +54,24 @@
                       background: #eef2ff; color: #3730a3; border-radius: 9999px;
                       font-size: 12px; margin-right: 6px; margin-top: 6px; }
         .empty-hint { text-align: center; color: #9ca3af; padding: 60px 20px; font-size: 14px; }
+
+        /* --- Image lightbox (click outside / ESC to close, like WhatsApp) --- */
+        .lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.88);
+                    z-index: 9999; align-items: center; justify-content: center; padding: 30px;
+                    cursor: zoom-out; }
+        .lightbox.open { display: flex; }
+        .lightbox img { max-width: 95vw; max-height: 95vh; object-fit: contain;
+                        border-radius: 6px; cursor: default;
+                        box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .lightbox .close-btn { position: absolute; top: 20px; right: 20px; color: #fff;
+                               background: rgba(255,255,255,0.15); border: 0;
+                               width: 44px; height: 44px; border-radius: 50%; cursor: pointer;
+                               font-size: 16px; display: flex; align-items: center; justify-content: center; }
+        .lightbox .close-btn:hover { background: rgba(255,255,255,0.25); }
+        .lightbox .open-tab { position: absolute; bottom: 20px; right: 20px; color: #fff;
+                              background: rgba(255,255,255,0.15); padding: 8px 14px;
+                              border-radius: 9999px; text-decoration: none; font-size: 13px; }
+        .lightbox .open-tab:hover { background: rgba(255,255,255,0.25); }
     </style>
 </head>
 <body class="bg-gradient-to-br from-slate-50 via-blue-50 to-teal-50 min-h-screen">
@@ -179,11 +197,12 @@
                                 <div class="atts">
                                     {% for a in m.attachments %}
                                         {% if a.type and a.type.startswith('image/') %}
-                                        <a href="{{ a.url }}" target="_blank" class="att image" title="{{ a.name }}">
+                                        <a href="{{ a.url }}" class="att image" title="{{ a.name }}"
+                                           onclick="openLightbox('{{ a.url|e }}'); return false;">
                                             <img src="{{ a.url }}" alt="{{ a.name }}">
                                         </a>
                                         {% else %}
-                                        <a href="{{ a.url }}" target="_blank" class="att" title="{{ a.name }}">
+                                        <a href="{{ a.url }}" target="_blank" rel="noopener" class="att" title="{{ a.name }}">
                                             <i class="fas fa-paperclip"></i><span>{{ a.name }}</span>
                                             <small style="color:#9ca3af;">{{ fmt_size(a.size) }}</small>
                                         </a>
@@ -221,7 +240,32 @@
         {% endif %}
     </main>
 
+    <!-- Image lightbox (WhatsApp-style: click outside / ESC to close) -->
+    <div id="lightbox" class="lightbox" onclick="closeLightbox(event)">
+        <button class="close-btn" type="button" onclick="closeLightbox()" title="Close (Esc)"><i class="fas fa-times"></i></button>
+        <img id="lightboxImg" src="" alt="" onclick="event.stopPropagation()">
+        <a id="lightboxOpen" class="open-tab" href="#" target="_blank" rel="noopener" onclick="event.stopPropagation()"><i class="fas fa-up-right-from-square mr-1"></i>Open in new tab</a>
+    </div>
+
     <script>
+        // ---- Lightbox ----
+        function openLightbox(url) {
+            var lb = document.getElementById('lightbox');
+            document.getElementById('lightboxImg').src = url;
+            document.getElementById('lightboxOpen').href = url;
+            lb.classList.add('open');
+            document.body.style.overflow = 'hidden';
+        }
+        function closeLightbox(e) {
+            // Only close if user clicks the dark backdrop, not the image / close button.
+            if (e && e.target && (e.target.tagName === 'IMG' || e.target.closest('.close-btn') || e.target.closest('.open-tab'))) return;
+            document.getElementById('lightbox').classList.remove('open');
+            document.body.style.overflow = '';
+        }
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') closeLightbox();
+        });
+
         document.querySelectorAll('form.chat-form').forEach(function (form) {
             var input = form.querySelector('.files-input');
             var btn   = form.querySelector('.files-btn');
