@@ -60,10 +60,29 @@ create table if not exists report_queries (
 create index if not exists idx_report_queries_client on report_queries(client_id);
 create index if not exists idx_report_queries_status on report_queries(status);
 
--- 5) Security: lock the tables so only our backend (service_role key)
+-- 5) Conversation thread for each query (WhatsApp-style chat) ----
+--    The original report_queries.message/response are kept as the
+--    seed of the thread; every reply after that lives here.
+create table if not exists query_messages (
+    id            uuid primary key default gen_random_uuid(),
+    query_id      uuid references report_queries(id) on delete cascade,
+    sender_type   text not null,            -- 'client' | 'admin'
+    sender_email  text,                     -- who sent it (for display)
+    body          text,                     -- message text (nullable - file-only allowed)
+    attachments   jsonb not null default '[]'::jsonb,  -- [{name, url, size, type}, ...]
+    created_at    timestamptz not null default now()
+);
+create index if not exists idx_query_messages_query on query_messages(query_id, created_at);
+
+-- 6) Security: lock the tables so only our backend (service_role key)
 --    can touch them. The Flask app uses the service_role key, which
 --    bypasses RLS; the public anon key gets no access.
-alter table clients        enable row level security;
-alter table report_logs    enable row level security;
-alter table activities     enable row level security;
-alter table report_queries enable row level security;
+alter table clients         enable row level security;
+alter table report_logs     enable row level security;
+alter table activities      enable row level security;
+alter table report_queries  enable row level security;
+alter table query_messages  enable row level security;
+
+-- 7) Storage bucket for query attachments. Must also be created in the
+--    Supabase Dashboard (Storage -> New bucket) with name 'query-attachments'
+--    and "Public bucket" enabled so the public URLs work.

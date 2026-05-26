@@ -9,10 +9,13 @@ return empty results and writes are skipped, so the rest of the app keeps
 working (e.g. emailing a report still succeeds even without logging).
 """
 import os
+import uuid
 import requests
 from datetime import datetime, timezone
+from werkzeug.utils import secure_filename
 
 TIMEOUT = 20
+ATTACHMENT_BUCKET = 'query-attachments'
 
 
 def _config():
@@ -241,6 +244,21 @@ def list_queries(status=None):
         return []
 
 
+def get_query(query_id):
+    """Fetch a single query by id (no embedded client). Used for ownership checks."""
+    if not is_configured() or not query_id:
+        return None
+    try:
+        r = requests.get(_rest(f'report_queries?id=eq.{query_id}&select=*'),
+                         headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        rows = r.json()
+        return rows[0] if rows else None
+    except Exception as e:
+        print(f'[db] get_query failed (non-fatal): {e}')
+        return None
+
+
 def respond_query(query_id, response, status, responded_by):
     """PMO answers a query: store the response, status, and who/when."""
     if not is_configured() or not query_id:
@@ -271,3 +289,107 @@ def count_open_queries():
     except Exception as e:
         print(f'[db] count_open_queries failed (non-fatal): {e}')
         return 0
+
+
+# ---------------- Conversation thread + attachments ----------------
+def add_message(query_id, sender_type, sender_email, body, attachments=None):
+    """Append a message (text and/or files) to a query thread.
+    sender_type: 'client' | 'admin'. Returns the inserted row or None."""
+    if not is_configured() or not query_id:
+        return None
+    data = {
+        'query_id': query_id,
+        'sender_type': sender_type,
+        'sender_email': sender_email,
+        'body': body or None,
+        'attachments': attachments or [],
+    }
+    r = requests.post(_rest('query_messages'),
+                      headers=_headers({'Prefer': 'return=representation'}),
+                      json=data, timeout=TIMEOUT)
+    r.raise_for_status()
+    rows = r.json()
+    return rows[0] if rows else None
+
+
+def list_messages(query_id):
+    """All messages for one query, oldest first (chat order)."""
+    if not is_configured() or not query_id:
+        return []
+    try:
+        r = requests.get(_rest(f'query_messages?query_id=eq.{query_id}&select=*&order=created_at.asc'),
+                         headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        print(f'[db] list_messages failed (non-fatal): {e}')
+        return []
+
+
+def messages_by_query(query_ids):
+    """Bulk fetch: {query_id: [messages...]} for the given list of ids."""
+    if not is_configured() or not query_ids:
+        return {}
+    try:
+        ids = ','.join(query_ids)
+        r = requests.get(_rest(f'query_messages?query_id=in.({ids})&select=*&order=created_at.asc'),
+                         headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        out = {}
+        for m in r.json():
+            out.setdefault(m['query_id'], []).append(m)
+        return out
+    except Exception as e:
+        print(f'[db] messages_by_query failed (non-fatal): {e}')
+        return {}
+
+
+def update_query_status(query_id, status, responded_by=None):
+    """Bump a query's status (open/answered/resolved) when a new message lands."""
+    if not is_configured() or not query_id:
+        return None
+    data = {'status': status}
+    if responded_by:
+        data['responded_by'] = responded_by
+        data['responded_at'] = datetime.now(timezone.utc).isoformat()
+    try:
+        r = requests.patch(_rest(f'report_queries?id=eq.{query_id}'),
+                           headers=_headers({'Prefer': 'return=representation'}),
+                           json=data, timeout=TIMEOUT)
+        r.raise_for_status()
+        rows = r.json()
+        return rows[0] if rows else None
+    except Exception as e:
+        print(f'[db] update_query_status failed (non-fatal): {e}')
+        return None
+
+
+def upload_attachment(query_id, filename, content, content_type=None):
+    """Upload a file to the Supabase 'query-attachments' bucket and return
+    {name, url, size, type}. Returns None if upload fails or DB not configured.
+    The bucket must exist + be Public (Supabase Dashboard -> Storage)."""
+    if not is_configured() or not content:
+        return None
+    url, key = _config()
+    safe = secure_filename(filename) or 'file'
+    path = f"{query_id}/{uuid.uuid4().hex}_{safe}"
+    upload_url = f"{url}/storage/v1/object/{ATTACHMENT_BUCKET}/{path}"
+    headers = {
+        'Authorization': f'Bearer {key}',
+        'apikey': key,
+        'Content-Type': content_type or 'application/octet-stream',
+        'x-upsert': 'true',
+    }
+    try:
+        r = requests.post(upload_url, headers=headers, data=content, timeout=60)
+        r.raise_for_status()
+    except Exception as e:
+        print(f'[db] upload_attachment failed: {e}')
+        return None
+    public_url = f"{url}/storage/v1/object/public/{ATTACHMENT_BUCKET}/{path}"
+    return {
+        'name': filename,
+        'url': public_url,
+        'size': len(content),
+        'type': content_type or '',
+    }

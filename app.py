@@ -18,6 +18,9 @@ app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)  # Session expires after 2 hours
 app.config['SESSION_COOKIE_NAME'] = 'analytics_session'
+# Cap request body so a few attachments per message can go through but
+# nothing huge (per file max ~10 MB enforced separately in the route).
+app.config['MAX_CONTENT_LENGTH'] = 25 * 1024 * 1024
 
 # Additional security configurations
 app.config['WTF_CSRF_ENABLED'] = True
