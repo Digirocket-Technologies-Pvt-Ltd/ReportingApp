@@ -1345,6 +1345,7 @@ def init_routes(app):
             return redirect(url_for('client_portal'))
 
         body = (request.form.get('message') or '').strip()
+        reply_to_id = (request.form.get('reply_to_id') or '').strip() or None
         files = request.files.getlist('files')
         has_files = any(f and f.filename for f in files)
         if not body and not has_files:
@@ -1357,7 +1358,7 @@ def init_routes(app):
                 raise RuntimeError('Could not open chat thread')
             attachments = _process_uploads(qid, files) if has_files else []
             db.add_message(qid, 'client', session.get('user_email'),
-                           body, attachments)
+                           body, attachments, reply_to_id=reply_to_id)
             # Client wrote -> chat is "open" (awaiting reply).
             db.update_query_status(qid, 'open')
             who = client.get('name') or client.get('email') or 'A client'
@@ -1410,6 +1411,7 @@ def init_routes(app):
         status = (request.form.get('status') or 'answered').strip()
         if status not in ('open', 'answered', 'resolved'):
             status = 'answered'
+        reply_to_id = (request.form.get('reply_to_id') or '').strip() or None
         files = request.files.getlist('files')
         has_files = any(f and f.filename for f in files)
         if not body and not has_files:
@@ -1422,7 +1424,7 @@ def init_routes(app):
                 raise RuntimeError('Could not open chat thread for client')
             attachments = _process_uploads(qid, files) if has_files else []
             db.add_message(qid, 'admin', session.get('user_email'),
-                           body, attachments)
+                           body, attachments, reply_to_id=reply_to_id)
             db.respond_query(qid, body or '(attachment)', status,
                              session.get('user_email'))
             db.log_activity('query_answered', 'A client query was answered',

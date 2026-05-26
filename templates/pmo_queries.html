@@ -36,6 +36,35 @@
         /* WhatsApp-style ticks on OWN (admin's) messages */
         .tick-sent { color: rgba(12,18,6,0.55); font-size: 11px; }
         .tick-read { color: #1d4ed8; font-size: 11px; }
+        /* --- Reply-to support (WhatsApp-style) -------------------- */
+        .reply-icon { background: transparent; border: 0; padding: 0 2px;
+                       color: inherit; opacity: 0.4; cursor: pointer;
+                       font-size: 11px; transition: opacity 0.15s; }
+        .reply-icon:hover { opacity: 1; }
+        .reply-quote { background: rgba(0,0,0,0.18); border-left: 3px solid rgba(255,255,255,0.35);
+                       border-radius: 6px; padding: 6px 8px; margin-bottom: 6px;
+                       cursor: pointer; font-size: 12px; line-height: 1.3; }
+        .reply-quote .rq-who { font-weight: 700; color: rgba(255,255,255,0.78); margin-bottom: 1px; }
+        .reply-quote .rq-text { color: rgba(255,255,255,0.62); overflow: hidden;
+                                  text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+        .bubble.admin .reply-quote { background: rgba(12,18,6,0.10); border-left-color: rgba(12,18,6,0.4); }
+        .bubble.admin .reply-quote .rq-who { color: rgba(12,18,6,0.78); }
+        .bubble.admin .reply-quote .rq-text { color: rgba(12,18,6,0.58); }
+        @keyframes msgHighlight {
+            0%   { box-shadow: 0 0 0 3px rgba(201,243,29,0.7); }
+            100% { box-shadow: 0 0 0 0 rgba(201,243,29,0); }
+        }
+        .bubble.highlight { animation: msgHighlight 1.8s ease; }
+        .reply-banner { display: none; align-items: center; gap: 8px;
+                         background: rgba(201,243,29,0.10); border-left: 3px solid #C9F31D;
+                         border-radius: 8px; padding: 6px 10px; margin: 6px 0;
+                         font-size: 12px; color: #d1d5db; }
+        .reply-banner.open { display: flex; }
+        .reply-banner .rb-preview { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .reply-banner .rb-who { font-weight: 700; color: #C9F31D; margin-right: 6px; }
+        .reply-banner .rb-close { background: transparent; border: 0; color: #9ca3af;
+                                    cursor: pointer; padding: 2px 6px; border-radius: 4px; }
+        .reply-banner .rb-close:hover { background: rgba(255,255,255,0.08); color: #f3f4f6; }
 
         .atts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
         .att  { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px;
@@ -211,7 +240,13 @@
                         {% for m in chat.messages %}
                             {% set side = 'right' if m.sender_type == 'admin' else 'left' %}
                             <div class="row {{ side }}">
-                                <div class="bubble {{ side }} {{ m.sender_type }}">
+                                <div class="bubble {{ side }} {{ m.sender_type }}" id="msg-{{ m.id }}">
+                                    {% if m.reply_to %}
+                                    <div class="reply-quote" onclick="jumpToMessage('{{ m.reply_to.id }}')">
+                                        <div class="rq-who">{{ (c.name or 'Client') if m.reply_to.sender_type == 'client' else 'You' }}</div>
+                                        <div class="rq-text">{{ (m.reply_to.body or '[attachment]')|truncate(80) }}</div>
+                                    </div>
+                                    {% endif %}
                                     {% if m.body %}<div class="body">{{ m.body }}</div>{% endif %}
                                     {% if m.attachments %}
                                     <div class="atts">
@@ -241,6 +276,15 @@
                                                 <i class="fas fa-check tick-sent" title="Sent"></i>
                                             {% endif %}
                                         {% endif %}
+                                        {# Reply icon -- skip legacy seed messages #}
+                                        {% if not (m.id is string and m.id.startswith('seed-')) %}
+                                        <button type="button" class="reply-icon" title="Reply to this message"
+                                                onclick="startReply(this, '{{ m.id }}',
+                                                                    '{{ (c.name or 'Client') if m.sender_type == 'client' else 'You' }}',
+                                                                    '{{ (m.body or '[attachment]')|truncate(60)|e }}')">
+                                            <i class="fas fa-reply"></i>
+                                        </button>
+                                        {% endif %}
                                     </div>
                                 </div>
                             </div>
@@ -253,6 +297,14 @@
                 <!-- Compose: text + plus + status + send -->
                 <form method="POST" action="{{ url_for('pmo_send_chat_message', client_id=c.id) }}"
                       enctype="multipart/form-data" class="chat-form">
+                    <input type="hidden" name="reply_to_id" class="reply-to-input">
+                    <div class="reply-banner">
+                        <i class="fas fa-reply" style="color:#C9F31D;"></i>
+                        <div class="rb-preview"><span class="rb-who"></span><span class="rb-text"></span></div>
+                        <button type="button" class="rb-close" title="Cancel reply" onclick="clearReply(this)">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
                     <div class="files-list"></div>
                     <div class="compose">
                         <input type="file" name="files" multiple hidden class="files-input">
@@ -301,6 +353,46 @@
         }
         document.addEventListener('keydown', function (e) {
             if (e.key === 'Escape') closeLightbox();
+        });
+
+        // ---- WhatsApp-style "reply to a message" (PMO) ----
+        // PMO dashboard has one form per chat-card -> scope to the closest one.
+        function startReply(btn, messageId, senderLabel, snippet) {
+            var card = btn.closest('.chat-card');
+            var form = card ? card.querySelector('form.chat-form') : null;
+            if (!form) return;
+            form.querySelector('.reply-to-input').value = messageId;
+            var banner = form.querySelector('.reply-banner');
+            banner.querySelector('.rb-who').textContent = senderLabel + ' ';
+            banner.querySelector('.rb-text').textContent = snippet;
+            banner.classList.add('open');
+            var ta = form.querySelector('textarea[name="message"]');
+            if (ta) ta.focus();
+        }
+        function clearReply(btn) {
+            var form = btn.closest('form.chat-form');
+            if (!form) return;
+            form.querySelector('.reply-to-input').value = '';
+            form.querySelector('.reply-banner').classList.remove('open');
+        }
+        function jumpToMessage(messageId) {
+            var el = document.getElementById('msg-' + messageId);
+            if (!el) return;
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            el.classList.remove('highlight');
+            void el.offsetWidth;
+            el.classList.add('highlight');
+        }
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') {
+                document.querySelectorAll('.reply-banner.open').forEach(function (b) {
+                    var f = b.closest('form.chat-form');
+                    if (f) {
+                        f.querySelector('.reply-to-input').value = '';
+                        b.classList.remove('open');
+                    }
+                });
+            }
         });
 
         document.querySelectorAll('form.chat-form').forEach(function (form) {

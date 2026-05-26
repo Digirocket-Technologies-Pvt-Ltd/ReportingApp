@@ -317,8 +317,10 @@ def count_open_queries():
 
 
 # ---------------- Conversation thread + attachments ----------------
-def add_message(query_id, sender_type, sender_email, body, attachments=None):
-    """Append a message (text and/or files) to a query thread.
+def add_message(query_id, sender_type, sender_email, body, attachments=None,
+                reply_to_id=None):
+    """Append a message (text and/or files) to a query thread. Optionally
+    link it to an earlier message via reply_to_id (WhatsApp-style reply).
     sender_type: 'client' | 'admin'. Returns the inserted row or None."""
     if not is_configured() or not query_id:
         return None
@@ -329,12 +331,36 @@ def add_message(query_id, sender_type, sender_email, body, attachments=None):
         'body': body or None,
         'attachments': attachments or [],
     }
+    # reply_to_id must be a real UUID; ignore the synthesised seed ids
+    # ("seed-xxx-x") that never live in the DB.
+    if reply_to_id and not str(reply_to_id).startswith('seed-'):
+        data['reply_to_id'] = reply_to_id
     r = requests.post(_rest('query_messages'),
                       headers=_headers({'Prefer': 'return=representation'}),
                       json=data, timeout=TIMEOUT)
     r.raise_for_status()
     rows = r.json()
     return rows[0] if rows else None
+
+
+def _attach_reply_previews(messages):
+    """For each message that has reply_to_id, attach a compact `reply_to`
+    object {id, body, sender_type, sender_email} so the template can show
+    a small quoted preview at the top of the bubble."""
+    if not messages:
+        return messages
+    by_id = {m['id']: m for m in messages}
+    for m in messages:
+        rid = m.get('reply_to_id')
+        if rid and rid in by_id:
+            target = by_id[rid]
+            m['reply_to'] = {
+                'id': target['id'],
+                'body': target.get('body'),
+                'sender_type': target.get('sender_type'),
+                'sender_email': target.get('sender_email'),
+            }
+    return messages
 
 
 def list_messages(query_id):
@@ -447,7 +473,7 @@ def client_messages(client_id):
             else:
                 timeline.extend(_seed_messages_from_query(q))
         timeline.sort(key=lambda m: m.get('created_at') or '')
-        return timeline
+        return _attach_reply_previews(timeline)
     except Exception as e:
         print(f'[db] client_messages failed (non-fatal): {e}')
         return []
@@ -529,6 +555,7 @@ def list_chats():
         chats = []
         for cid, chat in by_client.items():
             chat['messages'].sort(key=lambda m: m.get('created_at') or '')
+            chat['messages'] = _attach_reply_previews(chat['messages'])
             chat['last_at'] = chat['messages'][-1].get('created_at') if chat['messages'] else None
             if chat['messages']:
                 last = chat['messages'][-1]

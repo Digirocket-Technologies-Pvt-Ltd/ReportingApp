@@ -84,6 +84,12 @@ create index if not exists idx_query_messages_query on query_messages(query_id, 
 -- set = double tick (read).
 alter table query_messages add column if not exists read_at timestamptz;
 
+-- WhatsApp-style "reply to a specific message". reply_to_id points at the
+-- earlier message this one is responding to (within the same thread).
+alter table query_messages
+    add column if not exists reply_to_id uuid references query_messages(id) on delete set null;
+create index if not exists idx_query_messages_reply_to on query_messages(reply_to_id);
+
 -- 6) Security: lock the tables so only our backend (service_role key)
 --    can touch them. The Flask app uses the service_role key, which
 --    bypasses RLS; the public anon key gets no access.
