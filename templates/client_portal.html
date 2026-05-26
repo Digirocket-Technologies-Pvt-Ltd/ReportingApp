@@ -123,6 +123,42 @@
         .reports-empty { padding: 40px 20px; text-align: center; color: #9ca3af; font-size: 13px; }
         .reports-sep { font-size: 10px; font-weight: 700; color: #9ca3af; text-transform: uppercase;
                         letter-spacing: .05em; padding: 8px 14px 4px; }
+        .no-file-note { font-size: 10px; color: #f87171; margin-top: 4px; font-style: italic; }
+
+        /* === Dark chat + dropdown theme (per user request) === */
+        .chat-card { background: #0a0d0e; color: #f3f4f6; }
+        .chat-card h3 { color: #f3f4f6; }
+        .chat-card .chat-sub { color: #9ca3af; }
+        .thread { background: #14181a; }
+        .bubble.client { background: #1f2a36; color: #f3f4f6; border-color: #2d3a4a; }
+        .bubble.admin  { background: #C9F31D; color: #0c1206; }
+        .bubble .meta { color: #9ca3af; }
+        .bubble .meta .who { color: #6b7280; }
+        .empty-hint { color: #6b7280; }
+        .compose { background: #1f2a36; border-color: #2d3a4a; }
+        .compose textarea { color: #f3f4f6; background: transparent; }
+        .compose textarea::placeholder { color: #6b7280; }
+        .compose .icon-btn { background: #374151; color: #d1d5db; }
+        .compose .icon-btn:hover { background: #4b5563; }
+        .atts .att { background: rgba(255,255,255,0.08); color: #d1d5db; }
+        .atts .att:hover { background: rgba(255,255,255,0.14); }
+        /* Reports dropdown -> dark */
+        .reports-dropdown { background: #0a0d0e; border: 1px solid #1f2937; }
+        .reports-head { border-bottom-color: #1f2937; }
+        .reports-head h3 { color: #f3f4f6; }
+        .reports-head .total { color: #9ca3af; }
+        .reports-row { color: #f3f4f6; }
+        .reports-row:hover { background: #1f2937; }
+        .reports-row.is-new { background: rgba(201,243,29,0.08); }
+        .reports-row.is-new:hover { background: rgba(201,243,29,0.16); }
+        .reports-row.no-file { opacity: 1; }   /* let the visual cues do the work, not opacity */
+        .reports-row.no-file .row-icon { background: #374151; color: #9ca3af; }
+        .reports-row.no-file .row-period { color: #9ca3af; }
+        .reports-row .row-period { color: #f3f4f6; }
+        .reports-row .row-reason { color: #9ca3af; }
+        .reports-row .row-time { color: #6b7280; }
+        .reports-sep { color: #6b7280; background: rgba(255,255,255,0.04); }
+        .reports-empty { color: #6b7280; }
 
         /* --- Image lightbox (click outside / ESC to close, like WhatsApp) --- */
         .lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.88);
@@ -186,10 +222,10 @@
                                     {% set primary = (r.files[0] if r.files and r.files|length > 0 else None) %}
                                     {% if primary and primary.url %}
                                     <a href="{{ primary.url }}" target="_blank" rel="noopener"
-                                       onclick="markReportViewed('{{ r.id }}')"
+                                       onclick="markReportViewed('{{ r.id }}', this)"
                                        class="reports-row {% if r.is_new %}is-new{% endif %}">
                                     {% else %}
-                                    <div class="reports-row no-file" title="File not available">
+                                    <div class="reports-row no-file" title="The file for this report wasn't saved in storage">
                                     {% endif %}
                                         <div class="row-icon"><i class="fas fa-file-pdf"></i></div>
                                         <div class="row-body">
@@ -199,6 +235,9 @@
                                                 <i class="fas fa-clock mr-1"></i>{{ (r.sent_at or '')[:16]|replace('T', ' ') }}
                                                 {% if r.files and r.files|length > 1 %} • {{ r.files|length }} files{% endif %}
                                             </div>
+                                            {% if not primary %}
+                                            <div class="no-file-note"><i class="fas fa-triangle-exclamation mr-1"></i>File not stored (sent before file archiving was added). Ask us to re-send it.</div>
+                                            {% endif %}
                                         </div>
                                         {% if r.is_new %}<span class="row-new">NEW</span>{% endif %}
                                     {% if primary and primary.url %}</a>{% else %}</div>{% endif %}
@@ -318,8 +357,8 @@
         <!-- ============ THE ONE CHAT ============ -->
         <section class="chat-card">
             <div class="flex items-center justify-between mb-3">
-                <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-comments text-teal-600 mr-2"></i>Chat with our team</h3>
-                <span class="text-xs text-gray-400">Reply right here — we'll see your messages instantly.</span>
+                <h3 class="text-lg font-bold"><i class="fas fa-comments text-teal-600 mr-2"></i>Chat with our team</h3>
+                <span class="text-xs chat-sub">Reply right here — we'll see your messages instantly.</span>
             </div>
 
             <div class="thread" id="mainThread">
@@ -408,13 +447,36 @@
             if (rmenu && rdd && !rmenu.contains(e.target)) rdd.classList.remove('open');
         });
 
-        // Mark a report as viewed when the client opens it. Best-effort,
-        // doesn't block the file opening in the new tab.
-        function markReportViewed(reportId) {
+        // Mark a report as viewed when the client opens it. Best-effort
+        // (doesn't block the new tab) + instant visual demotion: removes
+        // the NEW pill, the lime tint, and decrements the unread count.
+        function markReportViewed(reportId, rowEl) {
             try {
                 fetch('/portal/report/' + reportId + '/viewed',
                       { method: 'POST', credentials: 'same-origin' }).catch(function () {});
             } catch (e) { /* ignore */ }
+            if (rowEl) {
+                rowEl.classList.remove('is-new');
+                var pill = rowEl.querySelector('.row-new');
+                if (pill) pill.remove();
+                // Update / drop the red unread-count pill on the header icon.
+                var countPill = document.querySelector('.reports-btn .count-pill');
+                if (countPill) {
+                    var n = (parseInt(countPill.textContent || '1', 10) || 1) - 1;
+                    if (n > 0) countPill.textContent = n; else countPill.remove();
+                }
+                // Update the "X new" line in the dropdown header.
+                var head = document.querySelector('.reports-head .total');
+                if (head) {
+                    var m = head.innerHTML.match(/(\d+) new/);
+                    if (m) {
+                        var nn = parseInt(m[1], 10) - 1;
+                        head.innerHTML = head.innerHTML.replace(/<b[^>]*>\d+ new<\/b>/,
+                            nn > 0 ? '<b class="text-yellow-600">' + nn + ' new</b>' : '');
+                        if (nn <= 0) head.innerHTML = head.innerHTML.replace(/\s*•\s*$/, '');
+                    }
+                }
+            }
         }
 
         // ---- Lightbox ----
