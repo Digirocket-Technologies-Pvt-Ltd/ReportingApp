@@ -362,6 +362,12 @@
                                 <i class="fas fa-users-gear mr-2"></i>PMO Portal
                             </a>
                             {% endif %}
+                            {% if client_mode %}
+                            <div class="border-t border-gray-100"></div>
+                            <a href="{{ url_for('client_portal') }}" class="dropdown-item">
+                                <i class="fas fa-arrow-left mr-2"></i>Back to Portal
+                            </a>
+                            {% endif %}
                             <div class="border-t border-gray-100"></div>
                             <a href="{{ url_for('logout') }}" class="dropdown-item text-red-600 hover:bg-red-50 hover:text-red-700">
                                 <i class="fas fa-sign-out-alt mr-2"></i>Logout

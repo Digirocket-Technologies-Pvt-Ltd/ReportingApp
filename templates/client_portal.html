@@ -87,7 +87,8 @@
         .reports-btn { position: relative; width: 40px; height: 40px; border-radius: 50%;
                        background: rgba(255,255,255,0.10); border: 0; color: white;
                        cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
-                       font-size: 16px; }
+                       font-size: 16px; text-decoration: none; }
+        .reports-btn:hover, a.reports-btn:hover { color: white; text-decoration: none; }
         .reports-btn:hover { background: rgba(255,255,255,0.16); }
         .reports-btn .count-pill { position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px;
                                     background: #ef4444; color: white; font-size: 10px; font-weight: 800;
@@ -204,6 +205,10 @@
                 </div>
                 <div class="flex items-center gap-3">
                 {% if client %}
+                <!-- Dashboard icon (opens the client's filtered Analytics dashboard) -->
+                <a href="{{ url_for('client_dashboard') }}" class="reports-btn" title="Open your Analytics dashboard">
+                    <i class="fas fa-chart-line"></i>
+                </a>
                 <!-- Reports icon (timeline dropdown) -->
                 <div class="reports-menu">
                     {% set new_count = reports|selectattr('is_new')|list|length %}
@@ -356,8 +361,10 @@
         <div class="mb-6">
             <h2 class="text-3xl font-bold text-gray-800">Welcome, {{ client.name }} 👋</h2>
             <p class="text-gray-500">
-                Chat with our team below. Your reports are in the
-                <i class="fas fa-file-lines text-teal-600 mx-1"></i>icon at the top-right.
+                Chat with our team below. Open your live data with
+                <i class="fas fa-chart-line text-teal-600 mx-1"></i>(Dashboard),
+                your reports with
+                <i class="fas fa-file-lines text-teal-600 mx-1"></i>(Reports) at the top-right.
             </p>
         </div>
 

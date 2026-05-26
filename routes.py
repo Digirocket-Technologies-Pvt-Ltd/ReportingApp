@@ -1063,6 +1063,67 @@ def init_routes(app):
             print(f'[portal] mark report viewed failed: {e}')
             return jsonify({'success': False, 'message': str(e)}), 500
 
+    @app.route('/portal/dashboard')
+    def client_dashboard():
+        """Same Analytics Dashboard the team uses, but filtered to ONLY this
+        client's GA4 property + Search Console site (from the clients table).
+        Privacy: nothing belonging to other clients ever appears here."""
+        if not is_authenticated() or not refresh_token_if_needed():
+            flash('Please log in.', 'warning')
+            return redirect(url_for('login'))
+
+        client = _current_client()
+        if not client:
+            if is_pmo_admin():
+                # Admins use the full unfiltered dashboard.
+                return redirect(url_for('dashboard'))
+            flash('Your account is not linked to a client profile.', 'warning')
+            return redirect(url_for('client_portal'))
+
+        allowed_ga4 = (client.get('ga4_property_id') or '').strip()
+        allowed_gsc = normalize_gsc_property((client.get('gsc_property_id') or '').strip())
+
+        try:
+            ga4_properties, ga4_error = get_ga4_properties(session)
+        except Exception as e:
+            ga4_properties, ga4_error = [], str(e)
+        try:
+            gsc_sites = get_gsc_sites(session)
+        except Exception as e:
+            gsc_sites = []
+
+        # --- Privacy filter: only the client's own assigned property/site. ---
+        if allowed_ga4:
+            ga4_properties = [p for p in (ga4_properties or [])
+                              if str(p.get('property_id', '')).strip() == allowed_ga4]
+            # If their Google account can't see their assigned property,
+            # still show the row so they know which one is theirs.
+            if not ga4_properties:
+                ga4_properties = [{'property_id': allowed_ga4,
+                                   'display_name': 'Your GA4 Property (grant Read access in Google Analytics)',
+                                   'account_name': '', 'property_type': 'GA4'}]
+        else:
+            ga4_properties = []   # client has no GA4 assigned -> show nothing
+            ga4_error = ga4_error or 'No GA4 property is linked to your account yet. Please contact your account manager.'
+
+        if allowed_gsc:
+            gsc_sites = [s for s in (gsc_sites or [])
+                         if str(s.get('site_url', '')).strip() == allowed_gsc]
+            if not gsc_sites:
+                gsc_sites = [{'site_url': allowed_gsc, 'permission_level': 'siteOwner'}]
+        else:
+            gsc_sites = []
+
+        return render_template(
+            'dashboard.html',
+            ga4_properties=ga4_properties,
+            gsc_sites=gsc_sites,
+            ga4_error=ga4_error,
+            session_info=get_session_info(),
+            is_admin=False,
+            client_mode=True,
+        )
+
     @app.route('/portal/settings')
     def client_settings():
         """A read-only profile page for the logged-in client."""
