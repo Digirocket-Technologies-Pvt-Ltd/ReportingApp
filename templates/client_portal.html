@@ -55,6 +55,51 @@
                       font-size: 12px; margin-right: 6px; margin-top: 6px; }
         .empty-hint { text-align: center; color: #9ca3af; padding: 60px 20px; font-size: 14px; }
 
+        /* --- Profile dropdown (top-right user menu) ----------------- */
+        .profile-menu { position: relative; }
+        .profile-btn { display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.10);
+                       border: 0; padding: 4px 14px 4px 4px; border-radius: 9999px; cursor: pointer; color: white;
+                       font-family: inherit; font-size: 14px; }
+        .profile-btn:hover { background: rgba(255,255,255,0.16); }
+        .profile-avatar { width: 36px; height: 36px; border-radius: 50%; background: #C9F31D;
+                          color: #0c1206; display: flex; align-items: center; justify-content: center;
+                          font-weight: 700; font-size: 15px; overflow: hidden; flex-shrink: 0; }
+        .profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .profile-dropdown { display: none; position: absolute; top: calc(100% + 8px); right: 0;
+                            background: white; border-radius: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+                            min-width: 280px; padding: 12px; z-index: 60; }
+        .profile-dropdown.open { display: block; }
+        .profile-head { display: flex; gap: 12px; padding: 4px 4px 12px; border-bottom: 1px solid #f3f4f6;
+                        align-items: center; margin-bottom: 8px; }
+        .profile-head .profile-avatar { width: 48px; height: 48px; font-size: 18px; }
+        .profile-head .info { flex: 1; min-width: 0; }
+        .profile-head .name { font-weight: 700; color: #1f2937; }
+        .profile-head .email { font-size: 12px; color: #6b7280; word-break: break-all; }
+        .profile-dropdown .menu-item { display: flex; align-items: center; gap: 10px; padding: 10px 8px;
+                                        color: #1f2937; text-decoration: none; border-radius: 8px; font-size: 14px; }
+        .profile-dropdown .menu-item i { width: 18px; text-align: center; color: #6b7280; }
+        .profile-dropdown .menu-item:hover { background: #f3f4f6; }
+        .profile-dropdown .menu-item.logout { color: #b91c1c; }
+        .profile-dropdown .menu-item.logout i { color: #b91c1c; }
+
+        /* --- Report cards ------------------------------------------- */
+        .reports-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+        @media (min-width: 768px) { .reports-grid { grid-template-columns: 1fr 1fr; } }
+        @media (min-width: 1100px) { .reports-grid { grid-template-columns: 1fr 1fr 1fr; } }
+        .report-card { position: relative; display: flex; gap: 12px; padding: 14px;
+                       border: 1px solid #e5e7eb; border-radius: 14px; background: #f9fafb;
+                       align-items: flex-start; transition: box-shadow .15s ease, transform .15s ease; }
+        .report-card:hover { box-shadow: 0 6px 14px rgba(0,0,0,0.06); transform: translateY(-1px); }
+        .report-card.is-new { background: #fdfff0; border-color: #d3ee5b; }
+        .report-icon { width: 44px; height: 44px; flex-shrink: 0; background: #C9F31D; color: #0c1206;
+                       border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+        .report-body { flex: 1; min-width: 0; }
+        .report-period { font-weight: 700; color: #1f2937; font-size: 15px; line-height: 1.2; }
+        .report-reason { font-size: 13px; color: #4b5563; margin-top: 4px; word-break: break-word; line-height: 1.4; }
+        .report-time { font-size: 11px; color: #6b7280; margin-top: 8px; display: flex; align-items: center; gap: 4px; }
+        .report-new-pill { position: absolute; top: 10px; right: 10px; background: #C9F31D; color: #0c1206;
+                           font-size: 10px; font-weight: 800; padding: 3px 8px; border-radius: 9999px; letter-spacing: .04em; }
+
         /* --- Image lightbox (click outside / ESC to close, like WhatsApp) --- */
         .lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.88);
                     z-index: 9999; align-items: center; justify-content: center; padding: 30px;
@@ -88,9 +133,46 @@
                         <span class="text-white text-xs opacity-75">Your reports &amp; support &bull; DigiRocket</span>
                     </div>
                 </div>
+                {% if client %}
+                <div class="profile-menu">
+                    <button class="profile-btn" type="button" onclick="toggleProfile(event)">
+                        <span class="profile-avatar">
+                            {% if session_info and session_info.user_picture %}
+                            <img src="{{ session_info.user_picture }}" alt="">
+                            {% else %}
+                            {{ (client.name or 'U')[:1]|upper }}
+                            {% endif %}
+                        </span>
+                        <span class="hidden sm:inline">{{ client.name }}</span>
+                        <i class="fas fa-chevron-down" style="font-size: 10px; opacity: .7;"></i>
+                    </button>
+                    <div id="profileDropdown" class="profile-dropdown">
+                        <div class="profile-head">
+                            <span class="profile-avatar">
+                                {% if session_info and session_info.user_picture %}
+                                <img src="{{ session_info.user_picture }}" alt="">
+                                {% else %}
+                                {{ (client.name or 'U')[:1]|upper }}
+                                {% endif %}
+                            </span>
+                            <div class="info">
+                                <div class="name">{{ client.name }}</div>
+                                <div class="email">{{ client.email or (session_info.user_email if session_info else '') }}</div>
+                            </div>
+                        </div>
+                        <a href="{{ url_for('client_settings') }}" class="menu-item">
+                            <i class="fas fa-gear"></i>Settings &amp; profile
+                        </a>
+                        <a href="{{ url_for('logout') }}" class="menu-item logout">
+                            <i class="fas fa-sign-out-alt"></i>Logout
+                        </a>
+                    </div>
+                </div>
+                {% else %}
                 <a href="{{ url_for('logout') }}" class="text-white hover:text-gray-200 p-2 rounded-lg hover:bg-white hover:bg-opacity-10">
                     <i class="fas fa-sign-out-alt mr-2"></i>Logout
                 </a>
+                {% endif %}
             </div>
         </div>
     </header>
@@ -150,29 +232,33 @@
 
         <!-- Your Reports -->
         <section class="bg-white rounded-2xl shadow-lg p-6 mb-6">
-            <h3 class="text-lg font-bold text-gray-800 mb-4"><i class="fas fa-file-lines text-teal-600 mr-2"></i>Your Reports</h3>
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-gray-800">
+                    <i class="fas fa-file-lines text-teal-600 mr-2"></i>Your Reports
+                </h3>
+                {% set new_count = reports|selectattr('is_new')|list|length %}
+                {% if new_count %}
+                <span class="text-xs font-bold text-lime-700 bg-lime-100 px-3 py-1 rounded-full">
+                    {{ new_count }} NEW
+                </span>
+                {% endif %}
+            </div>
             {% if reports %}
-            <div class="overflow-x-auto">
-                <table class="w-full text-left">
-                    <thead class="border-b border-gray-200 text-gray-500 text-xs uppercase tracking-wide">
-                        <tr>
-                            <th class="px-3 py-2">Month / Period</th>
-                            <th class="px-3 py-2">Received On</th>
-                            <th class="px-3 py-2">Subject</th>
-                            <th class="px-3 py-2">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for r in reports %}
-                        <tr class="border-b border-gray-100 hover:bg-gray-50">
-                            <td class="px-3 py-3 font-semibold text-gray-800">{{ r.report_period or '—' }}</td>
-                            <td class="px-3 py-3 text-gray-600">{{ (r.sent_at or '')[:10] or '—' }}</td>
-                            <td class="px-3 py-3 text-gray-600">{{ r.subject or '—' }}</td>
-                            <td class="px-3 py-3"><span class="badge badge-sent">{{ r.status or 'sent' }}</span></td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+            <div class="reports-grid">
+                {% for r in reports %}
+                <div class="report-card {% if r.is_new %}is-new{% endif %}">
+                    {% if r.is_new %}<span class="report-new-pill">NEW</span>{% endif %}
+                    <div class="report-icon"><i class="fas fa-file-pdf"></i></div>
+                    <div class="report-body">
+                        <div class="report-period">{{ r.report_period or 'Analytics Report' }}</div>
+                        <div class="report-reason">{{ r.subject or 'Your analytics report from DigiRocket' }}</div>
+                        <div class="report-time">
+                            <i class="fas fa-clock"></i>
+                            Received {{ (r.sent_at or '')[:16]|replace('T', ' ') }}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
             </div>
             {% else %}
             <p class="text-gray-500 text-sm">No reports have been shared with you yet. They'll appear here as soon as our team sends one.</p>
@@ -248,6 +334,18 @@
     </div>
 
     <script>
+        // ---- Profile dropdown ----
+        function toggleProfile(e) {
+            if (e) e.stopPropagation();
+            var dd = document.getElementById('profileDropdown');
+            if (dd) dd.classList.toggle('open');
+        }
+        document.addEventListener('click', function (e) {
+            var menu = document.querySelector('.profile-menu');
+            var dd = document.getElementById('profileDropdown');
+            if (menu && dd && !menu.contains(e.target)) dd.classList.remove('open');
+        });
+
         // ---- Lightbox ----
         function openLightbox(url) {
             var lb = document.getElementById('lightbox');

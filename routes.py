@@ -12,7 +12,7 @@ import os
 import base64
 from PIL import Image
 import io
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import requests
 from pdf_processing import build_slide_images, build_pdf_from_images, build_editable_pptx, build_pptx_from_images
 from werkzeug.utils import secure_filename
@@ -1008,12 +1008,38 @@ def init_routes(app):
         try:
             reports = db.client_reports(client['id'])
             messages = db.client_messages(client['id'])
+            # Flag reports received in the last 7 days as NEW so the
+            # client portal can show a clear "new report arrived" badge.
+            cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+            for r in reports:
+                sent = r.get('sent_at')
+                try:
+                    dt = datetime.fromisoformat((sent or '').replace('Z', '+00:00'))
+                    r['is_new'] = dt >= cutoff
+                except Exception:
+                    r['is_new'] = False
         except Exception as e:
             print(f'Error loading client portal: {e}')
             reports, messages = [], []
 
         return render_template('client_portal.html', db_ready=True,
                                client=client, reports=reports, messages=messages,
+                               session_info=get_session_info())
+
+    @app.route('/portal/settings')
+    def client_settings():
+        """A read-only profile page for the logged-in client."""
+        if not is_authenticated() or not refresh_token_if_needed():
+            flash('Please log in.', 'warning')
+            return redirect(url_for('login'))
+        if not db.is_configured():
+            return redirect(url_for('client_portal'))
+        client = _current_client()
+        if not client:
+            if is_pmo_admin():
+                return redirect(url_for('pmo_portal'))
+            return redirect(url_for('client_portal'))
+        return render_template('client_settings.html', client=client,
                                session_info=get_session_info())
 
     @app.route('/portal/message', methods=['POST'])
