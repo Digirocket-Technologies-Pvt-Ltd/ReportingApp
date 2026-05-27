@@ -1,4 +1,4 @@
-from flask import Flask, render_template, redirect, url_for, request, jsonify, session, flash, send_file, g
+from flask import Flask, Response, render_template, redirect, url_for, request, jsonify, session, flash, send_file, g
 from auth import is_authenticated, refresh_token_if_needed, logout_user, get_user_info, get_session_info, is_pmo_admin
 import db
 from ga4 import get_ga4_properties, get_ga4_data, get_property_name, get_ga4_overview, get_ga4_acquisition, get_ga4_extra, get_ga4_daily_overview
@@ -153,6 +153,48 @@ def init_routes(app):
         if is_authenticated():
             return redirect(url_for('dashboard'))
         return render_template('index.html')
+
+    # Favicon: DigiRocket brand green + chart-line glyph.
+    # Chrome quietly REJECTS SVG-content served at /favicon.ico (it expects
+    # ICO/PNG bytes there), so we serve a real PNG at /favicon.ico (rendered
+    # once via Pillow and cached) and the same artwork as SVG at /favicon.svg
+    # for browsers that prefer the vector version.
+    _FAVICON_SVG = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">'
+        '<rect width="64" height="64" rx="14" fill="#C9F31D"/>'
+        '<path d="M12 44 L24 30 L34 38 L52 18" fill="none" '
+        'stroke="#0a0d0e" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>'
+        '<circle cx="52" cy="18" r="4" fill="#0a0d0e"/>'
+        '</svg>'
+    )
+    _favicon_png_cache = {'bytes': None}
+
+    def _build_favicon_png():
+        from PIL import Image, ImageDraw
+        import io
+        img = Image.new('RGBA', (64, 64), (0, 0, 0, 0))
+        d = ImageDraw.Draw(img)
+        d.rounded_rectangle([(0, 0), (63, 63)], radius=14, fill=(201, 243, 29, 255))
+        line = (10, 13, 14, 255)
+        pts = [(12, 44), (24, 30), (34, 38), (52, 18)]
+        for i in range(len(pts) - 1):
+            d.line([pts[i], pts[i + 1]], fill=line, width=6, joint='curve')
+        d.ellipse([(48, 14), (56, 22)], fill=line)
+        buf = io.BytesIO()
+        img.save(buf, format='PNG')
+        return buf.getvalue()
+
+    @app.route('/favicon.ico')
+    def favicon_ico():
+        if _favicon_png_cache['bytes'] is None:
+            _favicon_png_cache['bytes'] = _build_favicon_png()
+        return Response(_favicon_png_cache['bytes'], mimetype='image/png',
+                        headers={'Cache-Control': 'public, max-age=86400'})
+
+    @app.route('/favicon.svg')
+    def favicon_svg():
+        return Response(_FAVICON_SVG, mimetype='image/svg+xml',
+                        headers={'Cache-Control': 'public, max-age=86400'})
 
     @app.route('/debug-gmb')
     def debug_gmb():
@@ -567,6 +609,15 @@ def init_routes(app):
                         'position': _pct(prev_s.get('position'), str(cur_s.get('average_position', '0'))),
                     }
 
+            # Is there a previously-generated PDF on disk? If yes, the header
+            # shows a persistent "Open Last PDF" button so the user never
+            # loses track of where their report went.
+            _report_pdf_path = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                'static', 'images', 'analytics_report.pdf')
+            report_exists = os.path.exists(_report_pdf_path)
+            report_pdf_url = url_for('static', filename='images/analytics_report.pdf') if report_exists else None
+
             return render_template(
                 'combined_data.html',
                 ga4_property_name=ga4_property_name,
@@ -587,7 +638,9 @@ def init_routes(app):
                 ai_text=ai_text,
                 gmb_data=gmb_data,
                 gmc_data=gmc_data,
-                session_info=session_info
+                session_info=session_info,
+                report_exists=report_exists,
+                report_pdf_url=report_pdf_url,
             )
 
         except Exception as e:

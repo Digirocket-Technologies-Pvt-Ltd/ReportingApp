@@ -1,6 +1,7 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=3">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PMO Portal - Client Database</title>
@@ -112,12 +113,12 @@
                         <td class="px-4 py-3 font-semibold">
                             <a href="{{ url_for('pmo_client_detail', client_id=c.id) }}" class="text-teal-600 hover:underline">{{ c.name }}</a>
                         </td>
-                        <td class="px-4 py-3 text-gray-600">{{ c.email or '—' }}</td>
-                        <td class="px-4 py-3 text-gray-600">{{ c.ga4_property_id or '—' }}</td>
-                        <td class="px-4 py-3 text-gray-600">{{ c.gsc_property_id or '—' }}</td>
-                        <td class="px-4 py-3 text-gray-600">{{ c.nature_of_business or '—' }}</td>
-                        <td class="px-4 py-3 text-gray-600">{{ c.start_date or '—' }}</td>
-                        <td class="px-4 py-3 text-gray-600">{{ c.billing_cycle_day or '—' }}</td>
+                        <td class="px-4 py-3 text-gray-600">{{ c.email or 'â€”' }}</td>
+                        <td class="px-4 py-3 text-gray-600">{{ c.ga4_property_id or 'â€”' }}</td>
+                        <td class="px-4 py-3 text-gray-600">{{ c.gsc_property_id or 'â€”' }}</td>
+                        <td class="px-4 py-3 text-gray-600">{{ c.nature_of_business or 'â€”' }}</td>
+                        <td class="px-4 py-3 text-gray-600">{{ c.start_date or 'â€”' }}</td>
+                        <td class="px-4 py-3 text-gray-600">{{ c.billing_cycle_day or 'â€”' }}</td>
                         <td class="px-4 py-3">
                             {% if c.status == 'churned' %}
                                 <span class="badge badge-churned">Not Active</span>
@@ -227,7 +228,7 @@
                 if (match) shown++;
             });
             var counter = document.getElementById('searchCount');
-            counter.textContent = q ? '· showing ' + shown : '';
+            counter.textContent = q ? 'Â· showing ' + shown : '';
         }
 
         function showToast(message, ok) {

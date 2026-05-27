@@ -1,6 +1,7 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html>
 <head>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=3">
     <title>Combined GA4 & GSC Data</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link href="/static/css/brand-theme.css" rel="stylesheet">
@@ -44,6 +45,219 @@
         
         .custom-gradient {
             background: linear-gradient(135deg, #14181a 0%, #0a0d0e 100%);
+        }
+
+        /* ---- Header (Analytics Intelligence) ---- */
+        .nav-pill {
+            color: rgba(255,255,255,0.75);
+            padding: 6px 14px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            text-decoration: none;
+        }
+        .nav-pill:hover {
+            color: #ffffff;
+            background: rgba(255,255,255,0.08);
+        }
+
+        .header-pdf-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            height: 40px;
+            padding: 0 16px;
+            border-radius: 10px;
+            background: #C9F31D;
+            color: #0a0d0e;
+            font-weight: 700;
+            font-size: 14px;
+            letter-spacing: 0.2px;
+            box-shadow: 0 4px 14px rgba(201, 243, 29, 0.25);
+            transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+        }
+        .header-pdf-btn:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(201, 243, 29, 0.45);
+        }
+        .header-pdf-btn:disabled {
+            opacity: 0.7;
+            cursor: progress;
+        }
+        .header-pdf-btn i { font-size: 14px; }
+
+        .header-user-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            height: 40px;
+            padding: 0 10px;
+            border-radius: 10px;
+            color: #ffffff;
+            background: rgba(255,255,255,0.06);
+            transition: background 0.15s ease;
+        }
+        .header-user-btn:hover { background: rgba(255,255,255,0.12); }
+
+        .header-secondary-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            height: 40px;
+            padding: 0 12px;
+            border-radius: 10px;
+            color: rgba(255,255,255,0.92);
+            background: rgba(255,255,255,0.08);
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: background 0.15s ease, transform 0.15s ease;
+            border: 1px solid rgba(255,255,255,0.04);
+        }
+        .header-secondary-btn:hover {
+            background: rgba(201, 243, 29, 0.15);
+            color: #C9F31D;
+            transform: translateY(-1px);
+        }
+        .header-secondary-btn i { font-size: 13px; }
+
+        /* ---- Background PDF generation: progress chip + ready panel ---- */
+        #pdfProgressChip {
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            z-index: 70;
+            background: #14181a;
+            color: #ffffff;
+            border-radius: 12px;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            box-shadow: 0 12px 32px rgba(0,0,0,0.25);
+            min-width: 240px;
+            font-size: 14px;
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+        #pdfProgressChip .pdf-spinner {
+            width: 18px; height: 18px;
+            border: 2px solid rgba(255,255,255,0.2);
+            border-top-color: #C9F31D;
+            border-radius: 50%;
+            animation: spin 0.9s linear infinite;
+            flex-shrink: 0;
+        }
+        #pdfProgressChip .pdf-progress-text { flex: 1; }
+        #pdfProgressChip .pdf-progress-bar {
+            height: 4px;
+            background: rgba(255,255,255,0.08);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 6px;
+        }
+        #pdfProgressChip .pdf-progress-bar > span {
+            display: block;
+            height: 100%;
+            background: #C9F31D;
+            width: 0%;
+            transition: width 0.25s ease;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        #pdfReadyPanel {
+            position: fixed;
+            right: 24px;
+            top: 84px;
+            z-index: 71;
+            width: 380px;
+            background: #14181a;
+            color: #ffffff;
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 25px 60px rgba(0,0,0,0.45), 0 0 0 1px rgba(201, 243, 29, 0.25);
+            border: 1px solid rgba(201, 243, 29, 0.45);
+            animation: slideDown 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.4);
+        }
+        @keyframes slideDown {
+            0%   { transform: translateY(-30px) scale(0.95); opacity: 0; }
+            70%  { transform: translateY(4px)   scale(1.02); opacity: 1; }
+            100% { transform: translateY(0)     scale(1);    opacity: 1; }
+        }
+        @keyframes glowPulse {
+            0%, 100% { box-shadow: 0 25px 60px rgba(0,0,0,0.45), 0 0 0 1px rgba(201, 243, 29, 0.25), 0 0 0 0 rgba(201, 243, 29, 0.5); }
+            50%      { box-shadow: 0 25px 60px rgba(0,0,0,0.45), 0 0 0 1px rgba(201, 243, 29, 0.45), 0 0 0 14px rgba(201, 243, 29, 0); }
+        }
+        #pdfReadyPanel.pulse { animation: slideDown 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.4), glowPulse 1.8s ease-in-out 0.35s 2; }
+        #pdfReadyPanel .pdf-ready-head {
+            display: flex; align-items: center;
+            gap: 12px; margin-bottom: 8px;
+        }
+        #pdfReadyPanel .pdf-ready-icon {
+            width: 36px; height: 36px;
+            border-radius: 10px;
+            background: rgba(201, 243, 29, 0.15);
+            color: #C9F31D;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+        #pdfReadyPanel .pdf-ready-title { font-weight: 700; font-size: 16px; flex: 1; }
+        #pdfReadyPanel .pdf-ready-close {
+            color: rgba(255,255,255,0.5);
+            background: none; border: none;
+            font-size: 22px; line-height: 1;
+            cursor: pointer; padding: 0 4px;
+        }
+        #pdfReadyPanel .pdf-ready-close:hover { color: #ffffff; }
+        #pdfReadyPanel .pdf-ready-sub { color: rgba(255,255,255,0.7); font-size: 13px; margin-bottom: 16px; line-height: 1.45; }
+        #pdfReadyPanel .pdf-ready-actions { display: flex; flex-direction: column; gap: 8px; }
+        #pdfReadyPanel .pdf-action {
+            display: flex; align-items: center; gap: 12px;
+            padding: 12px 14px;
+            border-radius: 10px;
+            font-size: 14px; font-weight: 600;
+            text-decoration: none;
+            transition: background 0.15s ease, transform 0.15s ease;
+        }
+        #pdfReadyPanel .pdf-action.primary { background: #C9F31D; color: #0a0d0e; }
+        #pdfReadyPanel .pdf-action.primary:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(201, 243, 29, 0.3); }
+        #pdfReadyPanel .pdf-action.secondary { background: rgba(255,255,255,0.08); color: #ffffff; }
+        #pdfReadyPanel .pdf-action.secondary:hover { background: rgba(255,255,255,0.16); }
+        #pdfReadyPanel .pdf-action i { width: 18px; text-align: center; font-size: 14px; }
+
+        /* In-page banner shown above main content the moment a PDF is ready.
+           Impossible to miss even if the floating panel is dismissed. */
+        #pdfReadyBanner {
+            position: sticky;
+            top: 64px;
+            z-index: 39;
+            margin: 0 auto;
+            background: linear-gradient(90deg, rgba(201, 243, 29, 0.95), rgba(166, 216, 28, 0.95));
+            color: #0a0d0e;
+            padding: 14px 24px;
+            border-radius: 0 0 16px 16px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+            animation: slideDown 0.35s ease;
+            max-width: 1100px;
+        }
+        #pdfReadyBanner .banner-text { flex: 1; font-weight: 600; font-size: 14px; }
+        #pdfReadyBanner .banner-text small { display: block; font-weight: 500; opacity: 0.75; font-size: 12px; margin-top: 2px; }
+        #pdfReadyBanner .banner-btn {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: #0a0d0e; color: #C9F31D;
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 13px; font-weight: 700;
+            text-decoration: none;
+        }
+        #pdfReadyBanner .banner-btn:hover { background: #14181a; }
+        #pdfReadyBanner .banner-close {
+            color: rgba(10,13,14,0.6);
+            background: none; border: none; font-size: 22px; line-height: 1; cursor: pointer; padding: 0 4px;
         }
         
         .chart-container {
@@ -493,9 +707,12 @@
             const screenshots = [];
             let skippedElements = [];
 
+            // Remember where the user was so we can restore their scroll after capture
+            const _userScrollY = window.scrollY;
+
             try {
-                // Show a clear full-screen loading overlay (works for BOTH buttons)
-                showVideoLoadingOverlay();
+                // Small, non-blocking progress chip (bottom-right). Page stays interactive.
+                showPdfProgressChip(0, elementsToCapture.length);
                 ['exportPDF', 'exportPDF2'].forEach(function (id) {
                     var b = document.getElementById(id);
                     if (b) { b.disabled = true; b.style.opacity = '0.6'; }
@@ -523,9 +740,12 @@
                 hiddenPaginations.forEach(function (p) { p.style.display = 'none'; });
 
                 // Date range shown on every captured slide (so the period is always visible)
-                const REPORT_RANGE = "{{ start_date }} – {{ end_date }}";
+                const REPORT_RANGE = "{{ start_date }} â€“ {{ end_date }}";
 
+                let _slideIdx = 0;
                 for (const element of elementsToCapture) {
+                    _slideIdx++;
+                    showPdfProgressChip(_slideIdx, elementsToCapture.length);
                     const elem = document.getElementById(element.id);
                     if (!elem) {
                         console.warn(`Element not found: ${element.id}`);
@@ -565,7 +785,7 @@
                                 }
                                 break;
                             }
-                            console.warn(`↻ ${element.id} captured blank (attempt ${attempt}), retrying...`);
+                            console.warn(`â†» ${element.id} captured blank (attempt ${attempt}), retrying...`);
                         } catch (err) {
                             console.error(`Error capturing ${element.id} (attempt ${attempt}):`, err);
                         }
@@ -604,18 +824,19 @@
                     body: JSON.stringify({ screenshots })
                 });
 
+                setPdfProgressLabel('Saving your PDF…');
                 if (response.ok) {
                     const data = await response.json();
-                    showNotification('success', 'PDF report ready!');
-                    setTimeout(() => {
-                        window.location.href = (data && data.redirect) ? data.redirect : '/report';
-                    }, 1200);
+                    const redirectUrl = (data && data.redirect) ? data.redirect : '/report';
+                    // Surface the ready panel with View / Edit / Email actions.
+                    // The user stays on this page; the panel persists until closed.
+                    showPdfReadyPanel(redirectUrl);
                 } else {
                     throw new Error('Failed to generate report');
                 }
             } catch (error) {
                 console.error('Error taking screenshots:', error);
-                hideVideoLoadingOverlay();
+                hidePdfProgressChip();
                 showNotification('error', 'Error generating PDF report. Please try again.');
             } finally {
                 // Re-enable both buttons (null-safe)
@@ -625,6 +846,8 @@
                 });
                 // Restore the pagination controls hidden before capture
                 document.querySelectorAll('.report-pagination').forEach(function (p) { p.style.display = ''; });
+                // Put the user back where they were before capture started.
+                window.scrollTo({ top: _userScrollY, behavior: 'smooth' });
             }
         }
 
@@ -651,24 +874,111 @@
             }
         }
 
-        // Full-screen loading overlay shown while the AI video is being generated
-        function showVideoLoadingOverlay() {
-            if (document.getElementById('videoLoadingOverlay')) return;
-            const o = document.createElement('div');
-            o.id = 'videoLoadingOverlay';
-            o.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(17,24,39,0.92);' +
-                'display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;text-align:center;padding:20px;';
-            o.innerHTML =
-                '<div style="border:6px solid rgba(255,255,255,0.2);border-top:6px solid #4FD1D1;border-radius:50%;width:64px;height:64px;animation:spin 1s linear infinite;"></div>' +
-                '<h2 style="font-size:24px;font-weight:700;margin-top:24px;">Creating your PDF Report...</h2>' +
-                '<p style="font-size:16px;opacity:0.85;margin-top:10px;max-width:480px;">Please wait. Do not close the page. AI is preparing the analysis for each section.</p>' +
-                '<style>@keyframes spin{to{transform:rotate(360deg);}}</style>';
-            document.body.appendChild(o);
+        // ---- Background PDF generation UX (no blocking overlay) ----
+        // The header PDF button kicks off capture. Progress is shown in a small
+        // bottom-right chip; when ready, an action panel with View/Edit/Email
+        // replaces it. The page itself stays interactive throughout.
+        function showPdfProgressChip(current, total) {
+            let chip = document.getElementById('pdfProgressChip');
+            if (!chip) {
+                // Remove any stale ready panel before showing progress again
+                const old = document.getElementById('pdfReadyPanel');
+                if (old) old.remove();
+                chip = document.createElement('div');
+                chip.id = 'pdfProgressChip';
+                chip.innerHTML =
+                    '<div class="pdf-spinner"></div>' +
+                    '<div class="pdf-progress-text">' +
+                        '<div id="pdfProgressLabel" style="font-weight:600;">Preparing your PDF report…</div>' +
+                        '<div id="pdfProgressMeta" style="color:rgba(255,255,255,0.6);font-size:12px;margin-top:2px;">Keep working — this runs in the background.</div>' +
+                        '<div class="pdf-progress-bar"><span id="pdfProgressFill"></span></div>' +
+                    '</div>';
+                document.body.appendChild(chip);
+            }
+            if (typeof current === 'number' && typeof total === 'number' && total > 0) {
+                const pct = Math.min(100, Math.round((current / total) * 100));
+                const meta = document.getElementById('pdfProgressMeta');
+                const fill = document.getElementById('pdfProgressFill');
+                if (meta) meta.textContent = `Capturing slide ${current} of ${total} (${pct}%)`;
+                if (fill) fill.style.width = pct + '%';
+            }
         }
 
-        function hideVideoLoadingOverlay() {
-            const o = document.getElementById('videoLoadingOverlay');
-            if (o) o.remove();
+        function setPdfProgressLabel(label) {
+            const el = document.getElementById('pdfProgressLabel');
+            if (el) el.textContent = label;
+        }
+
+        function hidePdfProgressChip() {
+            const c = document.getElementById('pdfProgressChip');
+            if (c) c.remove();
+        }
+
+        // Final notification: PDF is ready. Shows BOTH a sticky in-page banner
+        // (top of content, impossible to miss) AND a floating panel with full
+        // actions (Download / View / Edit / Email). User can dismiss either.
+        function showPdfReadyPanel(reportUrl) {
+            hidePdfProgressChip();
+            const url = reportUrl || '/report';
+            // Direct path to the generated PDF for instant download
+            const pdfStaticUrl = '/static/images/analytics_report.pdf?t=' + Date.now();
+
+            // 1) Sticky banner at the top of the content area
+            const oldBanner = document.getElementById('pdfReadyBanner');
+            if (oldBanner) oldBanner.remove();
+            const banner = document.createElement('div');
+            banner.id = 'pdfReadyBanner';
+            banner.innerHTML =
+                '<i class="fas fa-circle-check" style="font-size:22px;"></i>' +
+                '<div class="banner-text">' +
+                    'Your PDF report is ready!' +
+                    '<small>Click Download to save it, or Open Report to preview / edit / email.</small>' +
+                '</div>' +
+                '<a href="' + pdfStaticUrl + '" download="analytics-report.pdf" class="banner-btn">' +
+                    '<i class="fas fa-download"></i>Download PDF' +
+                '</a>' +
+                '<a href="' + url + '" target="_blank" rel="noopener" class="banner-btn" style="background:rgba(10,13,14,0.85);">' +
+                    '<i class="fas fa-arrow-up-right-from-square"></i>Open Report' +
+                '</a>' +
+                '<button type="button" class="banner-close" aria-label="Dismiss" ' +
+                    'onclick="document.getElementById(\'pdfReadyBanner\').remove()">×</button>';
+            // Insert right at the top of <main> so it sticks visibly under the header
+            const main = document.querySelector('main') || document.body;
+            main.insertBefore(banner, main.firstChild);
+
+            // 2) Floating panel top-right with full action list (incl. Download)
+            const existing = document.getElementById('pdfReadyPanel');
+            if (existing) existing.remove();
+            const panel = document.createElement('div');
+            panel.id = 'pdfReadyPanel';
+            panel.classList.add('pulse');
+            panel.innerHTML =
+                '<div class="pdf-ready-head">' +
+                    '<div class="pdf-ready-icon"><i class="fas fa-circle-check"></i></div>' +
+                    '<div class="pdf-ready-title">PDF Report Ready</div>' +
+                    '<button type="button" class="pdf-ready-close" aria-label="Close" ' +
+                        'onclick="document.getElementById(\'pdfReadyPanel\').remove()">×</button>' +
+                '</div>' +
+                '<div class="pdf-ready-sub">Your analytics PDF has been generated. Download it now or jump straight into editing / emailing.</div>' +
+                '<div class="pdf-ready-actions">' +
+                    '<a href="' + pdfStaticUrl + '" download="analytics-report.pdf" class="pdf-action primary">' +
+                        '<i class="fas fa-download"></i><span>Download PDF</span>' +
+                    '</a>' +
+                    '<a href="' + url + '" target="_blank" rel="noopener" class="pdf-action secondary">' +
+                        '<i class="fas fa-eye"></i><span>View / Preview Report</span>' +
+                    '</a>' +
+                    '<a href="' + url + '#edit" target="_blank" rel="noopener" class="pdf-action secondary">' +
+                        '<i class="fas fa-pen-to-square"></i><span>Edit Slides</span>' +
+                    '</a>' +
+                    '<a href="' + url + '#email" target="_blank" rel="noopener" class="pdf-action secondary">' +
+                        '<i class="fas fa-paper-plane"></i><span>Send Email to Client</span>' +
+                    '</a>' +
+                '</div>';
+            document.body.appendChild(panel);
+
+            // 3) After 9s, drop the pulse animation (so it doesn't loop forever)
+            //    but keep the panel itself open until the user dismisses it.
+            setTimeout(function () { panel.classList.remove('pulse'); }, 9000);
         }
 
         function showNotification(type, message) {
@@ -695,10 +1005,10 @@
 
         // Chart initialization
         document.addEventListener('DOMContentLoaded', function() {
-            // Add event listener to button
+            // Wire up the header PDF button (innerHTML is set in the template now,
+            // so we just attach the click handler).
             const exportButton = document.getElementById('exportPDF');
             if (exportButton) {
-                exportButton.innerHTML = `<i class="fas fa-file-pdf mr-2"></i>Generate PDF Report`;
                 exportButton.addEventListener('click', captureTableScreenshots);
             }
 
@@ -768,31 +1078,28 @@
         }
 
         function initializeEnhancedChart() {
-            const table = document.getElementById('daily-metrics-table');
-            if (!table) return;
-
-            const rows = Array.from(table.querySelectorAll('tbody tr'));
-            const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.textContent.trim());
-
-            let chartData = rows.map(row => {
-                const cells = Array.from(row.querySelectorAll('td'));
-                return {
-                    date: new Date(cells[0].textContent.trim()),
-                    users: parseInt(cells[1].textContent.replace(/,/g, '')) || 0,
-                    pageviews: parseInt(cells[2].textContent.replace(/,/g, '')) || 0,
-                    newUsers: parseInt(cells[3].textContent.replace(/,/g, '')) || 0
-                };
-            });
-
-            chartData.sort((a, b) => a.date - b.date);
-
-            const dates = chartData.map(item => item.date.toLocaleDateString());
-            const users = chartData.map(item => item.users);
-            const pageviews = chartData.map(item => item.pageviews);
-            const newUsers = chartData.map(item => item.newUsers);
-
             const ctx = document.getElementById('dailyMetricsChart');
+            const empty = document.getElementById('dailyMetricsEmpty');
             if (!ctx) return;
+
+            // Pull the per-day GA4 series straight from the server (no
+            // table-scraping, no column-swap bugs). Falls back to empty.
+            const ga4Daily = {{ (ga4_daily or {}) | tojson | safe }};
+            const dates = (ga4Daily && ga4Daily.dates) || [];
+            const users = (ga4Daily && ga4Daily.active_users) || [];
+            const pageviews = (ga4Daily && ga4Daily.views) || [];
+            const newUsers = (ga4Daily && ga4Daily.new_users) || [];
+
+            const hasData = dates.length > 0 && (
+                users.some(v => v > 0) || pageviews.some(v => v > 0) || newUsers.some(v => v > 0)
+            );
+
+            if (!hasData) {
+                ctx.style.display = 'none';
+                if (empty) empty.classList.remove('hidden');
+                return;
+            }
+            if (empty) empty.classList.add('hidden');
 
             ctx.style.height = '400px';
             ctx.style.width = '100%';
@@ -973,65 +1280,67 @@
     {% endwith %}
 
     <!-- Navigation Header -->
-    <nav class="custom-gradient shadow-2xl sticky top-0 z-40">
+    <nav class="custom-gradient sticky top-0 z-40" style="border-bottom: 1px solid rgba(255,255,255,0.06); box-shadow: 0 1px 0 rgba(255,255,255,0.04), 0 8px 24px rgba(0,0,0,0.25);">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between items-center h-20">
-                <div class="flex items-center space-x-8">
-                    <div class="flex items-center space-x-4">
-                        <div class="relative">
-                            <div class="w-12 h-12 bg-white bg-opacity-20 rounded-xl flex items-center justify-center">
-                                <i class="fas fa-chart-line text-white text-xl"></i>
-                            </div>
-                            <div class="absolute -top-1 -right-1 w-4 h-4 bg-green-400 rounded-full"></div>
+            <div class="flex justify-between items-center h-16">
+                <!-- Brand + section nav -->
+                <div class="flex items-center gap-6">
+                    <a href="{{ url_for('dashboard') }}" class="flex items-center gap-3 group" title="Back to dashboard">
+                        <div class="w-9 h-9 rounded-lg flex items-center justify-center transition-transform group-hover:scale-105" style="background: #C9F31D;">
+                            <i class="fas fa-chart-line" style="color: #0a0d0e;"></i>
                         </div>
-                        <div class="flex items-center space-x-3">
-                            <span class="text-white text-2xl font-bold whitespace-nowrap">Analytics Intelligence</span>
-                            <span class="enhanced-badge">AI Powered</span>
-                            <span class="text-white text-xs opacity-75">v2.0</span>
-                        </div>
-                    </div>
-                    <div class="hidden md:flex space-x-6">
-                        <a href="#overview" class="nav-item text-white opacity-90 hover:opacity-100 font-medium">Overview</a>
-                        <a href="#ga4" class="nav-item text-white opacity-90 hover:opacity-100 font-medium">GA4 Data</a>
-                        <a href="#gsc" class="nav-item text-white opacity-90 hover:opacity-100 font-medium">Search Console</a>
+                        <span class="text-white text-lg font-bold tracking-tight whitespace-nowrap">Analytics Intelligence</span>
+                    </a>
+                    <div class="hidden md:flex items-center gap-1">
+                        <a href="#ga4-overview" class="nav-pill">Overview</a>
+                        <a href="#ga4" class="nav-pill">GA4</a>
+                        <a href="#gsc" class="nav-pill">Search Console</a>
                     </div>
                 </div>
-                <div class="flex items-center space-x-4">
-                    <!-- User Info Display -->
-                    {% if session_info %}
-                    <div class="hidden lg:flex items-center space-x-3 bg-white bg-opacity-10 rounded-full px-4 py-2">
-                        {% if session_info.user_picture %}
-                            <img src="{{ session_info.user_picture }}" alt="Profile" class="w-6 h-6 rounded-full">
-                        {% else %}
-                            <div class="w-6 h-6 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
-                                <i class="fas fa-user text-white text-xs"></i>
-                            </div>
-                        {% endif %}
-                        <span class="text-white text-sm opacity-90">
-                            {{ session_info.user_name.split()[0] if session_info.user_name else 'User' }}
-                        </span>
-                    </div>
+
+                <!-- Right cluster: PDF action + user menu -->
+                <div class="flex items-center gap-2">
+                    {% if report_exists and report_pdf_url %}
+                    <!-- Persistent "Open Last PDF" — always shows when a
+                         previously-generated PDF exists, so the user never
+                         loses track of where their report went. -->
+                    <a id="openLastPdf" href="{{ url_for('display_report') }}" target="_blank" rel="noopener"
+                       title="Open the last generated PDF report (with download / edit / email options)"
+                       class="header-secondary-btn">
+                        <i class="fas fa-folder-open"></i>
+                        <span class="hidden lg:inline">Last Report</span>
+                    </a>
+                    <a id="downloadLastPdf" href="{{ report_pdf_url }}" download="analytics-report.pdf"
+                       title="Download the last generated PDF directly"
+                       class="header-secondary-btn">
+                        <i class="fas fa-download"></i>
+                    </a>
                     {% endif %}
-                    
-                    <div class="flex space-x-3">
-                        <button id="exportPDF" class="capture-button text-white px-6 py-3 rounded-xl text-sm font-semibold shadow-lg relative overflow-hidden">
-                            <i class="fas fa-file-pdf mr-2"></i>Generate PDF Report
-                        </button>
-                    </div>
-                    
-                    <!-- User Dropdown -->
+
+                    <!-- PDF generate: prominent icon-led button, kicks off background capture -->
+                    <button id="exportPDF" type="button"
+                            title="Generate a fresh PDF report — runs in the background, you can keep scrolling/exploring while it's prepared"
+                            class="header-pdf-btn">
+                        <i class="fas fa-file-pdf"></i>
+                        <span class="hidden sm:inline">Generate PDF</span>
+                    </button>
+
+                    <!-- User dropdown -->
                     <div class="user-dropdown">
-                        <button class="text-white hover:text-gray-200 p-2 rounded-lg hover:bg-white hover:bg-opacity-10 flex items-center space-x-2" onclick="toggleUserDropdown()">
+                        <button class="header-user-btn" onclick="toggleUserDropdown()" title="Account">
                             {% if session_info and session_info.user_picture %}
-                                <img src="{{ session_info.user_picture }}" alt="Profile" class="w-8 h-8 rounded-full">
+                                <img src="{{ session_info.user_picture }}" alt="Profile" class="w-7 h-7 rounded-full">
                             {% else %}
-                                <div class="w-8 h-8 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
-                                    <i class="fas fa-user text-white text-sm"></i>
+                                <div class="w-7 h-7 bg-white bg-opacity-15 rounded-full flex items-center justify-center">
+                                    <i class="fas fa-user text-white text-xs"></i>
                                 </div>
                             {% endif %}
-                            <i class="fas fa-chevron-down text-xs"></i>
+                            <span class="hidden lg:inline text-sm text-white/90 font-medium">
+                                {{ session_info.user_name.split()[0] if session_info and session_info.user_name else 'Account' }}
+                            </span>
+                            <i class="fas fa-chevron-down text-[10px] text-white/60"></i>
                         </button>
-                        
+
                         <div class="dropdown-content" id="userDropdownMenu" style="display: none;">
                             {% if session_info %}
                                 <div style="padding: 12px 16px; border-bottom: 1px solid #e5e7eb;">
@@ -1040,7 +1349,7 @@
                                 </div>
                             {% endif %}
                             <a href="{{ url_for('dashboard') }}" class="dropdown-item">
-                                <i class="fas fa-dashboard mr-2"></i>Dashboard
+                                <i class="fas fa-gauge-high mr-2"></i>Dashboard
                             </a>
                             <a href="{{ url_for('session_status') }}" class="dropdown-item">
                                 <i class="fas fa-info-circle mr-2"></i>Session Info
@@ -1051,9 +1360,10 @@
                             </a>
                         </div>
                     </div>
-                    
-                    <a href="{{ url_for('dashboard') }}" class="text-white hover:text-gray-200 p-2 rounded-lg hover:bg-white hover:bg-opacity-10">
-                        <i class="fas fa-arrow-left mr-2"></i>Back to Dashboard
+
+                    <a href="{{ url_for('dashboard') }}" class="hidden md:inline-flex items-center gap-2 px-3 h-10 rounded-lg text-white/85 text-sm hover:text-white hover:bg-white/10 transition" title="Back to dashboard">
+                        <i class="fas fa-arrow-left text-xs"></i>
+                        <span>Back</span>
                     </a>
                 </div>
             </div>
@@ -1320,7 +1630,7 @@
                     </div>
                     <div style="font-size:30px; font-weight:800; color:#ffffff; line-height:1.1; margin-top:8px;">{{ MVAL.get(key, '-') }}</div>
                     {% if chg is not none %}
-                    <div style="font-size:12px; font-weight:800; margin-top:6px; color:{{ '#bbf7d0' if chg >= 0 else '#fecaca' }};">{{ '▲' if chg >= 0 else '▼' }} {{ chg|abs }}% vs prev</div>
+                    <div style="font-size:12px; font-weight:800; margin-top:6px; color:{{ '#bbf7d0' if chg >= 0 else '#fecaca' }};">{{ 'â–²' if chg >= 0 else 'â–¼' }} {{ chg|abs }}% vs prev</div>
                     {% endif %}
                 </label>
                 {% endfor %}
@@ -1460,7 +1770,7 @@
                             <td class="px-3 py-2 font-bold text-gray-700">% change</td>
                             {% for k in ['total_users','new_users','returning_users','sessions','event_count'] %}
                             {% set c = ch.change.get(k) %}
-                            <td class="px-3 py-2 font-bold" style="color:{{ '#16a34a' if (c is not none and c >= 0) else ('#dc2626' if c is not none else '#9ca3af') }};">{{ (('▲ ' if c >= 0 else '▼ ') ~ (c|abs) ~ '%') if c is not none else '—' }}</td>
+                            <td class="px-3 py-2 font-bold" style="color:{{ '#16a34a' if (c is not none and c >= 0) else ('#dc2626' if c is not none else '#9ca3af') }};">{{ (('â–² ' if c >= 0 else 'â–¼ ') ~ (c|abs) ~ '%') if c is not none else 'â€”' }}</td>
                             {% endfor %}
                         </tr>
                         {% endif %}
@@ -1524,6 +1834,11 @@
             </div>
             <div class="chart-container">
                 <canvas id="dailyMetricsChart"></canvas>
+                <div id="dailyMetricsEmpty" class="hidden absolute inset-0 flex flex-col items-center justify-center text-center px-6">
+                    <i class="fas fa-chart-line text-5xl text-gray-300 mb-3"></i>
+                    <p class="text-gray-500 font-medium">No daily GA4 data for this date range.</p>
+                    <p class="text-gray-400 text-sm mt-1">Try a different property or wider date range.</p>
+                </div>
             </div>
         </div>
 
@@ -1600,7 +1915,7 @@
                             Daily Analytics Data
                         </h2>
                         <span class="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
-                            <i class="fas fa-calendar-alt mr-1"></i>{{ start_date }} → {{ end_date }}
+                            <i class="fas fa-calendar-alt mr-1"></i>{{ start_date }} â†’ {{ end_date }}
                         </span>
                     </div>
                     {% if ga4_data and ga4_data.rows %}
@@ -1627,6 +1942,12 @@
                                 {% endfor %}
                             </tbody>
                         </table>
+                    </div>
+                    {% else %}
+                    <div class="flex flex-col items-center justify-center text-center py-12 px-6 bg-gray-50 rounded-xl">
+                        <i class="fas fa-table text-5xl text-gray-300 mb-3"></i>
+                        <p class="text-gray-500 font-medium">No daily analytics data available.</p>
+                        <p class="text-gray-400 text-sm mt-1">GA4 returned no rows for {{ start_date }} â†’ {{ end_date }}. Try a wider date range or different property.</p>
                     </div>
                     {% endif %}
                 </div>

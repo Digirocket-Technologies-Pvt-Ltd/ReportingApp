@@ -1,6 +1,7 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=3">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PDF Report - Analytics Intelligence</title>
@@ -139,7 +140,7 @@
                     <label class="block text-sm font-semibold text-gray-700 mb-1">Client (PMO record)</label>
                     <select id="emClient" onchange="onClientPick()"
                             class="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-teal-500 focus:ring-2 focus:ring-teal-500 outline-none">
-                        <option value="">— Select client (to log this report) —</option>
+                        <option value="">â€” Select client (to log this report) â€”</option>
                         {% for c in clients %}
                         <option value="{{ c.id }}" data-email="{{ c.email or '' }}">{{ c.name }}{% if c.email %} ({{ c.email }}){% endif %}</option>
                         {% endfor %}
@@ -222,6 +223,16 @@
                 this.value = '';   // reset so re-opening the dialog adds more
                 emRenderFiles();
             });
+
+            // Deep-link support: /report#email auto-opens the email modal,
+            // /report#edit auto-opens the slide editor. Used by the PDF-ready
+            // panel on combined_data so the user lands directly on the action.
+            var hash = (window.location.hash || '').toLowerCase();
+            if (hash === '#email') {
+                setTimeout(openEmailModal, 100);
+            } else if (hash === '#edit' && typeof openSlideEditor === 'function') {
+                setTimeout(openSlideEditor, 100);
+            }
         });
 
         // When a client is picked, auto-fill the client email field.
@@ -339,7 +350,7 @@
             handle.innerHTML = '<i class="fas fa-up-down-left-right"></i>';
             var del = document.createElement('span');
             del.className = 'tb-del';
-            del.textContent = '×';
+            del.textContent = 'Ã—';
             del.addEventListener('click', function () { tb.remove(); });
             var txt = document.createElement('div');
             txt.className = 'tb-text';

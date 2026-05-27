@@ -1,6 +1,7 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html>
 <head>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=3">
     <title>GA4 & GSC Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link href="/static/css/brand-theme.css" rel="stylesheet">
@@ -8,6 +9,9 @@
     <script src="/static/js/theme-toggle.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Choices.js: searchable single-select dropdowns -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js@10.2.0/public/assets/styles/choices.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/choices.js@10.2.0/public/assets/scripts/choices.min.js"></script>
     <style>
         body {
             font-family: 'Barlow', sans-serif;
@@ -252,6 +256,39 @@
             background-color: #fef3c7;
             border-color: #fde68a;
         }
+
+        /* ---- Choices.js searchable dropdowns (light + dark) ---- */
+        .choices { margin-bottom: 0; }
+        .choices__inner {
+            min-height: 52px;
+            padding: 10px 16px;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            background: white;
+            font-size: 16px;
+        }
+        .choices[data-type*="select-one"] .choices__inner { padding-right: 28px; }
+        .choices.is-focused .choices__inner,
+        .choices.is-open .choices__inner {
+            border-color: #00AEAF;
+            box-shadow: 0 0 0 3px rgba(0, 174, 175, 0.1);
+        }
+        .choices__list--dropdown,
+        .choices__list[aria-expanded] {
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            margin-top: 4px;
+        }
+        .choices__input { background: transparent; font-size: 14px; }
+
+        body.dark-mode .choices__inner { background: #25282b; border-color: #3a4045; color: #e2e8f0; }
+        body.dark-mode .choices__list--dropdown,
+        body.dark-mode .choices__list[aria-expanded] { background: #25282b; border-color: #3a4045; color: #e2e8f0; }
+        body.dark-mode .choices__list--dropdown .choices__item,
+        body.dark-mode .choices__list[aria-expanded] .choices__item { color: #e2e8f0; }
+        body.dark-mode .choices__list--dropdown .choices__item--selectable.is-highlighted,
+        body.dark-mode .choices__list[aria-expanded] .choices__item--selectable.is-highlighted { background: #2f3439; }
+        body.dark-mode .choices__input { color: #e2e8f0; }
     </style>
 </head>
 <body class="bg-gradient-to-br from-gray-50 via-blue-50 to-teal-50 min-h-screen">
@@ -813,7 +850,7 @@
             }
             list.innerHTML = items.map(function (it) {
                 var unread = (it.created_at || '') > seen;
-                var sub = timeAgo(it.created_at) + (it.user_email ? ' · ' + escapeHtml(it.user_email) : '');
+                var sub = timeAgo(it.created_at) + (it.user_email ? ' Â· ' + escapeHtml(it.user_email) : '');
                 var bg = unread ? unreadBg : 'transparent';
                 var leftBar = unread ? '3px solid #84cc16' : '3px solid transparent';
                 var weight = unread ? '700' : '400';
@@ -900,23 +937,54 @@
             const endDate = new Date();
             const startDate = new Date();
             startDate.setDate(startDate.getDate() - 30); // Default to last 30 days
-            
+
             document.getElementById('end_date').value = endDate.toISOString().split('T')[0];
             document.getElementById('start_date').value = startDate.toISOString().split('T')[0];
-            
+
             // Count properties and sites
             const propertiesSelect = document.getElementById('ga4_property');
             const sitesSelect = document.getElementById('gsc_site');
-            
+
             if (propertiesSelect) {
                 const propertiesCount = propertiesSelect.options.length - 1; // Subtract placeholder
                 document.getElementById('propertiesCount').textContent = propertiesCount;
             }
-            
+
             if (sitesSelect) {
                 const sitesCount = sitesSelect.options.length - 1; // Subtract placeholder
                 document.getElementById('sitesCount').textContent = sitesCount;
             }
+
+            // Searchable dropdowns: GA4 property + GSC site (Choices.js).
+            // Defers until Choices script has loaded.
+            function initChoices() {
+                if (typeof Choices === 'undefined') { return setTimeout(initChoices, 100); }
+                if (propertiesSelect && !propertiesSelect.dataset.choicesReady) {
+                    new Choices(propertiesSelect, {
+                        searchEnabled: true,
+                        searchResultLimit: 50,
+                        shouldSort: false,
+                        itemSelectText: '',
+                        placeholder: true,
+                        placeholderValue: 'Search GA4 property...',
+                        searchPlaceholderValue: 'Type to search property name or ID',
+                    });
+                    propertiesSelect.dataset.choicesReady = '1';
+                }
+                if (sitesSelect && !sitesSelect.dataset.choicesReady) {
+                    new Choices(sitesSelect, {
+                        searchEnabled: true,
+                        searchResultLimit: 50,
+                        shouldSort: false,
+                        itemSelectText: '',
+                        placeholder: true,
+                        placeholderValue: 'Search Search Console site...',
+                        searchPlaceholderValue: 'Type to search site URL',
+                    });
+                    sitesSelect.dataset.choicesReady = '1';
+                }
+            }
+            initChoices();
 
             // Auto-hide flash messages after 5 seconds
             setTimeout(() => {

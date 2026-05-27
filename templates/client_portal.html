@@ -1,6 +1,7 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=3">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Client Portal - DigiRocket</title>
@@ -261,7 +262,7 @@
                     <div id="reportsDropdown" class="reports-dropdown">
                         <div class="reports-head">
                             <h3><i class="fas fa-file-lines text-teal-600 mr-1"></i>Your Reports</h3>
-                            <span class="total">{{ reports|length }} total{% if new_count %} • <b class="text-yellow-600">{{ new_count }} new</b>{% endif %}</span>
+                            <span class="total">{{ reports|length }} total{% if new_count %} â€¢ <b class="text-yellow-600">{{ new_count }} new</b>{% endif %}</span>
                         </div>
                         <div class="reports-list">
                             {% if reports %}
@@ -289,7 +290,7 @@
                                             <div class="row-reason">{{ r.subject or 'Your analytics report' }}</div>
                                             <div class="row-time">
                                                 <i class="fas fa-clock mr-1"></i>{{ (r.sent_at or '')[:16]|replace('T', ' ') }}
-                                                {% if r.files and r.files|length > 1 %} • {{ r.files|length }} files{% endif %}
+                                                {% if r.files and r.files|length > 1 %} â€¢ {{ r.files|length }} files{% endif %}
                                             </div>
                                             {% if not primary %}
                                             <div class="no-file-note"><i class="fas fa-triangle-exclamation mr-1"></i>File not stored (sent before file archiving was added). Ask us to re-send it.</div>
@@ -416,7 +417,7 @@
         <section class="chat-card">
             <div class="flex items-center justify-between mb-3">
                 <h3 class="text-lg font-bold"><i class="fas fa-comments text-teal-600 mr-2"></i>Chat with our team</h3>
-                <span class="text-xs chat-sub">Reply right here — we'll see your messages instantly.</span>
+                <span class="text-xs chat-sub">Reply right here â€” we'll see your messages instantly.</span>
             </div>
 
             <div class="thread" id="mainThread">
@@ -476,7 +477,7 @@
                 {% else %}
                     <div class="empty-hint">
                         <i class="fas fa-comments text-3xl mb-2 text-gray-300"></i><br>
-                        No messages yet — say hello below and our team will get back to you.
+                        No messages yet â€” say hello below and our team will get back to you.
                     </div>
                 {% endif %}
             </div>
@@ -597,7 +598,7 @@
                         var nn = parseInt(m[1], 10) - 1;
                         head.innerHTML = head.innerHTML.replace(/<b[^>]*>\d+ new<\/b>/,
                             nn > 0 ? '<b class="text-yellow-600">' + nn + ' new</b>' : '');
-                        if (nn <= 0) head.innerHTML = head.innerHTML.replace(/\s*•\s*$/, '');
+                        if (nn <= 0) head.innerHTML = head.innerHTML.replace(/\s*â€¢\s*$/, '');
                     }
                 }
             }
