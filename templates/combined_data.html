@@ -1671,59 +1671,39 @@
                      (matches Google Search Console's native dashboard layout) -->
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-6 mb-6">
                     <label class="gsc-metric-card blue cursor-pointer" style="display:block;">
-                        <div class="flex justify-between items-start">
-                            <div>
-                                <div class="metric-label" style="display:flex; align-items:center; gap:8px;">
-                                    <input type="checkbox" class="gsc-toggle" data-line="0" checked
-                                           style="width:16px; height:16px; accent-color:#fff; cursor:pointer;">
-                                    Total Clicks
-                                </div>
-                                <div class="metric-value">{{ "{:,}".format(gsc_data.summary.total_clicks) }}</div>
-                            </div>
-                            <div class="metric-icon"><i class="fas fa-mouse-pointer"></i></div>
+                        <div class="metric-label" style="display:flex; align-items:center; gap:8px;">
+                            <input type="checkbox" class="gsc-toggle" data-line="0" checked
+                                   style="width:16px; height:16px; accent-color:#fff; cursor:pointer;">
+                            Total Clicks
                         </div>
+                        <div class="metric-value">{{ "{:,}".format(gsc_data.summary.total_clicks) }}</div>
                     </label>
 
                     <label class="gsc-metric-card purple cursor-pointer" style="display:block;">
-                        <div class="flex justify-between items-start">
-                            <div>
-                                <div class="metric-label" style="display:flex; align-items:center; gap:8px;">
-                                    <input type="checkbox" class="gsc-toggle" data-line="1" checked
-                                           style="width:16px; height:16px; accent-color:#fff; cursor:pointer;">
-                                    Total Impressions
-                                </div>
-                                <div class="metric-value">{{ "{:,}".format(gsc_data.summary.total_impressions) }}</div>
-                            </div>
-                            <div class="metric-icon"><i class="fas fa-eye"></i></div>
+                        <div class="metric-label" style="display:flex; align-items:center; gap:8px;">
+                            <input type="checkbox" class="gsc-toggle" data-line="1" checked
+                                   style="width:16px; height:16px; accent-color:#fff; cursor:pointer;">
+                            Total Impressions
                         </div>
+                        <div class="metric-value">{{ "{:,}".format(gsc_data.summary.total_impressions) }}</div>
                     </label>
 
                     <label class="gsc-metric-card green cursor-pointer" style="display:block;">
-                        <div class="flex justify-between items-start">
-                            <div>
-                                <div class="metric-label" style="display:flex; align-items:center; gap:8px;">
-                                    <input type="checkbox" class="gsc-toggle" data-line="2" checked
-                                           style="width:16px; height:16px; accent-color:#fff; cursor:pointer;">
-                                    Average CTR
-                                </div>
-                                <div class="metric-value">{{ gsc_data.summary.average_ctr }}</div>
-                            </div>
-                            <div class="metric-icon"><i class="fas fa-percentage"></i></div>
+                        <div class="metric-label" style="display:flex; align-items:center; gap:8px;">
+                            <input type="checkbox" class="gsc-toggle" data-line="2" checked
+                                   style="width:16px; height:16px; accent-color:#fff; cursor:pointer;">
+                            Average CTR
                         </div>
+                        <div class="metric-value">{{ gsc_data.summary.average_ctr }}</div>
                     </label>
 
                     <label class="gsc-metric-card red cursor-pointer" style="display:block;">
-                        <div class="flex justify-between items-start">
-                            <div>
-                                <div class="metric-label" style="display:flex; align-items:center; gap:8px;">
-                                    <input type="checkbox" class="gsc-toggle" data-line="3" checked
-                                           style="width:16px; height:16px; accent-color:#fff; cursor:pointer;">
-                                    Average Position
-                                </div>
-                                <div class="metric-value">{{ gsc_data.summary.average_position }}</div>
-                            </div>
-                            <div class="metric-icon"><i class="fas fa-sort-numeric-down"></i></div>
+                        <div class="metric-label" style="display:flex; align-items:center; gap:8px;">
+                            <input type="checkbox" class="gsc-toggle" data-line="3" checked
+                                   style="width:16px; height:16px; accent-color:#fff; cursor:pointer;">
+                            Average Position
                         </div>
+                        <div class="metric-value">{{ gsc_data.summary.average_position }}</div>
                     </label>
                 </div>
 
