@@ -1125,15 +1125,68 @@ def init_routes(app):
 
     @app.route('/api/notifications')
     def api_notifications():
-        """Recent activity feed for the notification bell (any logged-in user)."""
+        """Recent activity feed for the notification bell.
+        - Admin / team: the global activity feed (every report, every
+          query, every client action across the whole app).
+        - Client: ONLY their own notifications - reports the team has
+          sent them + admin replies in their chat thread."""
         if not is_authenticated():
             return jsonify({'success': False, 'items': []}), 401
         try:
-            items = db.list_activities(20)
+            if session.get('is_client'):
+                items = _client_notifications()
+            else:
+                items = db.list_activities(20)
         except Exception as e:
             print(f'Error loading notifications: {e}')
             items = []
         return jsonify({'success': True, 'items': items})
+
+    def _client_notifications():
+        """Build a privacy-safe notification feed for the logged-in client.
+        Pulls only the events that belong to them: their incoming reports
+        and the team's replies on their chat. Other clients' events never
+        appear here."""
+        client = _current_client()
+        if not client:
+            return []
+        items = []
+        try:
+            portal_link = url_for('client_portal')
+        except Exception:
+            portal_link = '/portal'
+        # Recent reports sent to this client
+        try:
+            for r in (db.client_reports(client['id']) or [])[:10]:
+                period = r.get('report_period') or 'Analytics report'
+                items.append({
+                    'type': 'report_received',
+                    'message': f'New report received: {period}',
+                    'link': portal_link,
+                    'created_at': r.get('sent_at'),
+                    'user_email': 'DigiRocket team',
+                })
+        except Exception as e:
+            print(f'[notifs] client reports failed: {e}')
+        # Recent team replies in this client's chat
+        try:
+            msgs = db.client_messages(client['id']) or []
+            admin_msgs = [m for m in msgs if m.get('sender_type') == 'admin']
+            for m in admin_msgs[-10:]:
+                snippet = (m.get('body') or '[attachment]').strip().replace('\n', ' ')
+                if len(snippet) > 70:
+                    snippet = snippet[:70] + '...'
+                items.append({
+                    'type': 'reply_received',
+                    'message': f'Reply from our team: {snippet}',
+                    'link': portal_link,
+                    'created_at': m.get('created_at'),
+                    'user_email': 'DigiRocket team',
+                })
+        except Exception as e:
+            print(f'[notifs] client messages failed: {e}')
+        items.sort(key=lambda x: x.get('created_at') or '', reverse=True)
+        return items[:20]
 
     # ============================================================
     #  CLIENT PORTAL  (clients see their own reports + raise queries)
