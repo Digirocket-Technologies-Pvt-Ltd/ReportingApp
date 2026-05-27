@@ -1283,128 +1283,106 @@
             'event_count': '{:,}'.format(ov.get('event_count',0)) } %}
         {% set CARD_COLORS = ['#2563eb','#00AEAF','#7CC92A','#f59e0b','#6366f1','#ec4899','#10b981','#ef4444'] %}
         {% for group in metric_groups %}
+        {# Build the per-metric arrays Jinja-side so the chart's JS stays clean. #}
+        {% set chart_labels = [] %}
+        {% set chart_values = [] %}
+        {% set chart_displays = [] %}
+        {% set chart_changes = [] %}
+        {% set chart_colors = [] %}
+        {% for key in group %}
+            {% set raw = ov.get(key, 0) %}
+            {# avg_engagement_per_session is a formatted string like "1m 19s";
+               everything else is already numeric. Numeric goes into the chart,
+               the formatted display goes into the tooltip + on-bar label. #}
+            {% set _ = chart_labels.append(MLABEL.get(key, key)) %}
+            {% set _ = chart_values.append(raw if raw is number else 0) %}
+            {% set _ = chart_displays.append(MVAL.get(key, '-')) %}
+            {% set _ = chart_changes.append(ov_change.get(key) if ov_change else None) %}
+            {% set _ = chart_colors.append(CARD_COLORS[loop.index0 % 8]) %}
+        {% endfor %}
         <div class="section-card rounded-2xl p-8 mb-8" id="overview-infographic-{{ loop.index }}">
             <h2 class="text-2xl font-bold text-gray-800 mb-6"><i class="fas fa-chart-simple mr-2 text-teal-600"></i>Overview Infographic {{ loop.index }}</h2>
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-5">
-                {% for key in group %}
-                {% set chg = ov_change.get(key) if ov_change else None %}
-                <div style="border-radius:18px; padding:26px 20px; background:{{ CARD_COLORS[loop.index0 % 8] }}; box-shadow:0 8px 24px rgba(0,0,0,0.18);">
-                    <div style="font-size:34px; font-weight:800; color:#ffffff; line-height:1.1;">{{ MVAL.get(key, '-') }}</div>
-                    <div style="font-size:13px; font-weight:600; color:rgba(255,255,255,0.9); margin-top:8px;">{{ MLABEL.get(key, key) }}</div>
-                    {% if chg is not none %}
-                    <div style="font-size:12px; font-weight:800; margin-top:6px; color:{{ '#bbf7d0' if chg >= 0 else '#fecaca' }};">{{ '▲' if chg >= 0 else '▼' }} {{ chg|abs }}% vs prev</div>
-                    {% endif %}
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-        {% endfor %}
-        {% endif %}
-
-        <!-- Search Console Overview Infographic (cards + daily line chart) -->
-        {% if gsc_data and gsc_data.summary %}
-        <div class="section-card rounded-2xl p-8 mb-8" id="gsc-infographic">
-            <h2 class="text-2xl font-bold text-gray-800 mb-6"><i class="fas fa-magnifying-glass mr-2 text-teal-600"></i>Search Console Overview</h2>
-            {% set gsc_cards = [
-                ("{:,}".format(gsc_data.summary.total_clicks), 'Total Clicks', '#2563eb', 'clicks'),
-                ("{:,}".format(gsc_data.summary.total_impressions), 'Total Impressions', '#7c3aed', 'impressions'),
-                (gsc_data.summary.average_ctr, 'Average CTR', '#059669', 'ctr'),
-                (gsc_data.summary.average_position, 'Average Position', '#ea580c', 'position') ] %}
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6">
-                {% for val, lbl, col, ck in gsc_cards %}
-                {% set chg = gsc_change.get(ck) if gsc_change else None %}
-                <label style="display:block; border-radius:18px; padding:22px 18px; background:{{ col }}; box-shadow:0 8px 24px rgba(0,0,0,0.18); cursor:pointer;">
-                    <div style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; color:rgba(255,255,255,0.92);">
-                        <input type="checkbox" class="gsc-info-toggle" data-line="{{ loop.index0 }}" checked
-                               style="width:15px; height:15px; accent-color:#fff; cursor:pointer;">
-                        {{ lbl }}
-                    </div>
-                    <div style="font-size:32px; font-weight:800; color:#fff; line-height:1.1; margin-top:8px;">{{ val }}</div>
-                    {% if chg is not none %}
-                    <div style="font-size:12px; font-weight:800; margin-top:6px; color:{{ '#bbf7d0' if chg >= 0 else '#fecaca' }};">{{ '▲' if chg >= 0 else '▼' }} {{ chg|abs }}% vs prev</div>
-                    {% endif %}
-                </label>
-                {% endfor %}
-            </div>
-
-            <!-- Daily time-series chart for the infographic -->
             <div style="background:#0a0d0e; border-radius:14px; padding:18px;">
                 <div style="position:relative; height:320px;">
-                    <canvas id="gscInfographicLineChart"></canvas>
+                    <canvas id="ovInfoChart{{ loop.index }}"></canvas>
                 </div>
             </div>
-
-            {% if gsc_data.daily_metrics and gsc_data.daily_metrics.rows %}
             <script>
             (function () {
-                var rows = {{ gsc_data.daily_metrics.rows | tojson | safe }};
-                var labels      = rows.map(function (r) { return r[0]; });
-                var clicks      = rows.map(function (r) { return Number(r[1]) || 0; });
-                var impressions = rows.map(function (r) { return Number(r[2]) || 0; });
-                var ctrs        = rows.map(function (r) { return parseFloat(String(r[3]).replace('%','')) || 0; });
-                var positions   = rows.map(function (r) { return parseFloat(r[4]) || 0; });
+                var labels   = {{ chart_labels   | tojson | safe }};
+                var values   = {{ chart_values   | tojson | safe }};
+                var displays = {{ chart_displays | tojson | safe }};
+                var changes  = {{ chart_changes  | tojson | safe }};
+                var colors   = {{ chart_colors   | tojson | safe }};
 
-                var ctx = document.getElementById('gscInfographicLineChart');
+                var ctx = document.getElementById('ovInfoChart{{ loop.index }}');
                 if (!ctx || !window.Chart) return;
 
-                var hidden = { display:false, beginAtZero:true, grid:{ drawOnChartArea:false } };
-                var hiddenRev = { display:false, reverse:true, grid:{ drawOnChartArea:false } };
+                // Plugin that draws the formatted value above each bar and the
+                // change-% under the metric label, so the chart is readable
+                // at a glance without needing to hover.
+                var labelsOnBars = {
+                    id: 'labelsOnBars{{ loop.index }}',
+                    afterDatasetsDraw: function (chart) {
+                        var c = chart.ctx;
+                        var meta = chart.getDatasetMeta(0);
+                        meta.data.forEach(function (bar, i) {
+                            c.fillStyle = '#ffffff';
+                            c.font = 'bold 14px Barlow, sans-serif';
+                            c.textAlign = 'center';
+                            c.fillText(displays[i], bar.x, bar.y - 8);
+                            if (changes[i] !== null && changes[i] !== undefined) {
+                                c.fillStyle = (changes[i] >= 0) ? '#bbf7d0' : '#fecaca';
+                                c.font = 'bold 11px Barlow, sans-serif';
+                                var arrow = (changes[i] >= 0) ? '▲' : '▼';
+                                c.fillText(arrow + ' ' + Math.abs(changes[i]) + '% vs prev',
+                                           bar.x, chart.chartArea.bottom + 36);
+                            }
+                        });
+                    }
+                };
 
-                var chart = new Chart(ctx, {
-                    type: 'line',
+                new Chart(ctx, {
+                    type: 'bar',
                     data: {
                         labels: labels,
-                        datasets: [
-                            { label:'Total Clicks',      data:clicks,      borderColor:'#3b82f6', backgroundColor:'#3b82f6',
-                              yAxisID:'yClicks', tension:0.35, pointRadius:2, borderWidth:2 },
-                            { label:'Total Impressions', data:impressions, borderColor:'#a855f7', backgroundColor:'#a855f7',
-                              yAxisID:'yImpr',   tension:0.35, pointRadius:2, borderWidth:2 },
-                            { label:'Average CTR',       data:ctrs,        borderColor:'#10b981', backgroundColor:'#10b981',
-                              yAxisID:'yCtr',    tension:0.35, pointRadius:2, borderWidth:2 },
-                            { label:'Average Position',  data:positions,   borderColor:'#f97316', backgroundColor:'#f97316',
-                              yAxisID:'yPos',    tension:0.35, pointRadius:2, borderWidth:2 }
-                        ]
+                        datasets: [{
+                            data: values,
+                            backgroundColor: colors,
+                            borderRadius: 10,
+                            borderWidth: 0,
+                            maxBarThickness: 110
+                        }]
                     },
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
-                        interaction: { mode: 'index', intersect: false },
+                        layout: { padding: { top: 26, bottom: 24 } },
                         plugins: {
                             legend: { display: false },
                             tooltip: {
                                 callbacks: {
-                                    label: function (item) {
-                                        var v = item.parsed.y;
-                                        if (item.dataset.label === 'Total Clicks')      return ' Clicks: ' + v.toLocaleString();
-                                        if (item.dataset.label === 'Total Impressions') return ' Impressions: ' + v.toLocaleString();
-                                        if (item.dataset.label === 'Average CTR')       return ' CTR: ' + v.toFixed(2) + '%';
-                                        if (item.dataset.label === 'Average Position')  return ' Position: ' + v.toFixed(1);
-                                        return ' ' + v;
-                                    }
+                                    label: function (item) { return ' ' + displays[item.dataIndex]; }
                                 }
                             }
                         },
                         scales: {
-                            x: { ticks: { color:'#9ca3af', maxRotation:0, autoSkip:true, maxTicksLimit:10 },
-                                 grid:  { color:'rgba(255,255,255,0.05)' } },
-                            yClicks: hidden, yImpr: hidden, yCtr: hidden, yPos: hiddenRev
+                            x: { ticks: { color:'#ffffff', font:{weight:'700'} },
+                                 grid: { display:false } },
+                            y: { display:false, beginAtZero:true,
+                                 grid: { color:'rgba(255,255,255,0.05)' } }
                         }
-                    }
-                });
-
-                document.querySelectorAll('.gsc-info-toggle').forEach(function (cb) {
-                    cb.addEventListener('change', function (e) {
-                        e.stopPropagation();
-                        var idx = parseInt(cb.getAttribute('data-line'), 10);
-                        chart.setDatasetVisibility(idx, cb.checked);
-                        chart.update();
-                    });
+                    },
+                    plugins: [labelsOnBars]
                 });
             })();
             </script>
-            {% endif %}
         </div>
+        {% endfor %}
         {% endif %}
+
+        <!-- (Top "Search Console Overview" infographic removed; the same
+             section now lives further down only, so it doesn't duplicate.) -->
 
         <!-- User Acquisition by channel (with previous-period comparison) -->
         {% if acquisition %}
