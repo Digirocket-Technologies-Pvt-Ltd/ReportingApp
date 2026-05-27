@@ -1107,9 +1107,9 @@
                             <span class="text-gray-400 font-medium">to</span>
                             <input type="date" id="end_date" name="end_date" value="{{ end_date }}"
                                    class="rounded-lg border-gray-300 shadow-sm focus:border-teal-500 focus:ring-2 focus:ring-teal-500 text-sm">
-                            <button type="submit"
-                                    class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 shadow-md hover:shadow-lg">
-                                <i class="fas fa-sync-alt mr-2"></i>Update
+                            <button type="submit" id="updateBtn"
+                                    class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 shadow-md hover:shadow-lg disabled:opacity-80">
+                                <i id="updateBtnIcon" class="fas fa-sync-alt mr-2"></i><span id="updateBtnText">Update</span>
                             </button>
                         </div>
                     </form>
@@ -1122,8 +1122,29 @@
                             var fmt = function (d) { return d.toISOString().split('T')[0]; };
                             document.getElementById('start_date').value = fmt(start);
                             document.getElementById('end_date').value = fmt(end);
-                            document.getElementById('dateRangeForm').submit();
+                            // Trigger requestSubmit so our 'submit' listener fires for the
+                            // spinner; falls back to .submit() on very old browsers.
+                            var f = document.getElementById('dateRangeForm');
+                            if (f.requestSubmit) { f.requestSubmit(); } else { startUpdateSpinner(); f.submit(); }
                         }
+
+                        // Spinning Update button + disabled state so the user can SEE
+                        // an update is happening (until the page reloads with new data).
+                        function startUpdateSpinner() {
+                            var icon = document.getElementById('updateBtnIcon');
+                            if (icon) icon.classList.add('fa-spin');
+                            var btn  = document.getElementById('updateBtn');
+                            if (btn) {
+                                btn.disabled = true;
+                                btn.style.cursor = 'wait';
+                            }
+                            var txt  = document.getElementById('updateBtnText');
+                            if (txt) txt.textContent = 'Updating...';
+                            document.querySelectorAll('button[onclick^="setDatePreset"]').forEach(function (b) {
+                                b.disabled = true; b.style.cursor = 'wait'; b.style.opacity = '0.6';
+                            });
+                        }
+                        document.getElementById('dateRangeForm').addEventListener('submit', startUpdateSpinner);
                     </script>
                 </div>
 
