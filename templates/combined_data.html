@@ -1301,7 +1301,7 @@
         {% endfor %}
         {% endif %}
 
-        <!-- Search Console Overview Infographic -->
+        <!-- Search Console Overview Infographic (cards + daily line chart) -->
         {% if gsc_data and gsc_data.summary %}
         <div class="section-card rounded-2xl p-8 mb-8" id="gsc-infographic">
             <h2 class="text-2xl font-bold text-gray-800 mb-6"><i class="fas fa-magnifying-glass mr-2 text-teal-600"></i>Search Console Overview</h2>
@@ -1310,18 +1310,99 @@
                 ("{:,}".format(gsc_data.summary.total_impressions), 'Total Impressions', '#7c3aed', 'impressions'),
                 (gsc_data.summary.average_ctr, 'Average CTR', '#059669', 'ctr'),
                 (gsc_data.summary.average_position, 'Average Position', '#ea580c', 'position') ] %}
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-5">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6">
                 {% for val, lbl, col, ck in gsc_cards %}
                 {% set chg = gsc_change.get(ck) if gsc_change else None %}
-                <div style="border-radius:18px; padding:26px 20px; background:{{ col }}; box-shadow:0 8px 24px rgba(0,0,0,0.18);">
-                    <div style="font-size:34px; font-weight:800; color:#fff; line-height:1.1;">{{ val }}</div>
-                    <div style="font-size:13px; font-weight:600; color:rgba(255,255,255,0.9); margin-top:8px;">{{ lbl }}</div>
+                <label style="display:block; border-radius:18px; padding:22px 18px; background:{{ col }}; box-shadow:0 8px 24px rgba(0,0,0,0.18); cursor:pointer;">
+                    <div style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; color:rgba(255,255,255,0.92);">
+                        <input type="checkbox" class="gsc-info-toggle" data-line="{{ loop.index0 }}" checked
+                               style="width:15px; height:15px; accent-color:#fff; cursor:pointer;">
+                        {{ lbl }}
+                    </div>
+                    <div style="font-size:32px; font-weight:800; color:#fff; line-height:1.1; margin-top:8px;">{{ val }}</div>
                     {% if chg is not none %}
                     <div style="font-size:12px; font-weight:800; margin-top:6px; color:{{ '#bbf7d0' if chg >= 0 else '#fecaca' }};">{{ '▲' if chg >= 0 else '▼' }} {{ chg|abs }}% vs prev</div>
                     {% endif %}
-                </div>
+                </label>
                 {% endfor %}
             </div>
+
+            <!-- Daily time-series chart for the infographic -->
+            <div style="background:#0a0d0e; border-radius:14px; padding:18px;">
+                <div style="position:relative; height:320px;">
+                    <canvas id="gscInfographicLineChart"></canvas>
+                </div>
+            </div>
+
+            {% if gsc_data.daily_metrics and gsc_data.daily_metrics.rows %}
+            <script>
+            (function () {
+                var rows = {{ gsc_data.daily_metrics.rows | tojson | safe }};
+                var labels      = rows.map(function (r) { return r[0]; });
+                var clicks      = rows.map(function (r) { return Number(r[1]) || 0; });
+                var impressions = rows.map(function (r) { return Number(r[2]) || 0; });
+                var ctrs        = rows.map(function (r) { return parseFloat(String(r[3]).replace('%','')) || 0; });
+                var positions   = rows.map(function (r) { return parseFloat(r[4]) || 0; });
+
+                var ctx = document.getElementById('gscInfographicLineChart');
+                if (!ctx || !window.Chart) return;
+
+                var hidden = { display:false, beginAtZero:true, grid:{ drawOnChartArea:false } };
+                var hiddenRev = { display:false, reverse:true, grid:{ drawOnChartArea:false } };
+
+                var chart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            { label:'Total Clicks',      data:clicks,      borderColor:'#3b82f6', backgroundColor:'#3b82f6',
+                              yAxisID:'yClicks', tension:0.35, pointRadius:2, borderWidth:2 },
+                            { label:'Total Impressions', data:impressions, borderColor:'#a855f7', backgroundColor:'#a855f7',
+                              yAxisID:'yImpr',   tension:0.35, pointRadius:2, borderWidth:2 },
+                            { label:'Average CTR',       data:ctrs,        borderColor:'#10b981', backgroundColor:'#10b981',
+                              yAxisID:'yCtr',    tension:0.35, pointRadius:2, borderWidth:2 },
+                            { label:'Average Position',  data:positions,   borderColor:'#f97316', backgroundColor:'#f97316',
+                              yAxisID:'yPos',    tension:0.35, pointRadius:2, borderWidth:2 }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: function (item) {
+                                        var v = item.parsed.y;
+                                        if (item.dataset.label === 'Total Clicks')      return ' Clicks: ' + v.toLocaleString();
+                                        if (item.dataset.label === 'Total Impressions') return ' Impressions: ' + v.toLocaleString();
+                                        if (item.dataset.label === 'Average CTR')       return ' CTR: ' + v.toFixed(2) + '%';
+                                        if (item.dataset.label === 'Average Position')  return ' Position: ' + v.toFixed(1);
+                                        return ' ' + v;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: { ticks: { color:'#9ca3af', maxRotation:0, autoSkip:true, maxTicksLimit:10 },
+                                 grid:  { color:'rgba(255,255,255,0.05)' } },
+                            yClicks: hidden, yImpr: hidden, yCtr: hidden, yPos: hiddenRev
+                        }
+                    }
+                });
+
+                document.querySelectorAll('.gsc-info-toggle').forEach(function (cb) {
+                    cb.addEventListener('change', function (e) {
+                        e.stopPropagation();
+                        var idx = parseInt(cb.getAttribute('data-line'), 10);
+                        chart.setDatasetVisibility(idx, cb.checked);
+                        chart.update();
+                    });
+                });
+            })();
+            </script>
+            {% endif %}
         </div>
         {% endif %}
 
