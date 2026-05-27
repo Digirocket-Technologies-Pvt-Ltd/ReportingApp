@@ -1667,55 +1667,145 @@
                     </div>
                 </div>
                 
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
-                    <div class="gsc-metric-card blue">
+                <!-- 4 metric cards with checkboxes to toggle each line on the chart below
+                     (matches Google Search Console's native dashboard layout) -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-6 mb-6">
+                    <label class="gsc-metric-card blue cursor-pointer" style="display:block;">
                         <div class="flex justify-between items-start">
                             <div>
-                                <div class="metric-label">Total Clicks</div>
+                                <div class="metric-label" style="display:flex; align-items:center; gap:8px;">
+                                    <input type="checkbox" class="gsc-toggle" data-line="0" checked
+                                           style="width:16px; height:16px; accent-color:#fff; cursor:pointer;">
+                                    Total Clicks
+                                </div>
                                 <div class="metric-value">{{ "{:,}".format(gsc_data.summary.total_clicks) }}</div>
                             </div>
-                            <div class="metric-icon">
-                                <i class="fas fa-mouse-pointer"></i>
-                            </div>
+                            <div class="metric-icon"><i class="fas fa-mouse-pointer"></i></div>
                         </div>
-                    </div>
+                    </label>
 
-                    <div class="gsc-metric-card purple">
+                    <label class="gsc-metric-card purple cursor-pointer" style="display:block;">
                         <div class="flex justify-between items-start">
                             <div>
-                                <div class="metric-label">Impressions</div>
+                                <div class="metric-label" style="display:flex; align-items:center; gap:8px;">
+                                    <input type="checkbox" class="gsc-toggle" data-line="1" checked
+                                           style="width:16px; height:16px; accent-color:#fff; cursor:pointer;">
+                                    Total Impressions
+                                </div>
                                 <div class="metric-value">{{ "{:,}".format(gsc_data.summary.total_impressions) }}</div>
                             </div>
-                            <div class="metric-icon">
-                                <i class="fas fa-eye"></i>
-                            </div>
+                            <div class="metric-icon"><i class="fas fa-eye"></i></div>
                         </div>
-                    </div>
+                    </label>
 
-                    <div class="gsc-metric-card green">
+                    <label class="gsc-metric-card green cursor-pointer" style="display:block;">
                         <div class="flex justify-between items-start">
                             <div>
-                                <div class="metric-label">Average CTR</div>
+                                <div class="metric-label" style="display:flex; align-items:center; gap:8px;">
+                                    <input type="checkbox" class="gsc-toggle" data-line="2" checked
+                                           style="width:16px; height:16px; accent-color:#fff; cursor:pointer;">
+                                    Average CTR
+                                </div>
                                 <div class="metric-value">{{ gsc_data.summary.average_ctr }}</div>
                             </div>
-                            <div class="metric-icon">
-                                <i class="fas fa-percentage"></i>
-                            </div>
+                            <div class="metric-icon"><i class="fas fa-percentage"></i></div>
                         </div>
-                    </div>
+                    </label>
 
-                    <div class="gsc-metric-card red">
+                    <label class="gsc-metric-card red cursor-pointer" style="display:block;">
                         <div class="flex justify-between items-start">
                             <div>
-                                <div class="metric-label">Avg Position</div>
+                                <div class="metric-label" style="display:flex; align-items:center; gap:8px;">
+                                    <input type="checkbox" class="gsc-toggle" data-line="3" checked
+                                           style="width:16px; height:16px; accent-color:#fff; cursor:pointer;">
+                                    Average Position
+                                </div>
                                 <div class="metric-value">{{ gsc_data.summary.average_position }}</div>
                             </div>
-                            <div class="metric-icon">
-                                <i class="fas fa-sort-numeric-down"></i>
-                            </div>
+                            <div class="metric-icon"><i class="fas fa-sort-numeric-down"></i></div>
                         </div>
+                    </label>
+                </div>
+
+                <!-- Daily time-series chart (like GSC native dashboard) -->
+                <div style="background:#0a0d0e; border-radius:14px; padding:18px;">
+                    <div style="position:relative; height:340px;">
+                        <canvas id="gscOverviewLineChart"></canvas>
                     </div>
                 </div>
+
+                {% if gsc_data.daily_metrics and gsc_data.daily_metrics.rows %}
+                <script>
+                (function () {
+                    var rows = {{ gsc_data.daily_metrics.rows | tojson | safe }};
+                    var labels      = rows.map(function (r) { return r[0]; });
+                    var clicks      = rows.map(function (r) { return Number(r[1]) || 0; });
+                    var impressions = rows.map(function (r) { return Number(r[2]) || 0; });
+                    var ctrs        = rows.map(function (r) { return parseFloat(String(r[3]).replace('%','')) || 0; });
+                    var positions   = rows.map(function (r) { return parseFloat(r[4]) || 0; });
+
+                    var ctx = document.getElementById('gscOverviewLineChart');
+                    if (!ctx || !window.Chart) return;
+
+                    // Each line gets its own (hidden) y-axis so the 4 very-different
+                    // scales (clicks, impressions, CTR%, position) all show meaningfully.
+                    var commonAxis = { display:false, beginAtZero:true, grid:{ drawOnChartArea:false } };
+                    var posAxis    = { display:false, reverse:true, grid:{ drawOnChartArea:false } };
+
+                    var chart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: labels,
+                            datasets: [
+                                { label:'Total Clicks',      data:clicks,      borderColor:'#3b82f6', backgroundColor:'#3b82f6',
+                                  yAxisID:'yClicks', tension:0.35, pointRadius:2, borderWidth:2 },
+                                { label:'Total Impressions', data:impressions, borderColor:'#a855f7', backgroundColor:'#a855f7',
+                                  yAxisID:'yImpr',   tension:0.35, pointRadius:2, borderWidth:2 },
+                                { label:'Average CTR',       data:ctrs,        borderColor:'#10b981', backgroundColor:'#10b981',
+                                  yAxisID:'yCtr',    tension:0.35, pointRadius:2, borderWidth:2 },
+                                { label:'Average Position',  data:positions,   borderColor:'#f97316', backgroundColor:'#f97316',
+                                  yAxisID:'yPos',    tension:0.35, pointRadius:2, borderWidth:2 }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            interaction: { mode: 'index', intersect: false },
+                            plugins: {
+                                legend: { display: false },   // our cards already act as the legend
+                                tooltip: {
+                                    callbacks: {
+                                        label: function (item) {
+                                            var v = item.parsed.y;
+                                            if (item.dataset.label === 'Total Clicks')      return ' Clicks: ' + v.toLocaleString();
+                                            if (item.dataset.label === 'Total Impressions') return ' Impressions: ' + v.toLocaleString();
+                                            if (item.dataset.label === 'Average CTR')       return ' CTR: ' + v.toFixed(2) + '%';
+                                            if (item.dataset.label === 'Average Position')  return ' Position: ' + v.toFixed(1);
+                                            return ' ' + v;
+                                        }
+                                    }
+                                }
+                            },
+                            scales: {
+                                x: { ticks: { color:'#9ca3af', maxRotation:0, autoSkip:true, maxTicksLimit:10 },
+                                     grid:  { color:'rgba(255,255,255,0.05)' } },
+                                yClicks: commonAxis, yImpr: commonAxis, yCtr: commonAxis, yPos: posAxis
+                            }
+                        }
+                    });
+
+                    // Toggle a line from its card's checkbox.
+                    document.querySelectorAll('.gsc-toggle').forEach(function (cb) {
+                        cb.addEventListener('change', function (e) {
+                            e.stopPropagation();
+                            var idx = parseInt(cb.getAttribute('data-line'), 10);
+                            chart.setDatasetVisibility(idx, cb.checked);
+                            chart.update();
+                        });
+                    });
+                })();
+                </script>
+                {% endif %}
             </section>
 
             <!-- Top Landing Pages -->
