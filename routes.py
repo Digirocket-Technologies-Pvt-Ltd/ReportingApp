@@ -1,7 +1,7 @@
 from flask import Flask, render_template, redirect, url_for, request, jsonify, session, flash, send_file, g
 from auth import is_authenticated, refresh_token_if_needed, logout_user, get_user_info, get_session_info, is_pmo_admin
 import db
-from ga4 import get_ga4_properties, get_ga4_data, get_property_name, get_ga4_overview, get_ga4_acquisition, get_ga4_extra
+from ga4 import get_ga4_properties, get_ga4_data, get_property_name, get_ga4_overview, get_ga4_acquisition, get_ga4_extra, get_ga4_daily_overview
 from gsc import get_gsc_sites, get_gsc_detailed_data, normalize_gsc_property, get_gsc_summary
 from gmb import get_gmb_data, gmb_debug
 from gmc import get_gmc_data
@@ -499,6 +499,12 @@ def init_routes(app):
             if ga4_property_id:
                 ga4_extra = get_ga4_extra(session['access_token'], ga4_property_id, start_date, end_date)
 
+            # Day-by-day GA4 overview series, so the Overview Infographic
+            # blocks can render line charts (not just bar charts of totals).
+            ga4_daily = {}
+            if ga4_property_id:
+                ga4_daily = get_ga4_daily_overview(session['access_token'], ga4_property_id, start_date, end_date)
+
             # Manual indexed pages count (user types it from Search Console)
             indexed_pages = (request.args.get('indexed_pages') or '').strip()
 
@@ -576,6 +582,7 @@ def init_routes(app):
                 gsc_change=gsc_change,
                 acquisition=acquisition,
                 ga4_extra=ga4_extra,
+                ga4_daily=ga4_daily,
                 indexed_pages=indexed_pages,
                 ai_text=ai_text,
                 gmb_data=gmb_data,

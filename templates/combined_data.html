@@ -1283,100 +1283,117 @@
             'event_count': '{:,}'.format(ov.get('event_count',0)) } %}
         {% set CARD_COLORS = ['#2563eb','#00AEAF','#7CC92A','#f59e0b','#6366f1','#ec4899','#10b981','#ef4444'] %}
         {% for group in metric_groups %}
-        {# Build the per-metric arrays Jinja-side so the chart's JS stays clean. #}
-        {% set chart_labels = [] %}
-        {% set chart_values = [] %}
-        {% set chart_displays = [] %}
-        {% set chart_changes = [] %}
-        {% set chart_colors = [] %}
-        {% for key in group %}
-            {% set raw = ov.get(key, 0) %}
-            {# avg_engagement_per_session is a formatted string like "1m 19s";
-               everything else is already numeric. Numeric goes into the chart,
-               the formatted display goes into the tooltip + on-bar label. #}
-            {% set _ = chart_labels.append(MLABEL.get(key, key)) %}
-            {% set _ = chart_values.append(raw if raw is number else 0) %}
-            {% set _ = chart_displays.append(MVAL.get(key, '-')) %}
-            {% set _ = chart_changes.append(ov_change.get(key) if ov_change else None) %}
-            {% set _ = chart_colors.append(CARD_COLORS[loop.index0 % 8]) %}
-        {% endfor %}
         <div class="section-card rounded-2xl p-8 mb-8" id="overview-infographic-{{ loop.index }}">
             <h2 class="text-2xl font-bold text-gray-800 mb-6"><i class="fas fa-chart-simple mr-2 text-teal-600"></i>Overview Infographic {{ loop.index }}</h2>
+
+            <!-- 4 metric cards with checkbox toggles (same UX as GSC) -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6">
+                {% for key in group %}
+                {% set chg = ov_change.get(key) if ov_change else None %}
+                <label style="display:block; border-radius:18px; padding:22px 18px; background:{{ CARD_COLORS[loop.index0 % 8] }}; box-shadow:0 8px 24px rgba(0,0,0,0.18); cursor:pointer;">
+                    <div style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; color:rgba(255,255,255,0.92);">
+                        <input type="checkbox" class="ovinfo-toggle-{{ loop.index0 }}-{{ loop.index }}"
+                               data-line="{{ loop.index0 }}" checked
+                               style="width:15px; height:15px; accent-color:#fff; cursor:pointer;">
+                        {{ MLABEL.get(key, key) }}
+                    </div>
+                    <div style="font-size:30px; font-weight:800; color:#ffffff; line-height:1.1; margin-top:8px;">{{ MVAL.get(key, '-') }}</div>
+                    {% if chg is not none %}
+                    <div style="font-size:12px; font-weight:800; margin-top:6px; color:{{ '#bbf7d0' if chg >= 0 else '#fecaca' }};">{{ '▲' if chg >= 0 else '▼' }} {{ chg|abs }}% vs prev</div>
+                    {% endif %}
+                </label>
+                {% endfor %}
+            </div>
+
+            <!-- Daily line chart for this infographic's 4 metrics -->
             <div style="background:#0a0d0e; border-radius:14px; padding:18px;">
                 <div style="position:relative; height:320px;">
                     <canvas id="ovInfoChart{{ loop.index }}"></canvas>
                 </div>
             </div>
+
+            {% if ga4_daily and ga4_daily.get('dates') %}
             <script>
             (function () {
-                var labels   = {{ chart_labels   | tojson | safe }};
-                var values   = {{ chart_values   | tojson | safe }};
-                var displays = {{ chart_displays | tojson | safe }};
-                var changes  = {{ chart_changes  | tojson | safe }};
-                var colors   = {{ chart_colors   | tojson | safe }};
-
+                var dates  = {{ ga4_daily.dates | tojson | safe }};
+                var keys   = {{ group | tojson | safe }};
+                var allSeries = {
+                    new_users:                {{ ga4_daily.get('new_users', [])               | tojson | safe }},
+                    active_users:             {{ ga4_daily.get('active_users', [])            | tojson | safe }},
+                    returning_users:          {{ ga4_daily.get('returning_users', [])         | tojson | safe }},
+                    sessions:                 {{ ga4_daily.get('sessions', [])                | tojson | safe }},
+                    views:                    {{ ga4_daily.get('views', [])                   | tojson | safe }},
+                    event_count:              {{ ga4_daily.get('event_count', [])             | tojson | safe }},
+                    bounce_rate:              {{ ga4_daily.get('bounce_rate', [])             | tojson | safe }},
+                    avg_engagement_per_session:{{ ga4_daily.get('avg_engagement_per_session', []) | tojson | safe }}
+                };
+                var labelByKey = {
+                    new_users:'New Users', active_users:'Active Users',
+                    returning_users:'Returning Users', sessions:'Sessions',
+                    bounce_rate:'Bounce Rate', avg_engagement_per_session:'Avg Engagement (s)',
+                    views:'Views', event_count:'Event Count'
+                };
+                var colors = {{ CARD_COLORS | tojson | safe }};
                 var ctx = document.getElementById('ovInfoChart{{ loop.index }}');
                 if (!ctx || !window.Chart) return;
 
-                // Plugin that draws the formatted value above each bar and the
-                // change-% under the metric label, so the chart is readable
-                // at a glance without needing to hover.
-                var labelsOnBars = {
-                    id: 'labelsOnBars{{ loop.index }}',
-                    afterDatasetsDraw: function (chart) {
-                        var c = chart.ctx;
-                        var meta = chart.getDatasetMeta(0);
-                        meta.data.forEach(function (bar, i) {
-                            c.fillStyle = '#ffffff';
-                            c.font = 'bold 14px Barlow, sans-serif';
-                            c.textAlign = 'center';
-                            c.fillText(displays[i], bar.x, bar.y - 8);
-                            if (changes[i] !== null && changes[i] !== undefined) {
-                                c.fillStyle = (changes[i] >= 0) ? '#bbf7d0' : '#fecaca';
-                                c.font = 'bold 11px Barlow, sans-serif';
-                                var arrow = (changes[i] >= 0) ? '▲' : '▼';
-                                c.fillText(arrow + ' ' + Math.abs(changes[i]) + '% vs prev',
-                                           bar.x, chart.chartArea.bottom + 36);
-                            }
-                        });
-                    }
-                };
+                // Each line gets its own (hidden) y-axis so the different
+                // scales (e.g. New Users vs Bounce Rate vs Event Count) all
+                // show as meaningful, comparable shapes over time.
+                var hidden = { display:false, beginAtZero:true, grid:{ drawOnChartArea:false } };
+                var datasets = keys.map(function (k, i) {
+                    return {
+                        label: labelByKey[k] || k,
+                        data:  allSeries[k] || [],
+                        borderColor: colors[i % colors.length],
+                        backgroundColor: colors[i % colors.length],
+                        yAxisID: 'y' + i,
+                        tension: 0.35, pointRadius: 2, borderWidth: 2
+                    };
+                });
+                var scales = { x: { ticks:{ color:'#9ca3af', maxRotation:0, autoSkip:true, maxTicksLimit:10 },
+                                    grid: { color:'rgba(255,255,255,0.05)' } } };
+                keys.forEach(function (_, i) { scales['y' + i] = hidden; });
 
-                new Chart(ctx, {
-                    type: 'bar',
-                    data: {
-                        labels: labels,
-                        datasets: [{
-                            data: values,
-                            backgroundColor: colors,
-                            borderRadius: 10,
-                            borderWidth: 0,
-                            maxBarThickness: 110
-                        }]
-                    },
+                var chart = new Chart(ctx, {
+                    type: 'line',
+                    data: { labels: dates, datasets: datasets },
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
-                        layout: { padding: { top: 26, bottom: 24 } },
+                        interaction: { mode: 'index', intersect: false },
                         plugins: {
                             legend: { display: false },
                             tooltip: {
                                 callbacks: {
-                                    label: function (item) { return ' ' + displays[item.dataIndex]; }
+                                    label: function (item) {
+                                        var v = item.parsed.y;
+                                        var lbl = item.dataset.label;
+                                        if (lbl === 'Bounce Rate')         return ' ' + lbl + ': ' + v.toFixed(1) + '%';
+                                        if (lbl === 'Avg Engagement (s)')  return ' ' + lbl + ': ' + v.toFixed(1) + 's';
+                                        return ' ' + lbl + ': ' + (typeof v === 'number' ? v.toLocaleString() : v);
+                                    }
                                 }
                             }
                         },
-                        scales: {
-                            x: { ticks: { color:'#ffffff', font:{weight:'700'} },
-                                 grid: { display:false } },
-                            y: { display:false, beginAtZero:true,
-                                 grid: { color:'rgba(255,255,255,0.05)' } }
-                        }
-                    },
-                    plugins: [labelsOnBars]
+                        scales: scales
+                    }
+                });
+
+                document.querySelectorAll('.ovinfo-toggle-' + 0 + '-{{ loop.index }}, ' +
+                                          '.ovinfo-toggle-' + 1 + '-{{ loop.index }}, ' +
+                                          '.ovinfo-toggle-' + 2 + '-{{ loop.index }}, ' +
+                                          '.ovinfo-toggle-' + 3 + '-{{ loop.index }}').forEach(function (cb) {
+                    cb.addEventListener('change', function (e) {
+                        e.stopPropagation();
+                        var idx = parseInt(cb.getAttribute('data-line'), 10);
+                        chart.setDatasetVisibility(idx, cb.checked);
+                        chart.update();
+                    });
                 });
             })();
             </script>
+            {% endif %}
         </div>
         {% endfor %}
         {% endif %}

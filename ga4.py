@@ -96,6 +96,64 @@ def get_ga4_overview(access_token, property_id, start_date, end_date):
         return {}
 
 
+def get_ga4_daily_overview(access_token, property_id, start_date, end_date):
+    """Day-by-day series of the same 8 overview metrics get_ga4_overview
+    returns as totals. Powers the GA4 Overview Infographic line charts.
+    Returns a dict with one date list + one numeric series per metric, or
+    {} on failure (chart layer falls back to empty)."""
+    try:
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json',
+            'X-TIMEZONE': 'UTC',
+        }
+        url = f'https://analyticsdata.googleapis.com/v1beta/properties/{property_id}:runReport'
+        body = {
+            "dimensions": [{"name": "date"}],
+            "metrics": [
+                {"name": "totalUsers"}, {"name": "newUsers"}, {"name": "activeUsers"},
+                {"name": "sessions"}, {"name": "screenPageViews"}, {"name": "eventCount"},
+                {"name": "bounceRate"}, {"name": "averageSessionDuration"},
+            ],
+            "dateRanges": [{
+                "startDate": start_date.strftime('%Y-%m-%d'),
+                "endDate": end_date.strftime('%Y-%m-%d')}],
+            "orderBys": [{"dimension": {"dimensionName": "date"}}],
+            "limit": 1000,
+        }
+        r = requests.post(url, headers=headers, json=body, timeout=30)
+        r.raise_for_status()
+        data = r.json()
+        rows = data.get('rows', [])
+        out = {
+            'dates': [],
+            'new_users': [], 'active_users': [], 'returning_users': [], 'sessions': [],
+            'views': [], 'event_count': [], 'bounce_rate': [], 'avg_engagement_per_session': [],
+        }
+        for row in rows:
+            d = row['dimensionValues'][0]['value']      # YYYYMMDD
+            if len(d) == 8 and d.isdigit():
+                date_str = f'{d[0:4]}-{d[4:6]}-{d[6:8]}'
+            else:
+                date_str = d
+            mv = row['metricValues']
+            total_users = int(mv[0]['value'])
+            new_users = int(mv[1]['value'])
+            out['dates'].append(date_str)
+            out['new_users'].append(new_users)
+            out['active_users'].append(int(mv[2]['value']))
+            out['returning_users'].append(max(total_users - new_users, 0))
+            out['sessions'].append(int(mv[3]['value']))
+            out['views'].append(int(mv[4]['value']))
+            out['event_count'].append(int(mv[5]['value']))
+            out['bounce_rate'].append(round(float(mv[6]['value']) * 100, 1))
+            out['avg_engagement_per_session'].append(round(float(mv[7]['value']), 1))
+        return out
+    except Exception as e:
+        print(f"Error fetching GA4 daily overview: {e}")
+        return {}
+
+
 def get_ga4_extra(access_token, property_id, start_date, end_date):
     """Extra GA4 sections: Tech (device) + Landing Pages."""
     out = {'tech': [], 'landing': []}
