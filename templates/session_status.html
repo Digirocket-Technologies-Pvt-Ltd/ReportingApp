@@ -74,7 +74,7 @@
                         </div>
                         <h3 class="text-lg font-semibold text-green-800">Authentication Status</h3>
                     </div>
-                    <p class="text-green-700 font-medium" id="authStatus">Authenticated ✓</p>
+                    <p class="text-green-700 font-medium" id="authStatus">Authenticated</p>
                 </div>
 
                 <div class="bg-gradient-to-r from-blue-50 to-teal-50 rounded-xl p-6 border border-blue-200">
@@ -259,7 +259,7 @@
                 .then(data => {
                     hideLoading();
                     if (data.authenticated) {
-                        document.getElementById('authStatus').textContent = 'Authenticated ✓';
+                        document.getElementById('authStatus').textContent = 'Authenticated';
                         document.getElementById('authStatus').className = 'text-green-700 font-medium';
                         showNotification('Session refreshed successfully', 'success');
                         
@@ -273,7 +273,7 @@
                             }
                         }
                     } else {
-                        document.getElementById('authStatus').textContent = 'Not Authenticated ✗';
+                        document.getElementById('authStatus').textContent = 'Not Authenticated';
                         document.getElementById('authStatus').className = 'text-red-700 font-medium';
                         showNotification('Session expired. Redirecting to login...', 'error');
                         setTimeout(() => {

@@ -541,7 +541,7 @@
 
                     // Stamp the date range on this slide (top-right), removed after capture
                     var _dateBadge = document.createElement('div');
-                    _dateBadge.textContent = '📅 ' + REPORT_RANGE;
+                    _dateBadge.textContent = '' + REPORT_RANGE;
                     _dateBadge.style.cssText = 'position:absolute; top:12px; right:16px; background:#14181a; color:#fff; ' +
                         'padding:5px 14px; border-radius:9px; font-size:12px; font-weight:700; z-index:9;';
                     var _prevPos = elem.style.position;
@@ -561,7 +561,7 @@
                             if (!isCanvasBlank(canvas) || attempt === 3) {
                                 goodCanvas = canvas;
                                 if (isCanvasBlank(canvas)) {
-                                    console.warn(`⚠️ ${element.id} still blank after ${attempt} attempts`);
+                                    console.warn(`${element.id} still blank after ${attempt} attempts`);
                                 }
                                 break;
                             }
@@ -590,9 +590,9 @@
                 }
 
                 // Success feedback
-                console.log(`✅ Captured ${screenshots.length} of ${elementsToCapture.length} elements`);
+                console.log(`Captured ${screenshots.length} of ${elementsToCapture.length} elements`);
                 if (skippedElements.length > 0) {
-                    console.warn('⚠️ Skipped elements:', skippedElements);
+                    console.warn('Skipped elements:', skippedElements);
                 }
 
                 // Send screenshots to backend
@@ -606,7 +606,7 @@
 
                 if (response.ok) {
                     const data = await response.json();
-                    showNotification('success', '🎉 PDF report ready!');
+                    showNotification('success', 'PDF report ready!');
                     setTimeout(() => {
                         window.location.href = (data && data.redirect) ? data.redirect : '/report';
                     }, 1200);
@@ -614,7 +614,7 @@
                     throw new Error('Failed to generate report');
                 }
             } catch (error) {
-                console.error('❌ Error taking screenshots:', error);
+                console.error('Error taking screenshots:', error);
                 hideVideoLoadingOverlay();
                 showNotification('error', 'Error generating PDF report. Please try again.');
             } finally {
@@ -660,7 +660,7 @@
                 'display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;text-align:center;padding:20px;';
             o.innerHTML =
                 '<div style="border:6px solid rgba(255,255,255,0.2);border-top:6px solid #4FD1D1;border-radius:50%;width:64px;height:64px;animation:spin 1s linear infinite;"></div>' +
-                '<h2 style="font-size:24px;font-weight:700;margin-top:24px;">📄 Creating your PDF Report...</h2>' +
+                '<h2 style="font-size:24px;font-weight:700;margin-top:24px;">Creating your PDF Report...</h2>' +
                 '<p style="font-size:16px;opacity:0.85;margin-top:10px;max-width:480px;">Please wait. Do not close the page. AI is preparing the analysis for each section.</p>' +
                 '<style>@keyframes spin{to{transform:rotate(360deg);}}</style>';
             document.body.appendChild(o);
@@ -1067,7 +1067,7 @@
             <div class="section-card p-8 rounded-3xl">
                 <div class="flex justify-between items-center mb-8">
                     <div>
-                        <h2 class="text-3xl font-bold text-gray-800 mb-2">📊 Analytics Intelligence Overview</h2>
+                        <h2 class="text-3xl font-bold text-gray-800 mb-2">Analytics Intelligence Overview</h2>
                         <p class="text-gray-600">Comprehensive insights from your digital properties</p>
                     </div>
                     <form id="dateRangeForm" action="{{ url_for('view_combined_data') }}" method="GET" class="flex flex-col space-y-3 bg-gray-50 p-4 rounded-xl">
@@ -1956,7 +1956,7 @@
 
         <section class="section-card rounded-3xl p-8 mb-8 relative overflow-hidden">
             <div class="relative z-10 text-center">
-                <h2 class="text-3xl font-bold mb-4 text-gray-800">🚀 Ready to Take Action?</h2>
+                <h2 class="text-3xl font-bold mb-4 text-gray-800">Ready to Take Action?</h2>
                 <p class="text-xl mb-8 text-gray-600">Transform your data into actionable insights with our AI-powered PDF reports</p>
                 <div class="flex flex-col sm:flex-row gap-4 justify-center">
                     <button id="exportPDF2" class="capture-button bg-teal-600 px-8 py-4 rounded-xl font-bold text-lg shadow-lg hover:opacity-90" onclick="captureTableScreenshots()">
@@ -2017,7 +2017,7 @@
             </div>
             
             <div class="border-t border-gray-800 mt-8 pt-8 text-center">
-                <p class="text-gray-400">&copy; 2024 Analytics Intelligence. All rights reserved. Made with ❤️ for data-driven decisions.</p>
+                <p class="text-gray-400">&copy; 2024 Analytics Intelligence. All rights reserved.  for data-driven decisions.</p>
             </div>
         </div>
     </footer>

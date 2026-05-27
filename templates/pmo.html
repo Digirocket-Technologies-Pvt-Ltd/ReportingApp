@@ -237,7 +237,7 @@
                 'box-shadow:0 10px 30px rgba(0,0,0,0.35);opacity:0;transition:all .35s ease;' +
                 'transform:translateX(-50%) translateY(-20px);' +
                 'background:' + (ok ? '#16a34a' : '#dc2626') + ';';
-            t.innerHTML = (ok ? '✅ ' : '❌ ') + message;
+            t.innerHTML = (ok ? '' : '') + message;
             document.body.appendChild(t);
             requestAnimationFrame(function () { t.style.opacity = '1'; t.style.transform = 'translateX(-50%) translateY(0)'; });
             setTimeout(function () {

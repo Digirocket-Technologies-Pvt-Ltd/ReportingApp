@@ -56,7 +56,7 @@
             <div class="w-16 h-16 bg-gradient-to-r from-green-500 to-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
                 <i class="fas fa-check text-white text-2xl"></i>
             </div>
-            <h2 class="text-2xl font-bold text-gray-800 mb-2">🎉 Your PDF Report is Ready!</h2>
+            <h2 class="text-2xl font-bold text-gray-800 mb-2">Your PDF Report is Ready!</h2>
             <p class="text-gray-600 mb-6">Your analytics report PDF is ready. Download it or preview it below.</p>
             <div class="flex flex-wrap gap-3 justify-center">
                 <a href="{{ pdf_url }}" download="analytics-report.pdf"
@@ -240,7 +240,7 @@
                 'box-shadow:0 10px 30px rgba(0,0,0,0.35);opacity:0;transition:all .35s ease;' +
                 'transform:translateX(-50%) translateY(-20px);' +
                 'background:' + (ok ? '#16a34a' : '#dc2626') + ';';
-            t.innerHTML = (ok ? '✅ ' : '❌ ') + message;
+            t.innerHTML = (ok ? '' : '') + message;
             document.body.appendChild(t);
             requestAnimationFrame(function () {
                 t.style.opacity = '1';
@@ -278,13 +278,13 @@
                 var data = await res.json();
                 if (res.ok && data.success) {
                     closeEmailModal();
-                    showToast('Email successfully sent to client! 📧', true);
+                    showToast('Email successfully sent to client!', true);
                 } else {
-                    status.innerHTML = '<span style="color:#dc2626">❌ ' + (data.message || 'Failed to send') + '</span>';
+                    status.innerHTML = '<span style="color:#dc2626">' + (data.message || 'Failed to send') + '</span>';
                     showToast(data.message || 'Failed to send email', false);
                 }
             } catch (e) {
-                status.innerHTML = '<span style="color:#dc2626">❌ Error: ' + e + '</span>';
+                status.innerHTML = '<span style="color:#dc2626">Error: ' + e + '</span>';
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i>Send';
@@ -400,7 +400,7 @@
                         var baseUrl = (data.pdf_url || ifr.src.split('?')[0]);
                         ifr.src = baseUrl + '?t=' + Date.now();
                     }
-                    showToast('Saved! The report now has your edits - download or email it. 💾', true);
+                    showToast('Saved! The report now has your edits - download or email it.', true);
                 } else {
                     showToast((data && data.message) || 'Save failed', false);
                 }
