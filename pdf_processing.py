@@ -100,6 +100,21 @@ def add_image_to_pdf(packet, image_path, description, template_page, image_index
     can.setFillColor(HexColor('#E7EDF1'))  # Light gray background
     can.rect(0, 0, template_width, template_height, fill=True)
 
+    # DigiRocket brand stamp (top-right of every data slide). The template
+    # cover/agenda/thank-you pages already carry the logo, so this only runs
+    # for the data slides built by this function. Acts as a visual mark of
+    # authenticity on every page.
+    _brand_text = "DigiRocket"
+    _brand_font = "Helvetica-Bold"
+    _brand_size = 18
+    can.setFont(_brand_font, _brand_size)
+    can.setFillColor(HexColor('#002060'))
+    _brand_w = can.stringWidth(_brand_text, _brand_font, _brand_size)
+    can.drawString(template_width - _brand_w - 30, template_height - 45, _brand_text)
+    # Brand-coloured accent pill under the wordmark
+    can.setFillColor(HexColor('#C9F31D'))
+    can.rect(template_width - _brand_w - 30, template_height - 55, _brand_w, 4, fill=True, stroke=False)
+
     # Load and resize image while maintaining aspect ratio
     img = Image.open(image_path)
     img_width, img_height = img.size
@@ -194,7 +209,7 @@ def add_image_to_pdf(packet, image_path, description, template_page, image_index
     can.save()
 
 
-def build_slide_images(template_pdf_path, images_folder, output_dir, start_page, zoom=2):
+def build_slide_images(template_pdf_path, images_folder, output_dir, start_page, zoom=2, ai_text=''):
     """Build the slide images for the video WITHOUT merging PDFs.
 
     The old approach merged many reportlab pages into one PDF with PyPDF2, which
@@ -203,12 +218,24 @@ def build_slide_images(template_pdf_path, images_folder, output_dir, start_page,
     PyMuPDF, so nothing is merged and no image is ever lost. Also faster.
 
     Output: page_1.png, page_2.png, ... in `output_dir` (HD via `zoom`).
+
+    Also writes `manifest.json` describing every slide so a downstream PPT
+    builder can place the ORIGINAL screenshot + the AI description as separate
+    editable text boxes (and template covers as static branded images).
+
+    `ai_text` (optional): the full AI Strategy Memo text. If supplied AND the
+    captured screenshots include the AI Insights slide (filename containing
+    "ai-insights"), the manifest marks that slide as type='ai-text' and stores
+    the full memo so the PPT builder can render it as editable text boxes
+    instead of an image.
     """
+    import json
     os.makedirs(output_dir, exist_ok=True)
     template = fitz.open(template_pdf_path)
     template_page_ref = PdfReader(template_pdf_path).pages[0]  # only for dimensions
     matrix = fitz.Matrix(zoom, zoom)
     page_num = 0
+    manifest = {'slides': []}
 
     def save_pixmap(pix):
         nonlocal page_num
@@ -219,6 +246,10 @@ def build_slide_images(template_pdf_path, images_folder, output_dir, start_page,
     cover_count = min(start_page, len(template))
     for i in range(cover_count):
         save_pixmap(template[i].get_pixmap(matrix=matrix))
+        manifest['slides'].append({
+            'type': 'template',
+            'slide_image': f'page_{page_num}.png',
+        })
 
     # 2) Data slides: build each reportlab page, render it straight to an image
     images = sorted([f for f in os.listdir(images_folder)
@@ -230,18 +261,62 @@ def build_slide_images(template_pdf_path, images_folder, output_dir, start_page,
         except Exception as e:
             print(f"  (description failed for {image}: {e})")
             description = ""
+        title = clean_title(os.path.basename(image_path))
         packet = io.BytesIO()
         add_image_to_pdf(packet, image_path, description, template_page_ref, idx)
         packet.seek(0)
         single = fitz.open(stream=packet.read(), filetype='pdf')
         save_pixmap(single[0].get_pixmap(matrix=matrix))
         single.close()
+        slide_entry = {
+            'type': 'data',
+            'slide_image': f'page_{page_num}.png',
+            # Store the ORIGINAL screenshot path so the editable PPT can drop
+            # it in as a movable, non-edited image (preserves data authenticity).
+            'original_image': image_path,
+            'title': title,
+            'description': description,
+        }
+        # If this is the closing Summary & Conclusion slide AND we received
+        # the full memo text, tag it so the PPT / PDF builders render it as
+        # editable text instead of a flattened image.
+        # (Matches both the new filename `summary-and-conclusion` and the
+        # legacy `ai-insights` names so older AIVideo folders still work.)
+        lower_name = os.path.basename(image_path).lower()
+        if ai_text and (
+            'summary-and-conclusion' in lower_name
+            or 'summary_and_conclusion' in lower_name
+            or 'ai-insights' in lower_name
+            or 'ai_insights' in lower_name
+        ):
+            slide_entry['type'] = 'ai-text'
+            slide_entry['ai_text'] = ai_text
+            # Override the cleaned-from-filename title so the slide reads as
+            # a neutral "Summary & Conclusion" in PDF and PPT (the client
+            # shouldn't see "AI" in the heading; the disclaimer below the
+            # heading already covers that the content was AI-assisted).
+            slide_entry['title'] = 'Summary & Conclusion'
+        manifest['slides'].append(slide_entry)
 
     # 3) Remaining template pages (Thank You etc.)
     for i in range(start_page, len(template)):
         save_pixmap(template[i].get_pixmap(matrix=matrix))
+        manifest['slides'].append({
+            'type': 'template',
+            'slide_image': f'page_{page_num}.png',
+        })
 
     template.close()
+
+    # Manifest lets /download-report-pptx rebuild the deck with editable title +
+    # description text boxes around the original screenshots, without having to
+    # re-call the AI or re-scrape the dashboard.
+    try:
+        with open(os.path.join(output_dir, 'manifest.json'), 'w', encoding='utf-8') as f:
+            json.dump(manifest, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        print(f"  (could not save manifest: {e})")
+
     print(f"Built {page_num} slide images in {output_dir} (no-merge, HD)")
     return page_num
 
@@ -250,17 +325,124 @@ def build_pdf_from_images(images_dir, output_pdf):
     """Combine the slide images (page_1.png ...) into one downloadable PDF report.
 
     Uses PyMuPDF to insert each image as a page - reliable, no XObject merge bug.
+
+    Special case: if `manifest.json` marks a slide as type='ai-text', that slide
+    is rendered as a REAL TEXT page (selectable / copy-able) instead of a
+    flattened image, so the AI Strategy Memo stays searchable and editable.
     """
+    import json
+
     def _page_num(name):
         m = re.search(r'page_(\d+)', name)
         return int(m.group(1)) if m else 0
+
+    # Load the manifest so we know which slide is the AI text slide.
+    manifest_path = os.path.join(images_dir, 'manifest.json')
+    manifest = {}
+    if os.path.exists(manifest_path):
+        try:
+            with open(manifest_path, 'r', encoding='utf-8') as f:
+                manifest = json.load(f)
+        except Exception as e:
+            print(f"  (could not load manifest: {e})")
+
+    # Map slide_image filename -> slide entry, so we can look up type/ai_text
+    slide_by_image = {}
+    for s in (manifest.get('slides') or []):
+        si = s.get('slide_image')
+        if si:
+            slide_by_image[si] = s
 
     images = sorted(
         [f for f in os.listdir(images_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg'))],
         key=_page_num,
     )
+
+    # Standard slide dimensions (matches the screenshot canvas: 16:9 widescreen
+    # at 72 dpi PostScript points -> 960 x 540 pt is a clean 16:9 ratio).
+    PAGE_W, PAGE_H = 960.0, 540.0
+
+    def _is_heading(line):
+        t = line.strip()
+        if not t.endswith(':') or len(t) < 4:
+            return False
+        body = t[:-1]
+        letters = sum(1 for c in body if c.isalpha())
+        if not letters:
+            return False
+        upper = sum(1 for c in body if c.isupper())
+        return (upper / letters) >= 0.6
+
+    def _render_ai_text_page(out_doc, title_text, memo_text):
+        """Insert a PyMuPDF text-rendered page (selectable text, no image)."""
+        page = out_doc.new_page(width=PAGE_W, height=PAGE_H)
+        # Light grey background to match the rest of the report
+        page.draw_rect(fitz.Rect(0, 0, PAGE_W, PAGE_H), color=None,
+                       fill=(0.906, 0.929, 0.945), overlay=False)
+        # DigiRocket brand stamp top-right
+        page.insert_text(fitz.Point(PAGE_W - 110, 26), 'DigiRocket',
+                         fontname='hebo', fontsize=11, color=(0.0, 0.13, 0.38))
+        page.draw_line(fitz.Point(PAGE_W - 110, 30), fitz.Point(PAGE_W - 30, 30),
+                       color=(0.788, 0.953, 0.114), width=2)
+        # Title (centred)
+        title_y = 70
+        title_size = 20
+        title_w = fitz.get_text_length(title_text, fontname='hebo', fontsize=title_size)
+        page.insert_text(fitz.Point((PAGE_W - title_w) / 2, title_y),
+                         title_text, fontname='hebo', fontsize=title_size,
+                         color=(0.0, 0.13, 0.38))
+        # Body: paragraph-per-line, wrapped to page width
+        body_left = 50
+        body_right = PAGE_W - 50
+        body_width = body_right - body_left
+        cursor_y = title_y + 30
+        lines = (memo_text or '').split('\n')
+        for raw in lines:
+            line = raw.rstrip()
+            if not line.strip():
+                cursor_y += 6
+                continue
+            is_head = _is_heading(line)
+            font = 'hebo' if is_head else 'helv'
+            size = 12 if is_head else 10
+            color = (0.0, 0.13, 0.38) if is_head else (0.122, 0.161, 0.216)
+            text = line.strip().rstrip(':') if is_head else line
+            # word-wrap manually using get_text_length
+            words = text.split(' ')
+            cur = ''
+            while words:
+                w = words.pop(0)
+                trial = (cur + ' ' + w).strip() if cur else w
+                if fitz.get_text_length(trial, fontname=font, fontsize=size) <= body_width:
+                    cur = trial
+                else:
+                    if cur:
+                        page.insert_text(fitz.Point(body_left, cursor_y), cur,
+                                         fontname=font, fontsize=size, color=color)
+                        cursor_y += size + 4
+                    cur = w
+                if cursor_y > PAGE_H - 30:
+                    break
+            if cur and cursor_y <= PAGE_H - 30:
+                page.insert_text(fitz.Point(body_left, cursor_y), cur,
+                                 fontname=font, fontsize=size, color=color)
+                cursor_y += size + 6
+            if is_head:
+                cursor_y += 2
+            if cursor_y > PAGE_H - 30:
+                break
+
     doc = fitz.open()
     for name in images:
+        slide_meta = slide_by_image.get(name) or {}
+        if slide_meta.get('type') == 'ai-text' and slide_meta.get('ai_text'):
+            _render_ai_text_page(
+                doc,
+                title_text=slide_meta.get('title') or 'Summary & Conclusion',
+                memo_text=slide_meta.get('ai_text', ''),
+            )
+            continue
+        # Default: drop the screenshot in as an image page
         imgdoc = fitz.open(os.path.join(images_dir, name))
         pdfbytes = imgdoc.convert_to_pdf()
         imgdoc.close()
@@ -319,6 +501,234 @@ def build_pptx_from_images(images_dir, output_pptx):
 
     prs.save(output_pptx)
     print(f"PPTX (image slides) saved: {output_pptx} ({len(images)} slides)")
+    return output_pptx
+
+
+def build_editable_image_pptx(aivideo_dir, output_pptx):
+    """Build a hybrid PPTX:
+      - Template slides (cover / agenda / thank-you) are full-slide images so
+        the branded look is preserved exactly.
+      - Data slides have THREE separate movable/editable elements:
+            1. Title text box (top, editable)
+            2. The original captured screenshot (centred, MOVABLE; the image
+               itself is not editable so the data stays authentic).
+            3. Description text box (bottom, editable — same AI-generated copy
+               that appears under the image in the PDF).
+
+    This keeps the visuals trustworthy (no faking numbers in a table) while
+    still letting the PMO team rewrite the narrative around the screenshots.
+
+    Reads ``manifest.json`` written by :func:`build_slide_images` so we know
+    which slide is which and where the original screenshot lives.
+    """
+    import json
+    from pptx import Presentation
+    from pptx.util import Emu, Inches, Pt
+    from pptx.dml.color import RGBColor
+    from pptx.enum.text import PP_ALIGN
+
+    manifest_path = os.path.join(aivideo_dir, 'manifest.json')
+    if not os.path.exists(manifest_path):
+        # Older AIVideo folders (built before this code shipped) have no
+        # manifest -> fall back to the simple image-only deck so the user
+        # still gets a usable PPT.
+        return build_pptx_from_images(aivideo_dir, output_pptx)
+
+    with open(manifest_path, 'r', encoding='utf-8') as f:
+        manifest = json.load(f)
+
+    NAVY = RGBColor(0x00, 0x20, 0x60)
+    DARK = RGBColor(0x1F, 0x29, 0x37)
+    BRAND_LIME = RGBColor(0xC9, 0xF3, 0x1D)
+
+    prs = Presentation()
+    prs.slide_width = Emu(12192000)   # 13.333in -> 16:9 widescreen
+    prs.slide_height = Emu(6858000)   # 7.5in
+    blank_layout = prs.slide_layouts[6]
+    SW, SH = int(prs.slide_width), int(prs.slide_height)
+    slide_aspect = SW / float(SH)
+
+    def add_full_slide_image(slide, img_path):
+        with Image.open(img_path) as im:
+            iw, ih = im.size
+        img_aspect = iw / float(ih)
+        if img_aspect > slide_aspect:
+            w = SW; h = int(SW / img_aspect)
+        else:
+            h = SH; w = int(SH * img_aspect)
+        left = int((SW - w) / 2)
+        top = int((SH - h) / 2)
+        slide.shapes.add_picture(img_path, left, top, width=w, height=h)
+
+    def add_brand_stamp(slide):
+        """Drop a movable 'DigiRocket' wordmark + lime accent on the slide
+        (top-right). Both shapes are independent, so the user can drag /
+        resize / restyle them in PowerPoint, but they're there by default
+        so every page carries the brand mark."""
+        from pptx.enum.shapes import MSO_SHAPE
+        # Tight text box: no extra padding so the lime accent sits flush.
+        tb = slide.shapes.add_textbox(SW - Inches(2.2), Inches(0.22),
+                                      Inches(2.0), Inches(0.32))
+        tf = tb.text_frame
+        tf.word_wrap = False
+        tf.margin_top = Emu(0)
+        tf.margin_bottom = Emu(0)
+        tf.margin_left = Emu(0)
+        tf.margin_right = Emu(0)
+        p = tf.paragraphs[0]
+        p.text = "DigiRocket"
+        p.font.size = Pt(16)
+        p.font.bold = True
+        p.font.color.rgb = NAVY
+        p.alignment = PP_ALIGN.RIGHT
+        # Thin lime accent immediately under the wordmark (2pt below the
+        # text baseline). Right-edge aligns with the text box's right edge.
+        accent = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE,
+                                        SW - Inches(1.2), Inches(0.52),
+                                        Inches(1.0), Pt(2.5))
+        accent.fill.solid()
+        accent.fill.fore_color.rgb = BRAND_LIME
+        accent.line.fill.background()
+
+    for s in manifest.get('slides', []):
+        slide = prs.slides.add_slide(blank_layout)
+        slide_type = s.get('type', 'data')
+        slide_image_path = os.path.join(aivideo_dir, s.get('slide_image', ''))
+
+        if slide_type == 'template':
+            # Branded cover / agenda / thank-you page -> keep as a static image.
+            # Template pages already carry the DigiRocket logo, so we skip the
+            # extra brand stamp to avoid duplicates.
+            if os.path.exists(slide_image_path):
+                add_full_slide_image(slide, slide_image_path)
+            continue
+
+        # Every non-template slide carries a movable "DigiRocket" wordmark top-right
+        add_brand_stamp(slide)
+
+        # ---- AI Strategy Memo slide: render as EDITABLE TEXT, not image -------
+        # The PMO team needs to be able to tweak the AI's wording before
+        # sharing the deck, so this slide is built from real text boxes
+        # (title + body) instead of a flattened screenshot.
+        if slide_type == 'ai-text':
+            title_text = s.get('title', 'Summary & Conclusion')
+            memo_text = (s.get('ai_text') or '').strip() or '(AI memo not available)'
+
+            # Title at top
+            tb_title = slide.shapes.add_textbox(Inches(0.5), Inches(0.3),
+                                                SW - Inches(1), Inches(0.85))
+            tf = tb_title.text_frame
+            tf.word_wrap = True
+            p = tf.paragraphs[0]
+            p.text = title_text
+            p.font.size = Pt(28)
+            p.font.bold = True
+            p.font.color.rgb = NAVY
+            p.alignment = PP_ALIGN.CENTER
+
+            # Body: one editable text frame containing the full memo. Each
+            # logical line in the memo becomes a paragraph in the text frame.
+            # UPPERCASE LINES ending with ':' are rendered as bold section
+            # headers; bullet/numbered lines keep their leading marker so the
+            # user sees the same structure as on the live page.
+            tb_body = slide.shapes.add_textbox(Inches(0.5), Inches(1.3),
+                                               SW - Inches(1), SH - Inches(1.8))
+            bf = tb_body.text_frame
+            bf.word_wrap = True
+            try:
+                bf.auto_size = None  # let the text overflow rather than shrink
+            except Exception:
+                pass
+
+            def _is_heading(line):
+                t = line.strip()
+                if not t.endswith(':') or len(t) < 4:
+                    return False
+                body = t[:-1]
+                letters = sum(1 for c in body if c.isalpha())
+                if not letters:
+                    return False
+                upper = sum(1 for c in body if c.isupper())
+                return (upper / letters) >= 0.6
+
+            lines = memo_text.split('\n')
+            first = True
+            for raw in lines:
+                line = raw.rstrip()
+                if first:
+                    para = bf.paragraphs[0]
+                    first = False
+                else:
+                    para = bf.add_paragraph()
+                if not line.strip():
+                    # Blank spacer paragraph
+                    para.text = ''
+                    para.font.size = Pt(6)
+                    continue
+                if _is_heading(line):
+                    para.text = line.strip().rstrip(':')
+                    para.font.size = Pt(13)
+                    para.font.bold = True
+                    para.font.color.rgb = NAVY
+                else:
+                    para.text = line
+                    para.font.size = Pt(11)
+                    para.font.color.rgb = DARK
+                    para.font.bold = False
+            # Skip the image-based path for this slide
+            continue
+        # -----------------------------------------------------------------
+
+        # ---- Data slide: title text + image + description text -----------
+        title = s.get('title', '') or ''
+        desc = s.get('description', '') or ''
+        orig_img = s.get('original_image', '') or ''
+
+        # Title text box (top) — editable in PowerPoint.
+        tb_title = slide.shapes.add_textbox(Inches(0.5), Inches(0.3),
+                                            SW - Inches(1), Inches(0.85))
+        tf = tb_title.text_frame
+        tf.word_wrap = True
+        p = tf.paragraphs[0]
+        p.text = title
+        p.font.size = Pt(28)
+        p.font.bold = True
+        p.font.color.rgb = NAVY
+        p.alignment = PP_ALIGN.CENTER
+
+        # Original screenshot (centred, MOVABLE). The user can drag it but
+        # the image content itself is locked = data stays trustworthy.
+        img_to_place = orig_img if os.path.exists(orig_img) else slide_image_path
+        if os.path.exists(img_to_place):
+            with Image.open(img_to_place) as im:
+                iw, ih = im.size
+            img_aspect = iw / float(ih)
+            # Reserve: title 0.3-1.15, image area 1.3-5.6, description 5.7-7.2
+            max_img_h = Inches(4.3)
+            max_img_w = SW - Inches(1.4)
+            h = max_img_h
+            w = int(h * img_aspect)
+            if w > max_img_w:
+                w = max_img_w
+                h = int(w / img_aspect)
+            left = int((SW - w) / 2)
+            top = int(Inches(1.3) + (max_img_h - h) / 2)
+            slide.shapes.add_picture(img_to_place, left, top, width=w, height=h)
+
+        # Description text box (bottom) — editable, pre-filled with the same
+        # AI-generated explanation that appears under the image in the PDF.
+        tb_desc = slide.shapes.add_textbox(Inches(0.5), Inches(5.75),
+                                           SW - Inches(1), Inches(1.5))
+        tf = tb_desc.text_frame
+        tf.word_wrap = True
+        p = tf.paragraphs[0]
+        p.text = desc
+        p.font.size = Pt(14)
+        p.font.color.rgb = DARK
+        p.alignment = PP_ALIGN.CENTER
+
+    prs.save(output_pptx)
+    print(f"Editable PPTX (movable images + editable text) saved: {output_pptx}")
     return output_pptx
 
 

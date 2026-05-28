@@ -334,10 +334,6 @@
                 </div>
                 
                 <div class="flex items-center space-x-4">
-                    <div class="hidden md:flex items-center space-x-2 bg-white rounded-full px-4 py-2 shadow-sm">
-                        <i class="fas fa-clock text-gray-400"></i>
-                        <span class="text-sm text-gray-600" id="currentTime"></span>
-                    </div>
                     <div class="relative" id="notifWrap">
                         <button id="notifBtn" type="button" onclick="toggleNotif(event)"
                                 class="relative p-2 text-gray-600 hover:text-teal-600 transition-colors">
@@ -686,13 +682,13 @@
 
                     <!-- Submit Button -->
                     <div class="form-group text-center">
-                        <button type="submit"
+                        <button type="submit" id="launchBtn"
                                 class="group relative inline-flex items-center justify-center px-8 py-4 text-lg font-semibold text-white bg-gradient-to-r from-teal-600 to-teal-600 rounded-xl shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 w-full md:w-auto min-w-64">
                             <span class="absolute inset-0 w-full h-full bg-gradient-to-r from-teal-700 to-teal-700 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>
                             <span class="relative flex items-center">
-                                <i class="fas fa-rocket mr-3"></i>
-                                Launch Analytics Dashboard
-                                <i class="fas fa-arrow-right ml-3 group-hover:translate-x-1 transition-transform duration-300"></i>
+                                <i id="launchBtnIcon" class="fas fa-rocket mr-3"></i>
+                                <span id="launchBtnText">Launch Analytics Dashboard</span>
+                                <i id="launchBtnArrow" class="fas fa-arrow-right ml-3 group-hover:translate-x-1 transition-transform duration-300"></i>
                             </span>
                         </button>
                         
@@ -911,24 +907,6 @@
         setInterval(function () { loadNotif(); }, 45000);
 
 
-        // Update current time
-        function updateTime() {
-            const now = new Date();
-            const timeString = now.toLocaleTimeString('en-US', { 
-                hour12: false, 
-                hour: '2-digit', 
-                minute: '2-digit' 
-            });
-            const timeElement = document.getElementById('currentTime');
-            if (timeElement) {
-                timeElement.textContent = timeString;
-            }
-        }
-        
-        // Update time every second
-        setInterval(updateTime, 1000);
-        updateTime(); // Initial call
-
         // Check session status periodically
         setInterval(checkSessionStatus, 300000); // Check every 5 minutes
 
@@ -968,6 +946,9 @@
                         placeholder: true,
                         placeholderValue: 'Search GA4 property...',
                         searchPlaceholderValue: 'Type to search property name or ID',
+                        // Always open the menu BELOW the input (default 'auto'
+                        // flips upward when there isn't enough viewport room).
+                        position: 'bottom',
                     });
                     propertiesSelect.dataset.choicesReady = '1';
                 }
@@ -980,6 +961,7 @@
                         placeholder: true,
                         placeholderValue: 'Search Search Console site...',
                         searchPlaceholderValue: 'Type to search site URL',
+                        position: 'bottom',
                     });
                     sitesSelect.dataset.choicesReady = '1';
                 }
@@ -1022,19 +1004,42 @@
             });
         });
 
-        // Form validation and loading state
+        // Form validation and loading state.
+        // Visible feedback that the request is in flight: the rocket icon
+        // spins and the label changes to "Launching dashboard...". State
+        // persists until the navigation completes (no setTimeout reset) so
+        // the user doesn't think it failed if the backend takes a few seconds.
         document.querySelector('form').addEventListener('submit', function(e) {
-            const submitBtn = this.querySelector('button[type="submit"]');
-            const originalText = submitBtn.innerHTML;
-            
-            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-3"></i>Generating Report...';
+            const submitBtn = document.getElementById('launchBtn') || this.querySelector('button[type="submit"]');
+            const icon = document.getElementById('launchBtnIcon');
+            const text = document.getElementById('launchBtnText');
+            const arrow = document.getElementById('launchBtnArrow');
+
+            if (icon) {
+                // Swap rocket for a spinning version, animated via fa-spin
+                icon.classList.remove('fa-rocket');
+                icon.classList.add('fa-circle-notch', 'fa-spin');
+            }
+            if (text) text.textContent = 'Launching dashboard...';
+            if (arrow) arrow.style.display = 'none';
+
             submitBtn.disabled = true;
-            
-            // Re-enable button after 3 seconds as fallback
-            setTimeout(() => {
-                submitBtn.innerHTML = originalText;
-                submitBtn.disabled = false;
-            }, 3000);
+            submitBtn.style.cursor = 'wait';
+            submitBtn.style.opacity = '0.85';
+        });
+
+        // If the user navigates back (BFCache restore), reset the button so
+        // it doesn't stay stuck in "Launching..." state when they return.
+        window.addEventListener('pageshow', function (ev) {
+            if (!ev.persisted) return;
+            const submitBtn = document.getElementById('launchBtn');
+            const icon = document.getElementById('launchBtnIcon');
+            const text = document.getElementById('launchBtnText');
+            const arrow = document.getElementById('launchBtnArrow');
+            if (icon) { icon.classList.remove('fa-circle-notch', 'fa-spin'); icon.classList.add('fa-rocket'); }
+            if (text) text.textContent = 'Launch Analytics Dashboard';
+            if (arrow) arrow.style.display = '';
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.style.cursor = ''; submitBtn.style.opacity = ''; }
         });
 
         // Enhanced hover effects

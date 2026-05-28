@@ -14,7 +14,7 @@ from PIL import Image
 import io
 from datetime import datetime, timedelta, timezone
 import requests
-from pdf_processing import build_slide_images, build_pdf_from_images, build_editable_pptx, build_pptx_from_images
+from pdf_processing import build_slide_images, build_pdf_from_images, build_editable_pptx, build_pptx_from_images, build_editable_image_pptx
 from werkzeug.utils import secure_filename
 import shutil
 from image_explanation import explain_image_with_gemini
@@ -568,29 +568,8 @@ def init_routes(app):
                     print(f"GMC fetch error: {e}")
                     gmc_data = {}
 
-            # AI Insights & Action Plan (optional, Kimi) - only when requested
-            ai_text = ''
-            if (request.args.get('ai_insights') or '').lower() in ('1', 'true', 'on', 'yes'):
-                try:
-                    from ai_vision import ai_summary
-                    ov = (ga4_data or {}).get('overview') or {}
-                    gs = (gsc_data or {}).get('summary') or {}
-                    prompt = (
-                        "You are an SEO analyst. Write a concise professional report summary and a "
-                        "'Suggested Action Plan' (4-6 bullet points) for next month, based on this data for "
-                        f"{ga4_property_name} ({start_date} to {end_date}).\n\n"
-                        f"Google Analytics: active users {ov.get('active_users')}, new users {ov.get('new_users')}, "
-                        f"returning users {ov.get('returning_users')}, sessions {ov.get('sessions')}, "
-                        f"views {ov.get('views')}, events {ov.get('event_count')}, bounce rate {ov.get('bounce_rate')}%.\n"
-                        f"Search Console: clicks {gs.get('total_clicks')}, impressions {gs.get('total_impressions')}, "
-                        f"avg CTR {gs.get('average_ctr')}, avg position {gs.get('average_position')}.\n"
-                        "Keep it under 180 words. Plain text, no markdown headers."
-                    )
-                    ai_text = ai_summary(prompt)
-                except Exception as e:
-                    print(f"AI insights error: {e}")
-                    ai_text = ''
-
+            # Compute the period-over-period change set FIRST so the AI strategy
+            # memo (built below) can quote the deltas as evidence.
             if compare:
                 cur_ov = (ga4_data or {}).get('overview') or {}
                 prev_ov = get_ga4_overview(session['access_token'], ga4_property_id, prev_start, prev_end) if ga4_property_id else {}
@@ -608,6 +587,194 @@ def init_routes(app):
                         'ctr': _pct(str(cur_s.get('average_ctr', '0')).replace('%', ''), prev_s.get('ctr')),
                         'position': _pct(prev_s.get('position'), str(cur_s.get('average_position', '0'))),
                     }
+
+            # AI Insights & Action Plan (optional, Kimi) - only when requested.
+            # We feed the AI EVERY section of the report (overview totals +
+            # period change, top pages, top events, acquisition channels,
+            # countries, devices, landing pages, Search Console summary +
+            # top queries / pages / countries / devices, GMB, GMC) so the
+            # strategy memo is grounded in the same numbers the client sees.
+            ai_text = ''
+            if (request.args.get('ai_insights') or '').lower() in ('1', 'true', 'on', 'yes'):
+                try:
+                    from ai_vision import ai_summary
+                    ov = (ga4_data or {}).get('overview') or {}
+                    gs = (gsc_data or {}).get('summary') or {}
+
+                    period_label = f"{start_date.strftime('%b %d, %Y')} – {end_date.strftime('%b %d, %Y')}"
+                    period_days = (end_date - start_date).days + 1
+
+                    def _fmt_pct(v):
+                        if v is None:
+                            return ''
+                        sign = '+' if v >= 0 else ''
+                        return f" ({sign}{v}% vs prev)"
+
+                    lines = []
+                    lines.append(f"PROPERTY: {ga4_property_name}")
+                    lines.append(f"WEBSITE: {gsc_site_url}")
+                    lines.append(f"PERIOD: {period_label} ({period_days} days)")
+                    if compare and prev_label:
+                        lines.append(f"PREVIOUS PERIOD (for comparison): {prev_label}")
+                    if indexed_pages:
+                        lines.append(f"INDEXED PAGES (manual, from Search Console): {indexed_pages}")
+
+                    # GA4 overview block with period-over-period deltas
+                    lines.append("\n--- GA4 OVERVIEW ---")
+                    for k, label in [
+                        ('active_users', 'Active Users'),
+                        ('new_users', 'New Users'),
+                        ('returning_users', 'Returning Users'),
+                        ('sessions', 'Sessions'),
+                        ('views', 'Page Views'),
+                        ('event_count', 'Events'),
+                        ('bounce_rate', 'Bounce Rate (%)'),
+                        ('avg_engagement_per_session', 'Avg Engagement / Session'),
+                    ]:
+                        v = ov.get(k, 'n/a')
+                        chg = ov_change.get(k) if compare else None
+                        lines.append(f"  {label}: {v}{_fmt_pct(chg)}")
+
+                    # Top pages
+                    pm = (ga4_data or {}).get('pageMetrics') or []
+                    if pm:
+                        lines.append("\n--- TOP 10 PAGES (GA4, by views) ---")
+                        for p in pm[:10]:
+                            lines.append(f"  {p['page']} — views={p['views']}, users={p['users']}, avg_dur={p['avgDuration']}")
+
+                    # Top events
+                    em = (ga4_data or {}).get('eventMetrics') or []
+                    if em:
+                        lines.append("\n--- TOP 10 EVENTS (GA4) ---")
+                        for e in em[:10]:
+                            lines.append(f"  {e['event']} — count={e['count']}, per_user={e['perUser']:.2f}")
+
+                    # Acquisition channels with deltas
+                    if acquisition:
+                        lines.append("\n--- ACQUISITION BY CHANNEL (top 10) ---")
+                        for ch in acquisition[:10]:
+                            cur = ch.get('current') or {}
+                            chg = ch.get('change') or {}
+                            tu_chg = _fmt_pct(chg.get('total_users'))
+                            lines.append(
+                                f"  {ch.get('channel')} — users={cur.get('total_users', 0)}{tu_chg}, "
+                                f"new={cur.get('new_users', 0)}, sessions={cur.get('sessions', 0)}, "
+                                f"events={cur.get('event_count', 0)}"
+                            )
+
+                    # Geo (GA4)
+                    cm = (ga4_data or {}).get('countryMetrics') or []
+                    if cm:
+                        lines.append("\n--- TOP 10 COUNTRIES (GA4) ---")
+                        for c in cm[:10]:
+                            lines.append(
+                                f"  {c['country']} — users={c['users']}, new={c['newUsers']}, "
+                                f"engaged_sessions={c['engagedSessions']}, engagement_rate={c['engagementRate']}"
+                            )
+
+                    # Tech / Landing pages
+                    if ga4_extra:
+                        tech = ga4_extra.get('tech') or []
+                        if tech:
+                            lines.append("\n--- DEVICE BREAKDOWN (GA4) ---")
+                            for d in tech:
+                                lines.append(f"  {d['device']} — users={d['users']}, sessions={d['sessions']}, views={d['views']}")
+                        landing = ga4_extra.get('landing') or []
+                        if landing:
+                            lines.append("\n--- TOP 10 LANDING PAGES (GA4) ---")
+                            for lp in landing[:10]:
+                                lines.append(f"  {lp['page']} — sessions={lp['sessions']}, users={lp['users']}, views={lp['views']}")
+
+                    # Search Console summary + deltas
+                    if gs:
+                        lines.append("\n--- SEARCH CONSOLE OVERVIEW ---")
+                        lines.append(f"  Total Clicks: {gs.get('total_clicks')}{_fmt_pct(gsc_change.get('clicks') if gsc_change else None)}")
+                        lines.append(f"  Total Impressions: {gs.get('total_impressions')}{_fmt_pct(gsc_change.get('impressions') if gsc_change else None)}")
+                        lines.append(f"  Average CTR: {gs.get('average_ctr')}{_fmt_pct(gsc_change.get('ctr') if gsc_change else None)}")
+                        lines.append(f"  Average Position: {gs.get('average_position')}{_fmt_pct(gsc_change.get('position') if gsc_change else None)} (lower is better)")
+
+                    # Search Console detail tables
+                    if gsc_data:
+                        tq = (gsc_data.get('top_queries') or {}).get('rows', [])
+                        if tq:
+                            lines.append("\n--- TOP 10 SEARCH QUERIES ---")
+                            for r in tq[:10]:
+                                lines.append(f"  '{r[0]}' — clicks={r[1]}, impressions={r[2]}, CTR={r[3]}, pos={r[4]}")
+                        tp = (gsc_data.get('top_pages') or {}).get('rows', [])
+                        if tp:
+                            lines.append("\n--- TOP 10 LANDING PAGES (Search) ---")
+                            for r in tp[:10]:
+                                lines.append(f"  {r[0]} — clicks={r[1]}, impressions={r[2]}, CTR={r[3]}, pos={r[4]}")
+                        cd = (gsc_data.get('country_data') or {}).get('rows', [])
+                        if cd:
+                            lines.append("\n--- TOP COUNTRIES (Search, by clicks) ---")
+                            for r in cd[:8]:
+                                lines.append(f"  {r[0]} — clicks={r[1]}, impressions={r[2]}, pos={r[4]}")
+                        dd = (gsc_data.get('device_data') or {}).get('rows', [])
+                        if dd:
+                            lines.append("\n--- DEVICE (Search) ---")
+                            for r in dd:
+                                lines.append(f"  {r[0]} — clicks={r[1]}, impressions={r[2]}, CTR={r[3]}, pos={r[4]}")
+
+                    # GMB
+                    if gmb_data:
+                        lines.append("\n--- GOOGLE BUSINESS PROFILE ---")
+                        if gmb_data.get('title'):
+                            lines.append(f"  Listing: {gmb_data['title']}")
+                        for k in ['calls', 'website_clicks', 'directions', 'bookings', 'conversations', 'impressions']:
+                            if k in gmb_data:
+                                lines.append(f"  {k.replace('_', ' ').title()}: {gmb_data[k]}")
+
+                    # GMC
+                    if gmc_data:
+                        lines.append("\n--- GOOGLE MERCHANT CENTER ---")
+                        lines.append(f"  Merchant: {gmc_data.get('merchant_name', 'n/a')}")
+                        if 'clicks' in gmc_data:
+                            lines.append(f"  Shopping Clicks: {gmc_data.get('clicks')}")
+                        if 'impressions' in gmc_data:
+                            lines.append(f"  Shopping Impressions: {gmc_data.get('impressions')}")
+                        if 'products' in gmc_data:
+                            lines.append(f"  Active Products (approx): {gmc_data.get('products')}")
+
+                    full_data = "\n".join(lines)
+
+                    system_prompt = (
+                        "You are a senior digital marketing strategist for DigiRocket "
+                        "Technologies. Read the data block and produce a SHORT, "
+                        "executive-style closing summary for the client — the kind of "
+                        "concise wrap-up that fits at the END of a monthly report.\n\n"
+                        "HARD RULES:\n"
+                        "1. Every observation must be backed by a specific number from "
+                        "the data. NEVER fabricate a metric, query, page, or channel.\n"
+                        "2. Be CONCISE — total output must stay under ~180 words. No "
+                        "filler, no generic SEO advice that could apply to any site.\n"
+                        "3. Plain text only. NO markdown ('#', '**', '*'). Section names "
+                        "appear as UPPERCASE LINES followed by a colon. Bullets use '- '.\n\n"
+                        "OUTPUT FORMAT (use these EXACT 3 section names, in order):\n\n"
+                        "SUMMARY:\n"
+                        "2 to 3 sentences synthesizing the period. Lead with the single "
+                        "most consequential trend (good or bad), include period-over-period "
+                        "change if the data shows it.\n\n"
+                        "KEY HIGHLIGHTS:\n"
+                        "3 to 4 short bullets ('- '). The most important wins AND issues, "
+                        "each citing one specific number from the data.\n\n"
+                        "RECOMMENDED NEXT STEPS:\n"
+                        "3 to 4 short bullets ('- '). Concrete actions for next month, "
+                        "each tied to a specific metric to improve. No fluff."
+                    )
+
+                    user_prompt = (
+                        f"Analyze the report data below for {ga4_property_name} "
+                        f"({period_label}) and write the SHORT closing summary per the "
+                        f"format above. Use only the numbers in the data block — do not "
+                        f"invent queries, pages, or channels. Stay under 180 words total.\n\n"
+                        f"=== REPORT DATA ===\n{full_data}\n=== END REPORT DATA ==="
+                    )
+
+                    ai_text = ai_summary(user_prompt, system=system_prompt)
+                except Exception as e:
+                    print(f"AI insights error: {e}")
+                    ai_text = ''
 
             # Is there a previously-generated PDF on disk? If yes, the header
             # shows a persistent "Open Last PDF" button so the user never
@@ -686,6 +853,7 @@ def init_routes(app):
             # Get screenshots from request
             data = request.get_json()
             screenshots = data.get('screenshots', [])
+            ai_text = (data.get('ai_text') or '').strip()
 
             saved_files = []
 
@@ -731,8 +899,12 @@ def init_routes(app):
                 shutil.rmtree(aivideo_dir)
             os.makedirs(aivideo_dir)
 
-            # Render each slide straight to an image (HD, reliable)
-            build_slide_images(TEMPLATE_PDF, session_dir, aivideo_dir, START_PAGE)
+            # Render each slide straight to an image (HD, reliable). Pass the
+            # AI Strategy Memo text along so the manifest can mark the AI
+            # slide as 'ai-text' — the PPT builder then renders editable text
+            # boxes for that slide instead of the captured screenshot.
+            build_slide_images(TEMPLATE_PDF, session_dir, aivideo_dir, START_PAGE,
+                               ai_text=ai_text)
 
             # Build the downloadable PDF report from the slides
             report_pdf = os.path.join(image_dir, "analytics_report.pdf")
@@ -865,9 +1037,51 @@ def init_routes(app):
 
     @app.route('/download-report-pptx')
     def download_report_pptx():
-        """Build and download a fully EDITABLE PowerPoint (native text + tables).
+        """Build and download the editable PowerPoint.
 
-        Re-fetches the report's GA4 + Search Console data using the params saved
+        Every slide mirrors the PDF: the visual content (chart / table
+        screenshot) stays as a MOVABLE static image so the underlying numbers
+        can't be tampered with, while the title above and the description
+        below it are real, editable PowerPoint text boxes. This is what the
+        PMO team needs - they can rewrite the narrative around each slide
+        without ever altering the captured data.
+
+        Reads `static/images/AIVideo/manifest.json` (written by
+        `build_slide_images` during PDF generation) so we know which slide
+        is a template page vs a data slide, and where the original screenshot
+        + AI description live for each data slide.
+        """
+        if not is_authenticated() or not refresh_token_if_needed():
+            flash('Please log in.', 'warning')
+            return redirect(url_for('login'))
+
+        base = os.path.dirname(os.path.abspath(__file__))
+        aivideo_dir = os.path.join(base, 'static', 'images', 'AIVideo')
+        out_path = os.path.join(base, 'static', 'images', 'analytics_report.pptx')
+
+        if not os.path.isdir(aivideo_dir) or not any(
+                f.lower().endswith('.png') for f in os.listdir(aivideo_dir)):
+            flash('Generate the PDF report first - the PPT is built from those slides.', 'error')
+            return redirect(url_for('dashboard'))
+
+        try:
+            build_editable_image_pptx(aivideo_dir, out_path)
+            return send_file(
+                out_path, as_attachment=True,
+                download_name='analytics_report.pptx',
+                mimetype='application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            )
+        except Exception as e:
+            print(f'Error building editable PPTX: {e}')
+            flash(f'Could not build PPT: {e}', 'error')
+            return redirect(url_for('display_report'))
+
+    @app.route('/download-report-pptx-native')
+    def download_report_pptx_native():
+        """LEGACY: native-tables deck (everything editable incl. numbers).
+
+        Kept for backwards compatibility / power users who want raw editable
+        tables. Re-fetches GA4 + Search Console data using the params saved
         in the session when the combined view was opened.
         """
         if not is_authenticated() or not refresh_token_if_needed():
@@ -884,15 +1098,6 @@ def init_routes(app):
 
             base = os.path.dirname(os.path.abspath(__file__))
             out_path = os.path.join(base, 'static', 'images', 'analytics_report.pptx')
-
-            # If the generated slide images exist, the PPT mirrors the PDF: the
-            # visuals stay as IMAGES (not converted to tables) + each slide gets
-            # an editable text box. (Falls back to a native deck if no images.)
-            aivideo_dir = os.path.join(base, 'static', 'images', 'AIVideo')
-            if os.path.isdir(aivideo_dir) and any(f.lower().endswith('.png') for f in os.listdir(aivideo_dir)):
-                build_pptx_from_images(aivideo_dir, out_path)
-                return send_file(out_path, as_attachment=True, download_name='analytics_report.pptx',
-                                 mimetype='application/vnd.openxmlformats-officedocument.presentationml.presentation')
 
             ga4_data = None
             if ctx.get('ga4_property_id'):

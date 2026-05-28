@@ -66,20 +66,15 @@
                 </a>
                 {% if pptx_url %}
                 <a href="{{ pptx_url }}" download="analytics-report.pptx"
+                   title="Fully editable PowerPoint: every text box, table and chart is native — open in PowerPoint and edit anything."
                    class="inline-flex items-center bg-gradient-to-r from-orange-500 to-amber-600 text-white px-8 py-4 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl transition">
-                    <i class="fas fa-file-powerpoint mr-3"></i>Download PPT
+                    <i class="fas fa-file-powerpoint mr-3"></i>Download Editable PPT
                 </a>
                 {% endif %}
                 <button type="button" onclick="openEmailModal()"
                         class="inline-flex items-center bg-teal-600 px-8 py-4 rounded-xl font-bold text-lg shadow-lg hover:opacity-90 transition">
                     <i class="fas fa-paper-plane mr-3"></i>Send via Email
                 </button>
-                {% if slide_images %}
-                <button type="button" onclick="openSlideEditor()"
-                        class="inline-flex items-center bg-gradient-to-r from-indigo-600 to-violet-600 text-white px-8 py-4 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl transition">
-                    <i class="fas fa-pen-to-square mr-3"></i>Edit Slides
-                </button>
-                {% endif %}
             </div>
         </div>
 
@@ -140,7 +135,7 @@
                     <label class="block text-sm font-semibold text-gray-700 mb-1">Client (PMO record)</label>
                     <select id="emClient" onchange="onClientPick()"
                             class="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-teal-500 focus:ring-2 focus:ring-teal-500 outline-none">
-                        <option value="">â€” Select client (to log this report) â€”</option>
+                        <option value="">&mdash; Select client (to log this report) &mdash;</option>
                         {% for c in clients %}
                         <option value="{{ c.id }}" data-email="{{ c.email or '' }}">{{ c.name }}{% if c.email %} ({{ c.email }}){% endif %}</option>
                         {% endfor %}
