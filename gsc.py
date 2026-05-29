@@ -1,9 +1,17 @@
+import time
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from datetime import datetime
 from urllib.parse import unquote
+from concurrent.futures import ThreadPoolExecutor
 from auth import is_authenticated, refresh_token_if_needed
 from config import CLIENT_ID, CLIENT_SECRET, SCOPES
+
+# Per-token, in-process cache for the GSC sites list (same rationale as the
+# GA4 properties cache: dashboard hits this on every load and the list
+# rarely changes).
+_SITES_CACHE = {}     # access_token -> (expires_at, sites_list)
+_SITES_TTL = 300.0    # seconds
 
 
 def normalize_gsc_property(site_url):
@@ -30,17 +38,24 @@ def get_gsc_sites(session):
     if not is_authenticated() or not refresh_token_if_needed():
         return []
 
+    access_token = session.get('access_token') or ''
+    now = time.time()
+    cached = _SITES_CACHE.get(access_token)
+    if cached and cached[0] > now:
+        return cached[1]
+
     try:
         credentials = Credentials(
-            token=session['access_token'],
-            refresh_token=session['refresh_token'],
+            token=access_token,
+            refresh_token=session.get('refresh_token'),
             token_uri='https://oauth2.googleapis.com/token',
             client_id=CLIENT_ID,
             client_secret=CLIENT_SECRET,
             scopes=SCOPES
         )
 
-        webmasters_service = build('searchconsole', 'v1', credentials=credentials)
+        webmasters_service = build('searchconsole', 'v1', credentials=credentials,
+                                   cache_discovery=False)
         sites = webmasters_service.sites().list().execute()
 
         sites_list = []
@@ -50,6 +65,7 @@ def get_gsc_sites(session):
                 'permission_level': site.get('permissionLevel', 'Unknown')
             })
 
+        _SITES_CACHE[access_token] = (now + _SITES_TTL, sites_list)
         return sites_list
     except Exception as e:
         print(f"Error fetching GSC sites: {e}")
@@ -86,7 +102,6 @@ def get_gsc_detailed_data(credentials, site_url, start_date, end_date):
     """
     try:
         site_url = normalize_gsc_property(site_url)
-        webmasters_service = build('searchconsole', 'v1', credentials=credentials)
 
         # Query for date-based metrics
         # rowLimit must be large enough to cover long ranges (e.g. 3 months = ~92 days),
@@ -97,9 +112,6 @@ def get_gsc_detailed_data(credentials, site_url, start_date, end_date):
             'dimensions': ['date'],
             'rowLimit': 1000
         }
-        date_response = webmasters_service.searchanalytics().query(
-            siteUrl=site_url, body=date_request).execute()
-
         # Query for top queries
         top_queries_request = {
             'startDate': start_date.strftime('%Y-%m-%d'),
@@ -110,8 +122,6 @@ def get_gsc_detailed_data(credentials, site_url, start_date, end_date):
                 {'dimension': None, 'field': 'clicks', 'sortOrder': 'DESCENDING'}
             ]
         }
-        top_queries_response = webmasters_service.searchanalytics().query(
-            siteUrl=site_url, body=top_queries_request).execute()
 
         # Query for top pages
         top_pages_request = {
@@ -123,8 +133,6 @@ def get_gsc_detailed_data(credentials, site_url, start_date, end_date):
                 {'dimension': None, 'field': 'clicks', 'sortOrder': 'DESCENDING'}
             ]
         }
-        top_pages_response = webmasters_service.searchanalytics().query(
-            siteUrl=site_url, body=top_pages_request).execute()
 
         # Query for country data
         country_request = {
@@ -136,8 +144,6 @@ def get_gsc_detailed_data(credentials, site_url, start_date, end_date):
                 {'dimension': None, 'field': 'clicks', 'sortOrder': 'DESCENDING'}
             ]
         }
-        country_response = webmasters_service.searchanalytics().query(
-            siteUrl=site_url, body=country_request).execute()
 
         # Query for device data
         device_request = {
@@ -149,8 +155,27 @@ def get_gsc_detailed_data(credentials, site_url, start_date, end_date):
                 {'dimension': None, 'field': 'clicks', 'sortOrder': 'DESCENDING'}
             ]
         }
-        device_response = webmasters_service.searchanalytics().query(
-            siteUrl=site_url, body=device_request).execute()
+
+        # All 5 GSC queries are independent - parallelise so the wall-clock
+        # wait drops to roughly the slowest single query instead of the sum.
+        # Each call uses its own short-lived service client because Google's
+        # discovery client isn't documented as thread-safe across .execute().
+        def _gsc_query(body):
+            ws = build('searchconsole', 'v1', credentials=credentials,
+                       cache_discovery=False)
+            return ws.searchanalytics().query(siteUrl=site_url, body=body).execute()
+
+        with ThreadPoolExecutor(max_workers=5) as _ex:
+            _f_date = _ex.submit(_gsc_query, date_request)
+            _f_q = _ex.submit(_gsc_query, top_queries_request)
+            _f_p = _ex.submit(_gsc_query, top_pages_request)
+            _f_c = _ex.submit(_gsc_query, country_request)
+            _f_d = _ex.submit(_gsc_query, device_request)
+            date_response = _f_date.result()
+            top_queries_response = _f_q.result()
+            top_pages_response = _f_p.result()
+            country_response = _f_c.result()
+            device_response = _f_d.result()
 
         # Process the responses
         rows = date_response.get('rows', [])

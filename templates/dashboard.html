@@ -6,7 +6,7 @@
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link href="/static/css/brand-theme.css" rel="stylesheet">
     <link href="/static/css/dark-theme.css" rel="stylesheet">
-    <script src="/static/js/theme-toggle.js"></script>
+    <script defer src="/static/js/theme-toggle.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Choices.js: searchable single-select dropdowns -->
@@ -257,8 +257,18 @@
             border-color: #fde68a;
         }
 
-        /* ---- Choices.js searchable dropdowns (light + dark) ---- */
-        .choices { margin-bottom: 0; }
+        /* ---- Choices.js searchable dropdowns (light + dark) ----
+           Goal: a SINGLE-field combobox. Closed = "Choose a property...".
+           Click = the SAME slot becomes a typeable search input that
+           filters the options below. No duplicate "Choose a property..."
+           appearing as a second box.
+        */
+        .choices {
+            margin-bottom: 0;
+            /* When the closed button is hidden (is-open), preserve its
+               52px height so the form layout doesn't jump. */
+            min-height: 52px;
+        }
         .choices__inner {
             min-height: 52px;
             padding: 10px 16px;
@@ -268,27 +278,81 @@
             font-size: 16px;
         }
         .choices[data-type*="select-one"] .choices__inner { padding-right: 28px; }
-        .choices.is-focused .choices__inner,
-        .choices.is-open .choices__inner {
+        .choices.is-focused .choices__inner {
             border-color: #00AEAF;
             box-shadow: 0 0 0 3px rgba(0, 174, 175, 0.1);
         }
+
+        /* ===== THE SINGLE-FIELD TRICK =====
+           When the dropdown is open, the closed-state button is completely
+           hidden and the dropdown panel slides up to occupy the same space.
+           The search input at the top of the dropdown becomes the visible
+           field — users type in IT directly. One field. No duplicate. */
+        .choices.is-open > .choices__inner {
+            display: none !important;
+        }
+        .choices.is-open > .choices__list--dropdown,
+        .choices.is-open > .choices__list[aria-expanded] {
+            position: relative !important;
+            top: 0 !important;
+            margin: 0 !important;
+            border: 2px solid #00AEAF !important;
+            border-radius: 12px !important;
+            box-shadow: 0 0 0 3px rgba(0, 174, 175, 0.1);
+            background: white;
+            z-index: 5;
+        }
+        /* Search input at the top of the dropdown — styled to look exactly
+           like the original closed button (same height, padding, font). */
+        .choices.is-open .choices__list--dropdown .choices__input,
+        .choices.is-open .choices__list[aria-expanded] .choices__input {
+            min-height: 48px;
+            padding: 12px 16px;
+            border: none;
+            border-bottom: 1px solid #e5e7eb;
+            background: transparent;
+            margin: 0;
+            font-size: 16px;
+            width: 100%;
+            box-sizing: border-box;
+            border-radius: 12px 12px 0 0;
+        }
+
+        /* Default (closed) dropdown styling — only used when CSS isn't loaded
+           yet; the .is-open variant above takes precedence when active. */
         .choices__list--dropdown,
         .choices__list[aria-expanded] {
             border: 2px solid #e5e7eb;
             border-radius: 12px;
             margin-top: 4px;
         }
-        .choices__input { background: transparent; font-size: 14px; }
 
         body.dark-mode .choices__inner { background: #25282b; border-color: #3a4045; color: #e2e8f0; }
+        body.dark-mode .choices.is-open > .choices__list--dropdown,
+        body.dark-mode .choices.is-open > .choices__list[aria-expanded] { background: #25282b; border-color: #00AEAF !important; color: #e2e8f0; }
         body.dark-mode .choices__list--dropdown,
         body.dark-mode .choices__list[aria-expanded] { background: #25282b; border-color: #3a4045; color: #e2e8f0; }
         body.dark-mode .choices__list--dropdown .choices__item,
         body.dark-mode .choices__list[aria-expanded] .choices__item { color: #e2e8f0; }
         body.dark-mode .choices__list--dropdown .choices__item--selectable.is-highlighted,
         body.dark-mode .choices__list[aria-expanded] .choices__item--selectable.is-highlighted { background: #2f3439; }
-        body.dark-mode .choices__input { color: #e2e8f0; }
+        body.dark-mode .choices__list--dropdown .choices__input,
+        body.dark-mode .choices__list[aria-expanded] .choices__input { color: #e2e8f0; border-bottom-color: #3a4045; }
+
+        /* Hide the duplicate placeholder option that Choices.js auto-creates
+           from `<option value="">Choose a …</option>`. */
+        .choices__list--dropdown .choices__item--choice.choices__placeholder,
+        .choices__list[aria-expanded] .choices__item--choice.choices__placeholder {
+            display: none !important;
+        }
+
+        /* All checkboxes: brand lime green box (matches the screenshot swatch).
+           accent-color lets the browser paint the native control in lime;
+           the tick stays as the browser default (will appear dark on lime
+           because of contrast — which the user accepted earlier). */
+        input[type="checkbox"] {
+            accent-color: #C9F31D;
+        }
     </style>
 </head>
 <body class="bg-gradient-to-br from-gray-50 via-blue-50 to-teal-50 min-h-screen">
@@ -379,8 +443,16 @@
                                     <div class="text-sm text-gray-500">{{ session_info.user_email or 'No email' }}</div>
                                 </div>
                             {% endif %}
-                            <a href="{{ url_for('session_status') }}" class="dropdown-item">
-                                <i class="fas fa-info-circle mr-2"></i>Session Info
+                            <a href="{{ url_for('user_info') }}" class="dropdown-item">
+                                <i class="fas fa-info-circle mr-2"></i>User Info
+                            </a>
+                            <!-- Send Email — opens the report page with the email
+                                 composer auto-triggered. Works whether or not a PDF
+                                 has been generated in this session yet. -->
+                            <a href="{{ url_for('display_report') }}#email"
+                               title="Open the email composer"
+                               class="dropdown-item">
+                                <i class="fas fa-paper-plane mr-2"></i>Send Email
                             </a>
                             <a href="#" class="dropdown-item" onclick="checkSessionStatus()">
                                 <i class="fas fa-sync-alt mr-2"></i>Refresh Session
@@ -425,19 +497,19 @@
                             <h2 class="text-3xl md:text-4xl font-bold mb-2">
                                 Welcome Back{% if session_info and session_info.user_name %}, {{ session_info.user_name.split()[0] }}{% endif %}!
                             </h2>
-                            <p class="text-lg opacity-90 mb-4">Ready to dive into your analytics? Let's explore your data together.</p>
-                            <div class="flex items-center space-x-4">
+                            <p class="text-lg mb-4" style="color:#0a0d0e; font-weight:600;">Ready to dive into your analytics? Let's explore your data together.</p>
+                            <div class="flex items-center space-x-4" style="color:#0a0d0e;">
                                 <div class="flex items-center space-x-2">
-                                    <i class="fas fa-chart-bar"></i>
-                                    <span class="text-sm">Real-time Analytics</span>
+                                    <i class="fas fa-chart-bar" style="color:#0a0d0e;"></i>
+                                    <span class="text-sm" style="color:#0a0d0e; font-weight:700;">Real-time Analytics</span>
                                 </div>
                                 <div class="flex items-center space-x-2">
-                                    <i class="fas fa-shield-alt"></i>
-                                    <span class="text-sm">Secure Data</span>
+                                    <i class="fas fa-shield-alt" style="color:#0a0d0e;"></i>
+                                    <span class="text-sm" style="color:#0a0d0e; font-weight:700;">Secure Data</span>
                                 </div>
                                 <div class="flex items-center space-x-2">
-                                    <i class="fas fa-bolt"></i>
-                                    <span class="text-sm">Fast Insights</span>
+                                    <i class="fas fa-bolt" style="color:#0a0d0e;"></i>
+                                    <span class="text-sm" style="color:#0a0d0e; font-weight:700;">Fast Insights</span>
                                 </div>
                             </div>
                         </div>
@@ -635,8 +707,7 @@
                                 <i class="fas fa-chart-pie" style="color: #1b1e20;"></i>
                             </div>
                             <div>
-                                <h3 class="text-lg font-semibold text-gray-800">Overview Metrics (for infographic)</h3>
-                                <p class="text-sm text-gray-600">Pick the metrics to chart. First 4 &rarr; Infographic 1, next 4 &rarr; Infographic 2. (Default: first 4.)</p>
+                                <h3 class="text-lg font-semibold text-gray-800">Overview infographic</h3>
                             </div>
                         </div>
                         <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -655,29 +726,23 @@
                         <label class="flex items-center gap-2 mt-4 text-sm font-medium text-gray-700 cursor-pointer">
                             <input type="checkbox" name="compare" value="1">
                             <i class="fas fa-code-compare text-teal-600"></i>
-                            Compare with previous period (shows % change vs the period just before, like GA4/GSC)
+                            Compare with previous period
                         </label>
                         <label class="flex items-center gap-2 mt-3 text-sm font-medium text-gray-700 cursor-pointer">
                             <input type="checkbox" name="ai_insights" value="1">
                             <i class="fas fa-robot text-teal-600"></i>
-                            Add AI Insights &amp; Action Plan (Kimi writes a summary + next-month plan)
+                            Add AI Insights &amp; Action Plan
                         </label>
                         <label class="flex items-center gap-2 mt-3 text-sm font-medium text-gray-700 cursor-pointer">
                             <input type="checkbox" name="gmb" value="1">
                             <i class="fas fa-store text-teal-600"></i>
-                            Add Google Business Profile (GMB) &mdash; calls, directions, website clicks, impressions
+                            Add Google Business Profile
                         </label>
                         <label class="flex items-center gap-2 mt-3 text-sm font-medium text-gray-700 cursor-pointer">
                             <input type="checkbox" name="gmc" value="1">
                             <i class="fas fa-bag-shopping text-teal-600"></i>
-                            Add Google Merchant Center (GMC) &mdash; only shows if an account exists for the site
+                            Add Google Merchant Center
                         </label>
-                        <div class="mt-3 flex items-center gap-2">
-                            <i class="fas fa-list-check text-teal-600"></i>
-                            <label class="text-sm font-medium text-gray-700">Indexed pages (from Search Console, optional):</label>
-                            <input type="number" name="indexed_pages" min="0" placeholder="e.g. 91"
-                                   class="w-28 rounded-lg border border-gray-300 px-3 py-1.5 text-sm outline-none focus:border-teal-500">
-                        </div>
                     </div>
 
                     <!-- Submit Button -->
@@ -944,8 +1009,12 @@
                         shouldSort: false,
                         itemSelectText: '',
                         placeholder: true,
-                        placeholderValue: 'Search GA4 property...',
-                        searchPlaceholderValue: 'Type to search property name or ID',
+                        // Same placeholder for the closed control AND the open
+                        // search input — so clicking "Choose a property..."
+                        // visually turns INTO the search input (single
+                        // seamless field, native combobox feel).
+                        placeholderValue: 'Choose a property...',
+                        searchPlaceholderValue: 'Choose a property...',
                         // Always open the menu BELOW the input (default 'auto'
                         // flips upward when there isn't enough viewport room).
                         position: 'bottom',
@@ -959,8 +1028,9 @@
                         shouldSort: false,
                         itemSelectText: '',
                         placeholder: true,
-                        placeholderValue: 'Search Search Console site...',
-                        searchPlaceholderValue: 'Type to search site URL',
+                        // Single seamless field — same placeholder closed + open.
+                        placeholderValue: 'Choose a site...',
+                        searchPlaceholderValue: 'Choose a site...',
                         position: 'bottom',
                     });
                     sitesSelect.dataset.choicesReady = '1';
@@ -989,18 +1059,28 @@
                 const endDate = new Date();
                 const startDate = new Date();
                 startDate.setDate(startDate.getDate() - days);
-                
+
                 document.getElementById('end_date').value = endDate.toISOString().split('T')[0];
                 document.getElementById('start_date').value = startDate.toISOString().split('T')[0];
-                
-                // Visual feedback
+
+                // Visual feedback. dark-theme.css applies
+                // `body.dark-mode .bg-white { background-color:#25282b !important }`
+                // — and brand-theme remaps text-teal-700 to lime — so plain
+                // inline styles lose. Use setProperty(..., 'important') so
+                // the selected button is ALWAYS lime bg + black text and the
+                // unselected ones revert cleanly to dark+white.
                 document.querySelectorAll('.quick-date-btn').forEach(btn => {
-                    btn.classList.remove('bg-teal-100', 'text-teal-700', 'border-teal-300');
-                    btn.classList.add('bg-white', 'text-gray-700', 'border-gray-300');
+                    btn.style.removeProperty('background');
+                    btn.style.removeProperty('background-color');
+                    btn.style.removeProperty('color');
+                    btn.style.removeProperty('border-color');
+                    btn.style.removeProperty('font-weight');
                 });
-                
-                this.classList.remove('bg-white', 'text-gray-700', 'border-gray-300');
-                this.classList.add('bg-teal-100', 'text-teal-700', 'border-teal-300');
+
+                this.style.setProperty('background-color', '#C9F31D', 'important');
+                this.style.setProperty('color', '#0a0d0e', 'important');
+                this.style.setProperty('border-color', '#C9F31D', 'important');
+                this.style.setProperty('font-weight', '700', 'important');
             });
         });
 

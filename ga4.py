@@ -1,21 +1,42 @@
 import requests
+import time
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
 from data_processing import format_duration
 from auth import is_authenticated, refresh_token_if_needed
+
+# Reuse one HTTP connection pool across all GA4 calls (per-process) so we
+# don't pay TLS handshake cost on every request. requests.post() under the
+# hood opens a new connection each call - a Session keeps them warm.
+_SESSION = requests.Session()
+
+# Tiny per-token, in-process cache for the GA4 properties list. The
+# /dashboard route hits this on EVERY load and the list changes maybe once
+# a month - hammering Google for it on every page reload was pure waste.
+# 5-minute TTL is short enough that a newly-granted property still shows
+# up quickly without forcing a re-login.
+_PROPS_CACHE = {}     # access_token -> (expires_at, (properties_list, error))
+_PROPS_TTL = 300.0    # seconds
 
 def get_ga4_properties(session):
     if not is_authenticated() or not refresh_token_if_needed():
         return []
 
+    access_token = session.get('access_token') or ''
+    now = time.time()
+    cached = _PROPS_CACHE.get(access_token)
+    if cached and cached[0] > now:
+        return cached[1]
+
     try:
         headers = {
-            'Authorization': f'Bearer {session["access_token"]}',
+            'Authorization': f'Bearer {access_token}',
             'Content-Type': 'application/json'
         }
 
-        response = requests.get(
+        response = _SESSION.get(
             'https://analyticsadmin.googleapis.com/v1beta/accountSummaries',
-            headers=headers
+            headers=headers, timeout=20
         )
         response.raise_for_status()
         summaries = response.json()
@@ -30,6 +51,7 @@ def get_ga4_properties(session):
                     'property_type': 'GA4'
                 })
 
+        _PROPS_CACHE[access_token] = (now + _PROPS_TTL, (properties_list, None))
         return properties_list, None
     except Exception as e:
         error_message = f"Error fetching GA4 properties: {str(e)}"
@@ -166,23 +188,30 @@ def get_ga4_extra(access_token, property_id, start_date, end_date):
         url = f'https://analyticsdata.googleapis.com/v1beta/properties/{property_id}:runReport'
         dr = [{"startDate": start_date.strftime('%Y-%m-%d'), "endDate": end_date.strftime('%Y-%m-%d')}]
 
-        dev = requests.post(url, headers=headers, json={
+        # Device and landing-page reports are independent - run them in parallel.
+        _dev_body = {
             "dimensions": [{"name": "deviceCategory"}],
             "metrics": [{"name": "activeUsers"}, {"name": "sessions"}, {"name": "screenPageViews"}],
             "dateRanges": dr,
             "orderBys": [{"metric": {"metricName": "activeUsers"}, "desc": True}],
-            "limit": 10}, timeout=30).json()
+            "limit": 10}
+        _lp_body = {
+            "dimensions": [{"name": "landingPage"}],
+            "metrics": [{"name": "sessions"}, {"name": "activeUsers"}, {"name": "screenPageViews"}],
+            "dateRanges": dr,
+            "orderBys": [{"metric": {"metricName": "sessions"}, "desc": True}],
+            "limit": 15}
+        with ThreadPoolExecutor(max_workers=2) as _ex:
+            _f_dev = _ex.submit(_SESSION.post, url, headers=headers, json=_dev_body, timeout=30)
+            _f_lp = _ex.submit(_SESSION.post, url, headers=headers, json=_lp_body, timeout=30)
+            dev = _f_dev.result().json()
+            lp_response = _f_lp.result()
         for row in dev.get('rows', []):
             mv = row['metricValues']
             out['tech'].append({'device': row['dimensionValues'][0]['value'] or '(not set)',
                                 'users': int(mv[0]['value']), 'sessions': int(mv[1]['value']), 'views': int(mv[2]['value'])})
 
-        lp = requests.post(url, headers=headers, json={
-            "dimensions": [{"name": "landingPage"}],
-            "metrics": [{"name": "sessions"}, {"name": "activeUsers"}, {"name": "screenPageViews"}],
-            "dateRanges": dr,
-            "orderBys": [{"metric": {"metricName": "sessions"}, "desc": True}],
-            "limit": 15}, timeout=30).json()
+        lp = lp_response.json()
         for row in lp.get('rows', []):
             mv = row['metricValues']
             out['landing'].append({'page': row['dimensionValues'][0]['value'] or '/',
@@ -385,13 +414,26 @@ def get_ga4_data(access_token, property_id, start_date, end_date):
             }],
         }
 
-        # Execute all requests
-        overall_response = requests.post(url, headers=headers, json=overall_request_body)
-        page_response = requests.post(url, headers=headers, json=page_request_body)
-        country_response = requests.post(url, headers=headers, json=country_request_body)
-        event_response = requests.post(url, headers=headers, json=event_request_body)
-        channel_response = requests.post(url, headers=headers, json=channel_request_body)
-        overview_response = requests.post(url, headers=headers, json=overview_request_body)
+        # The 6 GA4 runReport calls are completely independent - fire them in
+        # parallel instead of one after another. This single change cuts the
+        # combined-data page wait by 4-6x because every call previously
+        # sat behind every other call's network round-trip.
+        def _post(body):
+            return _SESSION.post(url, headers=headers, json=body, timeout=30)
+
+        with ThreadPoolExecutor(max_workers=6) as _ex:
+            _f_overall = _ex.submit(_post, overall_request_body)
+            _f_page = _ex.submit(_post, page_request_body)
+            _f_country = _ex.submit(_post, country_request_body)
+            _f_event = _ex.submit(_post, event_request_body)
+            _f_channel = _ex.submit(_post, channel_request_body)
+            _f_overview = _ex.submit(_post, overview_request_body)
+            overall_response = _f_overall.result()
+            page_response = _f_page.result()
+            country_response = _f_country.result()
+            event_response = _f_event.result()
+            channel_response = _f_channel.result()
+            overview_response = _f_overview.result()
 
         # Check responses
         for response in [overall_response, page_response, country_response, event_response, channel_response, overview_response]:

@@ -18,6 +18,10 @@ from pdf_processing import build_slide_images, build_pdf_from_images, build_edit
 from werkzeug.utils import secure_filename
 import shutil
 from image_explanation import explain_image_with_gemini
+from concurrent.futures import ThreadPoolExecutor
+import gzip
+import hashlib
+import time as _time
 
 app = Flask(__name__, static_folder='static')
 
@@ -32,6 +36,28 @@ def init_routes(app):
     # This lets clients see THEIR property's data even though their own
     # Google account doesn't have direct access to it.
     _agency_cache = {'token': None, 'expires_at': 0.0}
+
+    # ---------- /view_combined_data response cache ------------------------
+    # Same user + same property + same date range + same flags within 5 min
+    # = serve from memory (skip ~6+ Google API round-trips, ~1 Kimi call).
+    # Page refresh and back-button feels instant after the first load.
+    # Stored value is the assembled context dict (everything passed to
+    # render_template); we re-render at request time so the active session
+    # info / flash messages still reflect the current request.
+    _CD_CACHE = {}
+    _CD_TTL = 300.0  # seconds
+
+    def _cd_cache_key(args, user_email):
+        """Stable cache key from request.args + the requesting user. Sorting
+        ensures argument order in the URL doesn't break the cache."""
+        h = hashlib.sha1()
+        h.update((user_email or '').encode('utf-8'))
+        # request.args is a MultiDict - flatten consistently
+        for k in sorted(args.keys()):
+            for v in sorted(args.getlist(k)):
+                h.update(b'\x00'); h.update(k.encode('utf-8'))
+                h.update(b'\x01'); h.update(str(v).encode('utf-8'))
+        return h.hexdigest()
 
     def _agency_access_token():
         rt = db.get_service_credential('agency_refresh_token')
@@ -140,9 +166,85 @@ def init_routes(app):
         return response
 
     @app.after_request
+    def _gzip_response(response):
+        """Gzip-compress text responses (HTML / JSON / CSS / JS / SVG) on the
+        fly. The big combined-data page is ~160 KB raw and shrinks to ~20-30 KB
+        gzipped, which is the single biggest win for perceived page-load speed
+        on slower connections. Skip if:
+            * client didn't ask for gzip
+            * payload is small (< 1 KB - not worth the CPU)
+            * Content-Type is already compressed (images, fonts, PDFs, video)
+            * response was already encoded (don't double-encode)
+        """
+        try:
+            if response.direct_passthrough:
+                return response
+            accept = (request.headers.get('Accept-Encoding') or '').lower()
+            if 'gzip' not in accept:
+                return response
+            if response.status_code < 200 or response.status_code >= 300:
+                return response
+            if response.headers.get('Content-Encoding'):
+                return response
+            ctype = (response.content_type or '').split(';', 1)[0].strip().lower()
+            compressible = (
+                ctype.startswith('text/')
+                or ctype in ('application/json', 'application/javascript',
+                             'application/xml', 'application/xhtml+xml',
+                             'image/svg+xml')
+            )
+            if not compressible:
+                return response
+            data = response.get_data()
+            if len(data) < 1024:
+                return response
+            buf = io.BytesIO()
+            with gzip.GzipFile(fileobj=buf, mode='wb', compresslevel=6, mtime=0) as gz:
+                gz.write(data)
+            response.set_data(buf.getvalue())
+            response.headers['Content-Encoding'] = 'gzip'
+            response.headers['Content-Length'] = str(len(response.get_data()))
+            # Tell shared caches the encoding depends on this request header.
+            vary = response.headers.get('Vary')
+            if vary:
+                if 'accept-encoding' not in vary.lower():
+                    response.headers['Vary'] = vary + ', Accept-Encoding'
+            else:
+                response.headers['Vary'] = 'Accept-Encoding'
+        except Exception as e:
+            print(f'[gzip] skipping compression: {e}')
+        return response
+
+    @app.after_request
     def add_no_cache_headers(response):
-        """Disable browser caching during development so every page reload
-        actually hits the server (and prints fresh diagnostics in the terminal)."""
+        """Keep dynamic HTML / JSON uncached (fresh data every load) but let
+        static assets (CSS / JS / fonts / images / SVG) cache aggressively in
+        the browser. Without this, every page navigation re-downloaded the
+        full Tailwind + font-awesome + Chart.js + html2canvas bundle and the
+        brand CSS / JS, which made navigation and refreshes feel sluggish.
+
+        The generated PDF report stays uncached so a freshly-built report
+        replaces the old one in the /report iframe instead of serving stale."""
+        # Only cache GET responses that succeeded -> never cache an error
+        # page just because it happens to be a CSS request.
+        if request.method == 'GET' and 200 <= response.status_code < 300:
+            path = (request.path or '').lower()
+            # Cacheable static assets served from /static/* (1 day).
+            # Skip the generated report PDF so report regenerations are visible.
+            if (path.startswith('/static/')
+                    and not path.endswith('/analytics_report.pdf')
+                    and path.endswith((
+                        '.css', '.js', '.mjs', '.svg', '.png', '.jpg', '.jpeg',
+                        '.gif', '.webp', '.ico', '.woff', '.woff2', '.ttf',
+                        '.otf', '.eot', '.map',
+                    ))):
+                response.headers['Cache-Control'] = 'public, max-age=86400'
+                return response
+            # Favicon endpoints (served by Flask, not /static/) — cache a day.
+            if path in ('/favicon.ico', '/favicon.svg'):
+                response.headers['Cache-Control'] = 'public, max-age=86400'
+                return response
+        # Everything else (HTML pages, JSON API, generated PDF) -> no cache.
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
         response.headers['Pragma'] = 'no-cache'
         response.headers['Expires'] = '0'
@@ -316,6 +418,14 @@ def init_routes(app):
             return redirect(url_for('login'))
 
         try:
+            # NOTE: do NOT push these into ThreadPoolExecutor. Both fetchers
+            # touch Flask's `session` proxy, which is request-context-local
+            # and unavailable in worker threads - calling them off-thread
+            # raised "Working outside of request context", which the except
+            # below turned into a redirect to /, and / redirected straight
+            # back to /dashboard -> infinite loop. The 5-minute cache added
+            # in ga4.py / gsc.py already makes the SECOND+ loads instant,
+            # which is the case that mattered.
             ga4_properties, error = get_ga4_properties(session)
             gsc_sites = get_gsc_sites(session)
 
@@ -331,8 +441,25 @@ def init_routes(app):
                 is_admin=is_pmo_admin()
             )
         except Exception as e:
-            flash(f'Error loading dashboard: {str(e)}', 'error')
-            return redirect(url_for('index'))
+            # IMPORTANT: do NOT redirect to url_for('index') here. `/` checks
+            # is_authenticated() and bounces straight back to /dashboard -
+            # so if THIS handler ever errors twice in a row, Chrome would
+            # see /dashboard -> / -> /dashboard -> / ... and abort with
+            # ERR_TOO_MANY_REDIRECTS. Rendering an inline error page breaks
+            # any redirect chain and shows the user what's actually wrong.
+            print(f'[dashboard] error: {e}')
+            return (
+                "<html><head><title>Dashboard error</title></head><body "
+                "style='font-family:sans-serif;max-width:680px;margin:60px auto;"
+                "padding:0 20px;color:#1f2937'>"
+                f"<h1 style='color:#dc2626'>Could not load the dashboard</h1>"
+                f"<p>{str(e)}</p>"
+                "<p><a href='/logout' style='display:inline-block;background:"
+                "#4f46e5;color:#fff;padding:10px 18px;border-radius:8px;"
+                "text-decoration:none'>Log out and try again</a></p>"
+                "</body></html>",
+                500,
+            )
 
     @app.route('/find-ga4-data')
     def find_ga4_data():
@@ -427,6 +554,36 @@ def init_routes(app):
             flash('Session expired. Please log in again.', 'warning')
             return redirect(url_for('login'))
 
+        # Fast-path: identical request from this user within the TTL window
+        # serves the cached render context without re-running the 10+
+        # API calls or the AI summary. Add ?refresh=1 to bypass.
+        _cd_key = _cd_cache_key(request.args, session.get('user_email'))
+        _bypass = (request.args.get('refresh') or '').lower() in ('1', 'true', 'yes', 'on')
+        if not _bypass:
+            _hit = _CD_CACHE.get(_cd_key)
+            if _hit and _hit[0] > _time.time():
+                _ctx = dict(_hit[1])
+                # session_info / report_exists may change between hits - refresh
+                _ctx['session_info'] = get_session_info()
+                _report_pdf_path = os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)),
+                    'static', 'images', 'analytics_report.pdf')
+                _ctx['report_exists'] = os.path.exists(_report_pdf_path)
+                _ctx['report_pdf_url'] = (url_for('static', filename='images/analytics_report.pdf')
+                                          if _ctx['report_exists'] else None)
+                # Re-prime report_ctx for the editable PPTX route
+                session['report_ctx'] = {
+                    'ga4_property_id': request.args.get('ga4_property'),
+                    'ga4_property_name': _ctx.get('ga4_property_name'),
+                    'gsc_site': request.args.get('gsc_site'),
+                    'start': _ctx.get('start_date'),
+                    'end': _ctx.get('end_date'),
+                    'metrics': request.args.getlist('metrics') or [
+                        'new_users', 'active_users', 'returning_users', 'sessions'],
+                    'compare': _ctx.get('compare'),
+                }
+                return render_template('combined_data.html', **_ctx)
+
         try:
             ga4_property_id = request.args.get('ga4_property')
             gsc_site_url = request.args.get('gsc_site')
@@ -468,7 +625,6 @@ def init_routes(app):
                 return redirect(url_for('dashboard'))
 
             start_date, end_date = validate_dates(start_date_str, end_date_str)
-            ga4_property_name = get_property_name(session['access_token'], ga4_property_id)
 
             credentials = Credentials(
                 token=session['access_token'],
@@ -479,8 +635,84 @@ def init_routes(app):
                 scopes=SCOPES
             )
 
-            ga4_data = get_ga4_data(session['access_token'], ga4_property_id, start_date, end_date)
-            gsc_data = get_gsc_detailed_data(credentials, gsc_site_url, start_date, end_date)
+            # Compute previous-period dates up-front so the parallel fan-out
+            # below can include them in the same wave (no second round-trip).
+            compare_flag = compare
+            prev_start = prev_end = None
+            if compare_flag:
+                length = (end_date - start_date).days + 1
+                prev_end = start_date - timedelta(days=1)
+                prev_start = prev_end - timedelta(days=length - 1)
+
+            want_gmb = (request.args.get('gmb') or '').lower() in ('1', 'true', 'on', 'yes')
+            want_gmc = (request.args.get('gmc') or '').lower() in ('1', 'true', 'on', 'yes')
+
+            access_token = session['access_token']
+
+            # All of these are independent network calls (GA4, GSC, GMB, GMC,
+            # property-name lookup). Running them in parallel shrinks the page
+            # wait from "sum of every API" to "slowest single API".
+            def _ga4_main():
+                return get_ga4_data(access_token, ga4_property_id, start_date, end_date) if ga4_property_id else None
+            def _gsc_main():
+                return get_gsc_detailed_data(credentials, gsc_site_url, start_date, end_date) if gsc_site_url else None
+            def _ga4_name():
+                return get_property_name(access_token, ga4_property_id) if ga4_property_id else (ga4_property_id or '')
+            def _ga4_acq():
+                if not ga4_property_id:
+                    return []
+                return get_ga4_acquisition(access_token, ga4_property_id, start_date, end_date, prev_start, prev_end)
+            def _ga4_x():
+                return get_ga4_extra(access_token, ga4_property_id, start_date, end_date) if ga4_property_id else {}
+            def _ga4_d():
+                return get_ga4_daily_overview(access_token, ga4_property_id, start_date, end_date) if ga4_property_id else {}
+            def _prev_ov():
+                if not (compare_flag and ga4_property_id):
+                    return {}
+                return get_ga4_overview(access_token, ga4_property_id, prev_start, prev_end)
+            def _prev_gsc():
+                if not (compare_flag and gsc_site_url):
+                    return {}
+                return get_gsc_summary(credentials, gsc_site_url, prev_start, prev_end)
+            def _gmb():
+                if not want_gmb:
+                    return {}
+                try:
+                    return get_gmb_data(access_token, start_date, end_date)
+                except Exception as e:
+                    print(f"GMB fetch error: {e}")
+                    return {}
+            def _gmc():
+                if not want_gmc:
+                    return {}
+                try:
+                    return get_gmc_data(access_token, gsc_site_url, start_date, end_date)
+                except Exception as e:
+                    print(f"GMC fetch error: {e}")
+                    return {}
+
+            with ThreadPoolExecutor(max_workers=10) as _ex:
+                _f_ga4 = _ex.submit(_ga4_main)
+                _f_gsc = _ex.submit(_gsc_main)
+                _f_name = _ex.submit(_ga4_name)
+                _f_acq = _ex.submit(_ga4_acq)
+                _f_extra = _ex.submit(_ga4_x)
+                _f_daily = _ex.submit(_ga4_d)
+                _f_prev_ov = _ex.submit(_prev_ov)
+                _f_prev_gsc = _ex.submit(_prev_gsc)
+                _f_gmb = _ex.submit(_gmb)
+                _f_gmc = _ex.submit(_gmc)
+
+                ga4_data = _f_ga4.result()
+                gsc_data = _f_gsc.result()
+                ga4_property_name = _f_name.result()
+                acquisition = _f_acq.result() or []
+                ga4_extra = _f_extra.result() or {}
+                ga4_daily = _f_daily.result() or {}
+                _prev_ov_result = _f_prev_ov.result() or {}
+                _prev_gsc_result = _f_prev_gsc.result() or {}
+                gmb_data = _f_gmb.result() or {}
+                gmc_data = _f_gmc.result() or {}
 
             if ga4_data is None and gsc_data is None:
                 if session.get('is_client'):
@@ -511,6 +743,9 @@ def init_routes(app):
             metric_groups = [selected_metrics[i:i + 4] for i in range(0, len(selected_metrics), 4)]
 
             # ---- Comparison with the immediately-previous period (optional) ----
+            # The prev_start / prev_end dates and the prev-period API results
+            # were all fetched in the parallel wave above; here we only do the
+            # arithmetic to produce the deltas the template renders.
             ov_change, gsc_change, prev_label = {}, {}, ''
 
             def _pct(cur, prev):
@@ -522,57 +757,10 @@ def init_routes(app):
                     return None
                 return round((cur - prev) / prev * 100, 1)
 
-            # Previous-period dates (used by both the cards and the acquisition table)
-            prev_start = prev_end = None
-            if compare:
-                length = (end_date - start_date).days + 1
-                prev_end = start_date - timedelta(days=1)
-                prev_start = prev_end - timedelta(days=length - 1)
+            if compare and prev_start and prev_end:
                 prev_label = f"{prev_start.strftime('%Y-%m-%d')} – {prev_end.strftime('%Y-%m-%d')}"
-
-            # User Acquisition by channel (always current; + previous if comparing)
-            acquisition = []
-            if ga4_property_id:
-                acquisition = get_ga4_acquisition(session['access_token'], ga4_property_id,
-                                                  start_date, end_date, prev_start, prev_end)
-
-            # Extra GA4 sections (Tech / Landing Pages)
-            ga4_extra = {}
-            if ga4_property_id:
-                ga4_extra = get_ga4_extra(session['access_token'], ga4_property_id, start_date, end_date)
-
-            # Day-by-day GA4 overview series, so the Overview Infographic
-            # blocks can render line charts (not just bar charts of totals).
-            ga4_daily = {}
-            if ga4_property_id:
-                ga4_daily = get_ga4_daily_overview(session['access_token'], ga4_property_id, start_date, end_date)
-
-            # Manual indexed pages count (user types it from Search Console)
-            indexed_pages = (request.args.get('indexed_pages') or '').strip()
-
-            # Google Business Profile (GMB) metrics (optional - needs business.manage scope)
-            gmb_data = {}
-            if (request.args.get('gmb') or '').lower() in ('1', 'true', 'on', 'yes'):
-                try:
-                    gmb_data = get_gmb_data(session['access_token'], start_date, end_date)
-                except Exception as e:
-                    print(f"GMB fetch error: {e}")
-                    gmb_data = {}
-
-            # Google Merchant Center (GMC) - only if an account exists for this site
-            gmc_data = {}
-            if (request.args.get('gmc') or '').lower() in ('1', 'true', 'on', 'yes'):
-                try:
-                    gmc_data = get_gmc_data(session['access_token'], gsc_site_url, start_date, end_date)
-                except Exception as e:
-                    print(f"GMC fetch error: {e}")
-                    gmc_data = {}
-
-            # Compute the period-over-period change set FIRST so the AI strategy
-            # memo (built below) can quote the deltas as evidence.
-            if compare:
                 cur_ov = (ga4_data or {}).get('overview') or {}
-                prev_ov = get_ga4_overview(session['access_token'], ga4_property_id, prev_start, prev_end) if ga4_property_id else {}
+                prev_ov = _prev_ov_result
                 for k in ['new_users', 'active_users', 'returning_users', 'sessions',
                           'bounce_rate', 'views', 'event_count']:
                     ov_change[k] = _pct(cur_ov.get(k), prev_ov.get(k))
@@ -580,13 +768,16 @@ def init_routes(app):
                                                                prev_ov.get('avg_engagement_seconds'))
                 if gsc_data and gsc_data.get('summary'):
                     cur_s = gsc_data['summary']
-                    prev_s = get_gsc_summary(credentials, gsc_site_url, prev_start, prev_end)
+                    prev_s = _prev_gsc_result
                     gsc_change = {
                         'clicks': _pct(cur_s.get('total_clicks'), prev_s.get('clicks')),
                         'impressions': _pct(cur_s.get('total_impressions'), prev_s.get('impressions')),
                         'ctr': _pct(str(cur_s.get('average_ctr', '0')).replace('%', ''), prev_s.get('ctr')),
                         'position': _pct(prev_s.get('position'), str(cur_s.get('average_position', '0'))),
                     }
+
+            # Manual indexed pages count (user types it from Search Console)
+            indexed_pages = (request.args.get('indexed_pages') or '').strip()
 
             # AI Insights & Action Plan (optional, Kimi) - only when requested.
             # We feed the AI EVERY section of the report (overview totals +
@@ -785,8 +976,7 @@ def init_routes(app):
             report_exists = os.path.exists(_report_pdf_path)
             report_pdf_url = url_for('static', filename='images/analytics_report.pdf') if report_exists else None
 
-            return render_template(
-                'combined_data.html',
+            _ctx = dict(
                 ga4_property_name=ga4_property_name,
                 gsc_site_url=gsc_site_url,
                 start_date=start_date.strftime('%Y-%m-%d'),
@@ -809,6 +999,10 @@ def init_routes(app):
                 report_exists=report_exists,
                 report_pdf_url=report_pdf_url,
             )
+            # Stash for the 5-min fast-path so a refresh / back-button hit
+            # skips the entire API + AI pipeline.
+            _CD_CACHE[_cd_key] = (_time.time() + _CD_TTL, _ctx)
+            return render_template('combined_data.html', **_ctx)
 
         except Exception as e:
             print(f"Error in view_combined_data: {e}")
@@ -817,7 +1011,9 @@ def init_routes(app):
 
     @app.route('/session_status')
     def session_status():
-        """API endpoint to check session status"""
+        """JSON API used by background pollers (notification bell etc.)
+        to check whether the current session is still authenticated.
+        Human-facing 'User Info' page is /user-info."""
         if is_authenticated() and refresh_token_if_needed():
             session_info = get_session_info()
             return jsonify({
@@ -829,6 +1025,17 @@ def init_routes(app):
                 'authenticated': False,
                 'session_info': None
             })
+
+    @app.route('/user-info')
+    def user_info():
+        """Human-facing page that renders the signed-in user's profile and
+        session details as a real HTML page (the raw JSON dump from
+        /session_status was being shown to users by mistake)."""
+        if not is_authenticated():
+            flash('Please log in to view your profile.', 'warning')
+            return redirect(url_for('login'))
+        return render_template('session_status.html',
+                               session_info=get_session_info())
 
     @app.route('/save-screenshots', methods=['POST'])
     def save_screenshots():
@@ -856,6 +1063,11 @@ def init_routes(app):
             ai_text = (data.get('ai_text') or '').strip()
 
             saved_files = []
+            # Map: screenshot filename (page_N.png will reference this) -> table dict
+            # Used by build_slide_images to attach editable table data to the
+            # corresponding manifest entry, so the PPT builder can render a
+            # native PowerPoint table instead of a flattened image.
+            tables_by_image = {}
 
             for screenshot in screenshots:
                 # Get image data and name
@@ -877,6 +1089,11 @@ def init_routes(app):
                 image.save(filepath, 'PNG')
 
                 saved_files.append(filepath)
+
+                # Stash table payload keyed by source filename (used downstream)
+                tbl = screenshot.get('table')
+                if tbl and (tbl.get('headers') or tbl.get('rows')):
+                    tables_by_image[filename] = tbl
 
             # Create a metadata file with timestamp and file information
             metadata_path = os.path.join(session_dir, 'metadata.txt')
@@ -904,7 +1121,7 @@ def init_routes(app):
             # slide as 'ai-text' — the PPT builder then renders editable text
             # boxes for that slide instead of the captured screenshot.
             build_slide_images(TEMPLATE_PDF, session_dir, aivideo_dir, START_PAGE,
-                               ai_text=ai_text)
+                               ai_text=ai_text, tables_by_image=tables_by_image)
 
             # Build the downloadable PDF report from the slides
             report_pdf = os.path.join(image_dir, "analytics_report.pdf")

@@ -12,3 +12,5 @@ reportlab
 PyMuPDF
 python-pptx
 gunicorn
+waitress
+watchfiles

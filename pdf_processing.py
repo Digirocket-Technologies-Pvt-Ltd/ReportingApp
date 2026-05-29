@@ -209,7 +209,7 @@ def add_image_to_pdf(packet, image_path, description, template_page, image_index
     can.save()
 
 
-def build_slide_images(template_pdf_path, images_folder, output_dir, start_page, zoom=2, ai_text=''):
+def build_slide_images(template_pdf_path, images_folder, output_dir, start_page, zoom=2, ai_text='', tables_by_image=None):
     """Build the slide images for the video WITHOUT merging PDFs.
 
     The old approach merged many reportlab pages into one PDF with PyPDF2, which
@@ -254,13 +254,30 @@ def build_slide_images(template_pdf_path, images_folder, output_dir, start_page,
     # 2) Data slides: build each reportlab page, render it straight to an image
     images = sorted([f for f in os.listdir(images_folder)
                      if f.lower().endswith(('.png', '.jpg', '.jpeg'))])
+
+    # Each per-image AI caption (Kimi vision) used to run sequentially - with
+    # ~15-17 screenshots and ~3-8 s per call this dominated the PDF wait.
+    # Fan them out across a thread pool so they run in parallel; the Kimi
+    # API handles concurrent requests fine and total wait drops to roughly
+    # the slowest single call.
+    from concurrent.futures import ThreadPoolExecutor as _TPE
+
+    def _desc_for(image_filename):
+        try:
+            return get_image_description(os.path.join(images_folder, image_filename))
+        except Exception as e:
+            print(f"  (description failed for {image_filename}: {e})")
+            return ""
+
+    if images:
+        with _TPE(max_workers=min(8, len(images))) as _ex:
+            _descriptions = list(_ex.map(_desc_for, images))
+    else:
+        _descriptions = []
+
     for idx, image in enumerate(images, start=1):
         image_path = os.path.join(images_folder, image)
-        try:
-            description = get_image_description(image_path)
-        except Exception as e:
-            print(f"  (description failed for {image}: {e})")
-            description = ""
+        description = _descriptions[idx - 1] if idx - 1 < len(_descriptions) else ""
         title = clean_title(os.path.basename(image_path))
         packet = io.BytesIO()
         add_image_to_pdf(packet, image_path, description, template_page_ref, idx)
@@ -277,6 +294,13 @@ def build_slide_images(template_pdf_path, images_folder, output_dir, start_page,
             'title': title,
             'description': description,
         }
+        # If the frontend extracted a real <table> for this screenshot, attach
+        # headers+rows to the manifest entry. The PPT builder will then render
+        # it as a NATIVE editable PowerPoint table instead of just an image.
+        if tables_by_image:
+            tbl = tables_by_image.get(os.path.basename(image_path))
+            if tbl and (tbl.get('headers') or tbl.get('rows')):
+                slide_entry['table'] = tbl
         # If this is the closing Summary & Conclusion slide AND we received
         # the full memo text, tag it so the PPT / PDF builders render it as
         # editable text instead of a flattened image.
@@ -679,10 +703,11 @@ def build_editable_image_pptx(aivideo_dir, output_pptx):
             continue
         # -----------------------------------------------------------------
 
-        # ---- Data slide: title text + image + description text -----------
+        # ---- Data slide: title text + (native table OR image) + description -
         title = s.get('title', '') or ''
         desc = s.get('description', '') or ''
         orig_img = s.get('original_image', '') or ''
+        table_data = s.get('table')  # {headers:[], rows:[[...]]} if available
 
         # Title text box (top) — editable in PowerPoint.
         tb_title = slide.shapes.add_textbox(Inches(0.5), Inches(0.3),
@@ -696,24 +721,96 @@ def build_editable_image_pptx(aivideo_dir, output_pptx):
         p.font.color.rgb = NAVY
         p.alignment = PP_ALIGN.CENTER
 
-        # Original screenshot (centred, MOVABLE). The user can drag it but
-        # the image content itself is locked = data stays trustworthy.
-        img_to_place = orig_img if os.path.exists(orig_img) else slide_image_path
-        if os.path.exists(img_to_place):
-            with Image.open(img_to_place) as im:
-                iw, ih = im.size
-            img_aspect = iw / float(ih)
-            # Reserve: title 0.3-1.15, image area 1.3-5.6, description 5.7-7.2
-            max_img_h = Inches(4.3)
-            max_img_w = SW - Inches(1.4)
-            h = max_img_h
-            w = int(h * img_aspect)
-            if w > max_img_w:
-                w = max_img_w
-                h = int(w / img_aspect)
-            left = int((SW - w) / 2)
-            top = int(Inches(1.3) + (max_img_h - h) / 2)
-            slide.shapes.add_picture(img_to_place, left, top, width=w, height=h)
+        rendered_as_table = False
+        if table_data and (table_data.get('headers') or table_data.get('rows')):
+            try:
+                headers = table_data.get('headers') or []
+                rows = table_data.get('rows') or []
+                # Normalise: every row should have the same column count as headers
+                ncols = max(len(headers), max((len(r) for r in rows), default=0))
+                if not headers:
+                    headers = [''] * ncols
+                else:
+                    headers = list(headers) + [''] * (ncols - len(headers))
+                norm_rows = []
+                for r in rows:
+                    rr = list(r) + [''] * (ncols - len(r))
+                    norm_rows.append(rr[:ncols])
+                nrows = 1 + len(norm_rows)
+                # Cap visible rows so the table fits — full data still in image
+                # backup below if it overflows. 14 body rows + 1 header is a
+                # comfortable max on a 16:9 slide.
+                MAX_BODY_ROWS = 14
+                if len(norm_rows) > MAX_BODY_ROWS:
+                    norm_rows = norm_rows[:MAX_BODY_ROWS]
+                    nrows = 1 + MAX_BODY_ROWS
+
+                tbl_w = SW - Inches(1.0)
+                tbl_left = Inches(0.5)
+                tbl_top = Inches(1.3)
+                # Height scales with row count; cap so it never collides with
+                # the description box at the bottom.
+                row_h_in = 0.32
+                tbl_h_in = min(4.3, max(1.0, nrows * row_h_in))
+                tbl_h = Inches(tbl_h_in)
+
+                shape = slide.shapes.add_table(nrows, ncols, tbl_left, tbl_top, tbl_w, tbl_h)
+                table = shape.table
+
+                # Header row styling
+                for ci, h in enumerate(headers):
+                    cell = table.cell(0, ci)
+                    cell.text = str(h)
+                    for para in cell.text_frame.paragraphs:
+                        para.alignment = PP_ALIGN.LEFT
+                        for run in para.runs:
+                            run.font.size = Pt(11)
+                            run.font.bold = True
+                            run.font.color.rgb = WHITE if False else RGBColor(0xFF, 0xFF, 0xFF)
+                    cell.fill.solid()
+                    cell.fill.fore_color.rgb = NAVY
+
+                # Body rows
+                for ri, row in enumerate(norm_rows, start=1):
+                    for ci, val in enumerate(row):
+                        cell = table.cell(ri, ci)
+                        cell.text = str(val)
+                        for para in cell.text_frame.paragraphs:
+                            para.alignment = PP_ALIGN.LEFT
+                            for run in para.runs:
+                                run.font.size = Pt(10)
+                                run.font.color.rgb = DARK
+                        if ri % 2 == 0:
+                            cell.fill.solid()
+                            cell.fill.fore_color.rgb = RGBColor(0xF5, 0xF7, 0xFA)
+                        else:
+                            cell.fill.solid()
+                            cell.fill.fore_color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+
+                rendered_as_table = True
+            except Exception as e:
+                print(f"  (native table render failed for {title}: {e}) — falling back to image")
+                rendered_as_table = False
+
+        if not rendered_as_table:
+            # Original screenshot (centred, MOVABLE). The user can drag it but
+            # the image content itself is locked = data stays trustworthy.
+            img_to_place = orig_img if os.path.exists(orig_img) else slide_image_path
+            if os.path.exists(img_to_place):
+                with Image.open(img_to_place) as im:
+                    iw, ih = im.size
+                img_aspect = iw / float(ih)
+                # Reserve: title 0.3-1.15, image area 1.3-5.6, description 5.7-7.2
+                max_img_h = Inches(4.3)
+                max_img_w = SW - Inches(1.4)
+                h = max_img_h
+                w = int(h * img_aspect)
+                if w > max_img_w:
+                    w = max_img_w
+                    h = int(w / img_aspect)
+                left = int((SW - w) / 2)
+                top = int(Inches(1.3) + (max_img_h - h) / 2)
+                slide.shapes.add_picture(img_to_place, left, top, width=w, height=h)
 
         # Description text box (bottom) — editable, pre-filled with the same
         # AI-generated explanation that appears under the image in the PDF.

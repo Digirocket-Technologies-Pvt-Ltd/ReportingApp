@@ -8,13 +8,29 @@
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link href="/static/css/brand-theme.css" rel="stylesheet">
     <link href="/static/css/dark-theme.css" rel="stylesheet">
-    <script src="/static/js/theme-toggle.js"></script>
+    <script defer src="/static/js/theme-toggle.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <style>
         body { font-family: 'Barlow', sans-serif; }
         .gradient-bg { background: linear-gradient(135deg, #14181a 0%, #0a0d0e 100%); }
+        /* Force the page header to stay clearly visible — applies in BOTH
+           light and dark mode so it never blends into the page background.
+           Distinct charcoal bg + lime accent border gives the email-only view
+           a clear top bar even when the main content is hidden. */
+        header.gradient-bg {
+            background: linear-gradient(135deg, #3a4045 0%, #25282b 100%) !important;
+            border-bottom: 3px solid #C9F31D !important;
+        }
+        header.gradient-bg h1,
+        header.gradient-bg span,
+        header.gradient-bg a,
+        header.gradient-bg button,
+        header.gradient-bg i { color: #ffffff !important; opacity: 1 !important; }
+        header.gradient-bg span.opacity-75 { opacity: 0.95 !important; }
+        header.gradient-bg a:hover,
+        header.gradient-bg button:hover { color: #C9F31D !important; }
         /* ---- Slide editor ---- */
         .slide-wrap { max-width: 920px; margin: 0 auto 28px; }
         .slide-toolbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
@@ -31,8 +47,8 @@
     </style>
 </head>
 <body class="bg-gradient-to-br from-slate-50 via-blue-50 to-teal-50 min-h-screen">
-    <!-- Header -->
-    <header class="gradient-bg shadow-2xl">
+    <!-- Header: sticky so it stays visible while scrolling the email form -->
+    <header class="gradient-bg shadow-2xl" style="position:sticky; top:0; z-index:50; border-bottom:1px solid rgba(255,255,255,0.08);">
         <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between items-center h-20">
                 <div class="flex items-center space-x-4">
@@ -44,9 +60,14 @@
                         <span class="text-white text-xs opacity-75">AI Generated &bull; Ready to download</span>
                     </div>
                 </div>
-                <a href="{{ url_for('dashboard') }}" class="text-white hover:text-gray-200 p-2 rounded-lg hover:bg-white hover:bg-opacity-10">
-                    <i class="fas fa-home mr-2"></i>Dashboard
-                </a>
+                <div class="flex items-center gap-2">
+                    <button type="button" onclick="history.back()" class="text-white hover:text-gray-200 p-2 rounded-lg hover:bg-white hover:bg-opacity-10">
+                        <i class="fas fa-arrow-left mr-2"></i>Back
+                    </button>
+                    <a href="{{ url_for('dashboard') }}" class="text-white hover:text-gray-200 p-2 rounded-lg hover:bg-white hover:bg-opacity-10">
+                        <i class="fas fa-home mr-2"></i>Dashboard
+                    </a>
+                </div>
             </div>
         </div>
     </header>
@@ -54,8 +75,8 @@
     <main class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <!-- Success + Download -->
         <div class="bg-white rounded-2xl shadow-lg p-8 mb-8 text-center">
-            <div class="w-16 h-16 bg-gradient-to-r from-green-500 to-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                <i class="fas fa-check text-white text-2xl"></i>
+            <div class="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4" style="background:#C9F31D;">
+                <i class="fas fa-check text-2xl" style="color:#0c1206;"></i>
             </div>
             <h2 class="text-2xl font-bold text-gray-800 mb-2">Your PDF Report is Ready!</h2>
             <p class="text-gray-600 mb-6">Your analytics report PDF is ready. Download it or preview it below.</p>
@@ -92,7 +113,7 @@
                     </button>
                 </div>
             </div>
-            <p class="text-sm text-gray-500 mb-5">Each slide pe <b>"+ Add Text"</b> dabao &rarr; text-box aayega &rarr; apna text likho, <span style="color:#14b8a6">green handle</span> se drag karke jagah set karo, <span style="color:#ef4444">red &times;</span> se delete. Color/Size upar se choose karo. Phir <b>Save Changes</b> &mdash; report PDF update ho jaayega (download/email me yahi edited version jaayega).</p>
+            <p class="text-sm text-gray-500 mb-5">On each slide, click <b>"+ Add Text"</b> &rarr; a text box appears &rarr; type your text, drag it into position using the <span style="color:#14b8a6">green handle</span>, or delete it with the <span style="color:#ef4444">red &times;</span>. Pick a color and size from the toolbar above. Then click <b>Save Changes</b> &mdash; the PDF report will be updated (downloads and emails will use this edited version).</p>
             <div id="slidesContainer">
                 {% for img in slide_images %}
                 <div class="slide-wrap">
@@ -123,8 +144,8 @@
     </main>
 
     <!-- Email Compose Modal -->
-    <div id="emailModal" style="display:none; position:fixed; inset:0; z-index:9998; background:rgba(0,0,0,0.6); align-items:center; justify-content:center; padding:16px;">
-        <div class="bg-white rounded-2xl shadow-2xl w-full" style="max-width:560px;">
+    <div id="emailModal" style="display:none; position:fixed; inset:0; z-index:9998; background:rgba(0,0,0,0.6); align-items:center; justify-content:center; padding:24px; overflow:auto;">
+        <div class="bg-white rounded-2xl shadow-2xl w-full" style="max-width:820px; margin:auto;">
             <div class="gradient-bg rounded-t-2xl px-6 py-4 flex items-center justify-between">
                 <h3 class="text-white text-lg font-bold"><i class="fas fa-envelope mr-2"></i>Send Report via Email</h3>
                 <button type="button" onclick="closeEmailModal()" class="text-white hover:text-gray-200 text-2xl leading-none">&times;</button>
@@ -224,7 +245,32 @@
             // panel on combined_data so the user lands directly on the action.
             var hash = (window.location.hash || '').toLowerCase();
             if (hash === '#email') {
-                setTimeout(openEmailModal, 100);
+                // Hide the report preview / success panel — the user came here
+                // ONLY to compose an email. Convert the email "modal" into an
+                // inline page section so the header (Back / Dashboard) stays
+                // clickable — no full-screen overlay blocking the top bar.
+                document.querySelectorAll('main').forEach(function (m) {
+                    m.style.display = 'none';
+                });
+                var modal = document.getElementById('emailModal');
+                if (modal) {
+                    // Strip fixed positioning + dark backdrop so it sits as a
+                    // normal centred card below the header (Gmail-compose style).
+                    modal.style.position = 'static';
+                    modal.style.inset = 'auto';
+                    modal.style.background = 'transparent';
+                    modal.style.padding = '40px 16px';
+                    modal.style.overflow = 'visible';
+                    modal.style.zIndex = 'auto';
+                    modal.style.display = 'flex';
+                    // Also hide the close (×) — there's no parent screen to close to;
+                    // user navigates away via the header Back / Dashboard buttons.
+                    var closeBtn = modal.querySelector('button[onclick*="closeEmailModal"]');
+                    if (closeBtn) closeBtn.style.display = 'none';
+                    // Replace Cancel with a non-destructive "Back to report" link
+                    var cancelBtn = modal.querySelector('button[onclick*="closeEmailModal"]:not([class*="text-2xl"])');
+                    if (cancelBtn) cancelBtn.style.display = 'none';
+                }
             } else if (hash === '#edit' && typeof openSlideEditor === 'function') {
                 setTimeout(openSlideEditor, 100);
             }

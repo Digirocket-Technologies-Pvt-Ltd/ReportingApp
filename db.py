@@ -13,8 +13,22 @@ import uuid
 import requests
 from datetime import datetime, timezone
 from werkzeug.utils import secure_filename
+from requests.adapters import HTTPAdapter
 
-TIMEOUT = 20
+# 5 s instead of 20 s: if Supabase is unreachable we'd rather fail fast and
+# let the page render with empty data than keep the browser waiting up to
+# 20 s. Every supabase helper degrades gracefully on failure.
+TIMEOUT = 5
+
+# One process-wide HTTP session: TCP+TLS handshake to Supabase only happens
+# once per worker, then every subsequent call reuses the warm connection.
+# Without this each helper opened a fresh TLS session (~100-300 ms per
+# call), which stacked up across notification polls + activity logs.
+_SESSION = requests.Session()
+_adapter = HTTPAdapter(pool_connections=10, pool_maxsize=20)
+_SESSION.mount('https://', _adapter)
+_SESSION.mount('http://', _adapter)
+
 ATTACHMENT_BUCKET = 'query-attachments'
 _bucket_ready = False  # cache: don't hit Supabase on every upload
 

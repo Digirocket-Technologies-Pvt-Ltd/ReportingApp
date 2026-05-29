@@ -6,12 +6,17 @@
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link href="/static/css/brand-theme.css" rel="stylesheet">
     <link href="/static/css/dark-theme.css" rel="stylesheet">
-    <script src="/static/js/theme-toggle.js"></script>
+    <script defer src="/static/js/theme-toggle.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <!-- `defer` lets the browser paint the page first and run these scripts
+         after HTML parsing. Without it, Chart.js (~70 KB), xlsx
+         (~870 KB) and html2canvas (~200 KB) all block first paint. xlsx +
+         html2canvas are only used when the user clicks "Export PDF", so
+         they don't need to be ready at page-load anyway. -->
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
     <style>
         body {
@@ -121,6 +126,16 @@
             transform: translateY(-1px);
         }
         .header-secondary-btn i { font-size: 13px; }
+        /* Disabled state for "Latest Report" until a PDF is generated this session */
+        .header-secondary-btn--disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+        .header-secondary-btn--disabled:hover {
+            background: rgba(255,255,255,0.08);
+            color: rgba(255,255,255,0.92);
+            transform: none;
+        }
 
         /* ---- Background PDF generation: progress chip + ready panel ---- */
         #pdfProgressChip {
@@ -411,11 +426,13 @@
             line-height: 1 !important;
             gap: 4px;
         }
-        /* Quick date-preset buttons (7 Days / 28 Days / 3 Months / 1 Year)
-           use plain rounded-lg, not rounded-full — center their label too. */
-        button[class*="rounded-lg"],
-        button[class*="rounded-xl"] {
-            line-height: 1.2;
+        /* Quick range preset buttons (7 Days / 28 Days / 3 Months / 1 Year)
+           — center the label inside the chip without changing size. */
+        button[onclick^="setDatePreset"] {
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            text-align: center !important;
         }
 
         .capture-button:hover {
@@ -580,7 +597,13 @@
             flex-shrink: 0;
         }
         /* Accent the checkbox so the toggle feels tied to the card colour. */
-        .gsc-metric-card .gsc-toggle { accent-color: var(--tag, #ffffff); }
+        /* GSC metric card toggles + all other checkboxes: brand lime green
+           box (matches swatch). The card's per-colour --tag still drives the
+           dot/text accents — only the checkbox bg is unified. */
+        .gsc-metric-card .gsc-toggle,
+        input[type="checkbox"] {
+            accent-color: #C9F31D;
+        }
     </style>
 
     <script>
@@ -678,6 +701,56 @@
             tables.forEach(tableId => initPagination(tableId, 8));
         });
 
+        // Extract tabular data from a captured element so the PPT builder can
+        // render it as a NATIVE editable PowerPoint table. Returns
+        // { headers: [string,...], rows: [[string,...], ...] } or null if the
+        // element doesn't contain a real <table>.
+        function extractTableData(rootEl) {
+            if (!rootEl) return null;
+            var tbl = rootEl.querySelector('table');
+            if (!tbl) return null;
+            var clean = function (s) {
+                return (s || '').replace(/\s+/g, ' ').trim();
+            };
+            var headers = [];
+            // Prefer thead > tr > th, else first row of th, else first row cells
+            var headRow = tbl.querySelector('thead tr');
+            if (headRow) {
+                headRow.querySelectorAll('th,td').forEach(function (c) {
+                    headers.push(clean(c.innerText || c.textContent));
+                });
+            } else {
+                var firstRow = tbl.querySelector('tr');
+                if (firstRow && firstRow.querySelector('th')) {
+                    firstRow.querySelectorAll('th').forEach(function (c) {
+                        headers.push(clean(c.innerText || c.textContent));
+                    });
+                }
+            }
+            var rows = [];
+            var bodyRows = tbl.querySelectorAll('tbody tr');
+            if (!bodyRows.length) {
+                // No tbody — take every tr except the header row
+                bodyRows = tbl.querySelectorAll('tr');
+            }
+            bodyRows.forEach(function (tr) {
+                // Skip pure header rows
+                if (tr.parentElement && tr.parentElement.tagName === 'THEAD') return;
+                if (tr.querySelector('th') && !tr.querySelector('td')) return;
+                var cells = [];
+                tr.querySelectorAll('th,td').forEach(function (c) {
+                    cells.push(clean(c.innerText || c.textContent));
+                });
+                if (cells.length) rows.push(cells);
+            });
+            if (!headers.length && !rows.length) return null;
+            // If headers missing but rows have data, synthesise blank headers
+            if (!headers.length && rows.length) {
+                headers = rows[0].map(function (_, i) { return 'Col ' + (i + 1); });
+            }
+            return { headers: headers, rows: rows };
+        }
+
         async function captureTableScreenshots() {
             const elementsToCapture = [
                 {
@@ -766,7 +839,6 @@
                 },
                 { id: 'gmb-overview', type: 'div', name: '14-google-business-profile', title: 'Google Business Profile' },
                 { id: 'gmc-overview', type: 'div', name: '15-google-merchant-center', title: 'Google Merchant Center' },
-                { id: 'indexed-pages', type: 'div', name: '16-gsc-indexed-pages', title: 'Indexed Pages' },
                 { id: 'ai-insights', type: 'div', name: '17-summary-and-conclusion', title: 'Summary & Conclusion' }
             ];
 
@@ -900,27 +972,51 @@
                             });
                         });
 
-                        // 3b) BULLETPROOF: copy the LIVE computed colour of every
-                        //     descendant onto its cloned counterpart. Whatever the
-                        //     browser actually paints on screen (after all CSS
-                        //     cascade, dark-mode, theme overrides, inline !important)
-                        //     is what html2canvas will paint into the PDF — no
-                        //     cascade fights, no specificity battles.
+                        // 3b) EXPLICIT per-element colour overrides so every
+                        //     metric card in the capture looks IDENTICAL
+                        //     (regardless of which gradient class it has —
+                        //     blue/teal/emerald/green/red — and regardless of
+                        //     whether dark-mode CSS fires inside html2canvas).
+                        //     This replaces a previous "mirror live computed
+                        //     colors" hack that ended up leaking one card's
+                        //     colour into another in the PDF.
                         try {
-                            var liveSection = document.getElementById(clonedElement.id);
-                            if (liveSection) {
-                                var liveAll = liveSection.getElementsByTagName('*');
-                                var cloneAll = clonedElement.getElementsByTagName('*');
-                                var n = Math.min(liveAll.length, cloneAll.length);
-                                for (var i = 0; i < n; i++) {
-                                    var cs = window.getComputedStyle(liveAll[i]);
-                                    if (cs && cs.color) {
-                                        cloneAll[i].style.setProperty('color', cs.color, 'important');
-                                    }
+                            // All metric card icons -> WHITE (uniform)
+                            clonedElement.querySelectorAll('.metric-card .w-12 i').forEach(function (el) {
+                                el.style.setProperty('color', '#ffffff', 'important');
+                            });
+                            // All headline numbers (.stat-number) -> brand LIME
+                            // (this is what the live dashboard renders via the
+                            // .stat-number CSS rule; the PDF must match dashboard
+                            // exactly, so we force the same colour here in case
+                            // html2canvas's cascade misses the rule).
+                            clonedElement.querySelectorAll('.metric-card .stat-number').forEach(function (el) {
+                                el.style.setProperty('color', '#C9F31D', 'important');
+                                el.style.setProperty('-webkit-text-fill-color', '#C9F31D', 'important');
+                            });
+                            // All card labels (text-sm) -> WHITE
+                            clonedElement.querySelectorAll('.metric-card p.text-sm').forEach(function (el) {
+                                el.style.setProperty('color', '#ffffff', 'important');
+                            });
+                            // Change indicators: green-200 = positive, red-200 = negative, orange-200 = neutral
+                            clonedElement.querySelectorAll('.metric-card .text-green-200').forEach(function (el) {
+                                el.style.setProperty('color', '#86efac', 'important');
+                            });
+                            clonedElement.querySelectorAll('.metric-card .text-red-200').forEach(function (el) {
+                                el.style.setProperty('color', '#fca5a5', 'important');
+                            });
+                            clonedElement.querySelectorAll('.metric-card .text-orange-200').forEach(function (el) {
+                                el.style.setProperty('color', '#fdba74', 'important');
+                            });
+                            // Overview Infographic card numbers (the big bold ones
+                            // inside the checkbox + dot labels) -> WHITE uniformly
+                            clonedElement.querySelectorAll('[id^="overview-infographic-"] label > div:last-child').forEach(function (el) {
+                                if (el && el.previousElementSibling) {
+                                    el.style.setProperty('color', '#ffffff', 'important');
                                 }
-                            }
-                        } catch (mirrorErr) {
-                            console.warn('mirror computed colors failed (non-fatal):', mirrorErr);
+                            });
+                        } catch (colorErr) {
+                            console.warn('explicit colour overrides failed (non-fatal):', colorErr);
                         }
 
                         // 3c) html2canvas renders <input type="date"> inconsistently
@@ -953,12 +1049,13 @@
                         clonedElement.querySelectorAll('.report-pagination').forEach(function (p) {
                             p.style.display = 'none';
                         });
-                        // Stamp the date range top-right
+                        // Stamp the date range top-right (plain text, no pill).
                         var badge = clonedDoc.createElement('div');
                         badge.textContent = reportRange;
                         badge.style.cssText = 'position:absolute; top:12px; right:16px; ' +
-                            'background:#14181a; color:#fff; padding:5px 14px; ' +
-                            'border-radius:9px; font-size:12px; font-weight:700; z-index:9;';
+                            'display:inline-flex; align-items:center; justify-content:center; ' +
+                            'background:transparent; color:#ffffff; padding:0; ' +
+                            'font-size:12px; font-weight:700; line-height:1; z-index:9;';
                         clonedElement.appendChild(badge);
                     };
                 }
@@ -1003,11 +1100,17 @@
                     }
 
                     if (goodCanvas) {
+                        // If the captured element contains a real <table> (or
+                        // a div-grid that looks tabular), extract headers+rows
+                        // so the PPT builder can render it as a NATIVE EDITABLE
+                        // PowerPoint table instead of a flattened image.
+                        var tableData = extractTableData(elem);
                         screenshots.push({
                             name: element.name,
                             type: element.type,
                             title: element.title,
-                            data: goodCanvas.toDataURL('image/png', 0.95)
+                            data: goodCanvas.toDataURL('image/png', 0.95),
+                            table: tableData  // {headers:[], rows:[[...]]} or null
                         });
                     } else {
                         skippedElements.push(element.id);
@@ -1147,6 +1250,14 @@
         // actions (Download / View / Edit / Email). User can dismiss either.
         function showPdfReadyPanel(reportUrl) {
             hidePdfProgressChip();
+            // Unlock the "Latest Report" header button — PDF now exists for this session
+            var latestBtn = document.getElementById('openLastPdf');
+            if (latestBtn) {
+                latestBtn.setAttribute('data-pdf-ready', 'true');
+                latestBtn.classList.remove('header-secondary-btn--disabled');
+                latestBtn.setAttribute('title', 'Open the latest generated PDF report (with download / edit / email options)');
+            }
+            // Send Email dropdown item is always enabled — no unlock needed.
             const url = reportUrl || '/report';
             // Direct path to the generated PDF for instant download
             const pdfStaticUrl = '/static/images/analytics_report.pdf?t=' + Date.now();
@@ -1165,7 +1276,7 @@
                 '<a href="' + pdfStaticUrl + '" download="analytics-report.pdf" class="banner-btn">' +
                     '<i class="fas fa-download"></i>Download PDF' +
                 '</a>' +
-                '<a href="' + url + '" target="_blank" rel="noopener" class="banner-btn" style="background:rgba(10,13,14,0.85);">' +
+                '<a href="' + url + '" class="banner-btn" style="background:rgba(10,13,14,0.85);">' +
                     '<i class="fas fa-arrow-up-right-from-square"></i>Open Report' +
                 '</a>' +
                 '<button type="button" class="banner-close" aria-label="Dismiss" ' +
@@ -1208,6 +1319,25 @@
             if (exportButton) {
                 exportButton.addEventListener('click', captureTableScreenshots);
             }
+
+            // "Latest Report" header button: block clicks until a PDF has been
+            // generated in THIS session. Shows the same notification toast the
+            // app uses elsewhere so it matches the dashboard's visual language.
+            const latestBtn = document.getElementById('openLastPdf');
+            if (latestBtn) {
+                latestBtn.addEventListener('click', function (e) {
+                    if (this.getAttribute('data-pdf-ready') !== 'true') {
+                        e.preventDefault();
+                        if (typeof showNotification === 'function') {
+                            showNotification('error', 'Please generate a PDF first, then click "Latest Report".');
+                        } else {
+                            alert('Please generate a PDF first, then click "Latest Report".');
+                        }
+                    }
+                });
+            }
+
+            // Send Email is always enabled — no click-gate.
 
             // Initialize chart
             initializeEnhancedChart();
@@ -1497,22 +1627,17 @@
 
                 <!-- Right cluster: PDF action + user menu -->
                 <div class="flex items-center gap-2">
-                    {% if report_exists and report_pdf_url %}
-                    <!-- Persistent "Open Last PDF" — always shows when a
-                         previously-generated PDF exists, so the user never
-                         loses track of where their report went. -->
-                    <a id="openLastPdf" href="{{ url_for('display_report') }}" target="_blank" rel="noopener"
-                       title="Open the last generated PDF report (with download / edit / email options)"
-                       class="header-secondary-btn">
+                    <!-- "Latest Report" — ALWAYS rendered but starts DISABLED.
+                         Gets enabled by JS only after a PDF has been generated
+                         in this session (so an old leftover PDF on disk can't
+                         mislead the user into opening yesterday's report). -->
+                    <a id="openLastPdf" href="{{ url_for('display_report') }}"
+                       title="Generate a PDF first, then click here to open it."
+                       data-pdf-ready="false"
+                       class="header-secondary-btn header-secondary-btn--disabled">
                         <i class="fas fa-folder-open"></i>
-                        <span class="hidden lg:inline">Last Report</span>
+                        <span class="hidden lg:inline">Latest Report</span>
                     </a>
-                    <a id="downloadLastPdf" href="{{ report_pdf_url }}" download="analytics-report.pdf"
-                       title="Download the last generated PDF directly"
-                       class="header-secondary-btn">
-                        <i class="fas fa-download"></i>
-                    </a>
-                    {% endif %}
 
                     <!-- PDF generate: prominent icon-led button, kicks off background capture -->
                     <button id="exportPDF" type="button"
@@ -1548,8 +1673,16 @@
                             <a href="{{ url_for('dashboard') }}" class="dropdown-item">
                                 <i class="fas fa-gauge-high mr-2"></i>Dashboard
                             </a>
-                            <a href="{{ url_for('session_status') }}" class="dropdown-item">
-                                <i class="fas fa-info-circle mr-2"></i>Session Info
+                            <a href="{{ url_for('user_info') }}" class="dropdown-item">
+                                <i class="fas fa-info-circle mr-2"></i>User Info
+                            </a>
+                            <!-- Send Email — opens /report#email which auto-triggers
+                                 the email modal. Always enabled — the modal works
+                                 whether or not a PDF has been generated yet. -->
+                            <a id="openSendEmail" href="{{ url_for('display_report') }}#email"
+                               title="Open the email composer"
+                               class="dropdown-item">
+                                <i class="fas fa-paper-plane mr-2"></i>Send Email
                             </a>
                             <div style="border-top: 1px solid #e5e7eb;"></div>
                             <a href="{{ url_for('logout') }}" class="dropdown-item text-red-600 hover:bg-red-50 hover:text-red-700">
@@ -1582,18 +1715,21 @@
                         <input type="hidden" name="gsc_site" value="{{ request.args.get('gsc_site') }}">
                         <!-- preserve selected metrics on in-page Update -->
                         {% for g in metric_groups %}{% for m in g %}<input type="hidden" name="metrics" value="{{ m }}">{% endfor %}{% endfor %}
-                        {% if indexed_pages %}<input type="hidden" name="indexed_pages" value="{{ indexed_pages }}">{% endif %}
                         <label class="flex items-center gap-2 text-xs font-medium text-gray-600">
-                            <input type="checkbox" name="compare" value="1" {% if compare %}checked{% endif %}> Compare with previous period
+                            <input type="checkbox" name="compare" value="1" {% if compare %}checked{% endif %} style="flex-shrink:0; margin:0;">
+                            <span style="line-height:1;">Compare with previous period</span>
                         </label>
                         <label class="flex items-center gap-2 text-xs font-medium text-gray-600">
-                            <input type="checkbox" name="ai_insights" value="1" {% if request.args.get('ai_insights') %}checked{% endif %}> Add AI Insights &amp; Action Plan
+                            <input type="checkbox" name="ai_insights" value="1" {% if request.args.get('ai_insights') %}checked{% endif %} style="flex-shrink:0; margin:0;">
+                            <span style="line-height:1;">Add AI Insights &amp; Action Plan</span>
                         </label>
                         <label class="flex items-center gap-2 text-xs font-medium text-gray-600">
-                            <input type="checkbox" name="gmb" value="1" {% if request.args.get('gmb') %}checked{% endif %}> Add Google Business Profile (GMB)
+                            <input type="checkbox" name="gmb" value="1" {% if request.args.get('gmb') %}checked{% endif %} style="flex-shrink:0; margin:0;">
+                            <span style="line-height:1;">Add Google Business Profile (GMB)</span>
                         </label>
                         <label class="flex items-center gap-2 text-xs font-medium text-gray-600">
-                            <input type="checkbox" name="gmc" value="1" {% if request.args.get('gmc') %}checked{% endif %}> Add Google Merchant Center (GMC)
+                            <input type="checkbox" name="gmc" value="1" {% if request.args.get('gmc') %}checked{% endif %} style="flex-shrink:0; margin:0;">
+                            <span style="line-height:1;">Add Google Merchant Center (GMC)</span>
                         </label>
                         <!-- Quick preset ranges (like Google Search Console) -->
                         <div class="flex items-center flex-wrap gap-2">
@@ -1833,9 +1969,9 @@
                     <div style="display:flex; align-items:center; gap:10px; font-size:13px; font-weight:600; color:rgba(255,255,255,0.85);">
                         <input type="checkbox" class="ovinfo-toggle"
                                data-line="{{ loop.index0 }}" checked
-                               style="width:15px; height:15px; accent-color:{{ dot_color }}; cursor:pointer;">
+                               style="width:15px; height:15px; accent-color:#C9F31D; cursor:pointer; flex-shrink:0;">
                         <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:{{ dot_color }}; flex-shrink:0; box-shadow:0 0 0 2px rgba(255,255,255,0.05);" aria-hidden="true"></span>
-                        {{ MLABEL.get(key, key) }}
+                        <span style="line-height:1; display:inline-flex; align-items:center;">{{ MLABEL.get(key, key) }}</span>
                     </div>
                     <div style="font-size:30px; font-weight:800; color:#ffffff; line-height:1.1; margin-top:10px;">{{ MVAL.get(key, '-') }}</div>
                     {% if chg is not none %}
@@ -2289,7 +2425,7 @@
                     <label class="gsc-metric-card blue cursor-pointer" style="display:block;">
                         <div class="metric-label" style="display:flex; align-items:center; gap:8px;">
                             <input type="checkbox" class="gsc-toggle" data-line="0" checked
-                                   style="width:16px; height:16px; accent-color:#fff; cursor:pointer;">
+                                   style="width:16px; height:16px; accent-color:#C9F31D; cursor:pointer;">
                             Total Clicks
                         </div>
                         <div class="metric-value">{{ "{:,}".format(gsc_data.summary.total_clicks) }}</div>
@@ -2298,7 +2434,7 @@
                     <label class="gsc-metric-card purple cursor-pointer" style="display:block;">
                         <div class="metric-label" style="display:flex; align-items:center; gap:8px;">
                             <input type="checkbox" class="gsc-toggle" data-line="1" checked
-                                   style="width:16px; height:16px; accent-color:#fff; cursor:pointer;">
+                                   style="width:16px; height:16px; accent-color:#C9F31D; cursor:pointer;">
                             Total Impressions
                         </div>
                         <div class="metric-value">{{ "{:,}".format(gsc_data.summary.total_impressions) }}</div>
@@ -2307,7 +2443,7 @@
                     <label class="gsc-metric-card green cursor-pointer" style="display:block;">
                         <div class="metric-label" style="display:flex; align-items:center; gap:8px;">
                             <input type="checkbox" class="gsc-toggle" data-line="2" checked
-                                   style="width:16px; height:16px; accent-color:#fff; cursor:pointer;">
+                                   style="width:16px; height:16px; accent-color:#C9F31D; cursor:pointer;">
                             Average CTR
                         </div>
                         <div class="metric-value">{{ gsc_data.summary.average_ctr }}</div>
@@ -2316,7 +2452,7 @@
                     <label class="gsc-metric-card red cursor-pointer" style="display:block;">
                         <div class="metric-label" style="display:flex; align-items:center; gap:8px;">
                             <input type="checkbox" class="gsc-toggle" data-line="3" checked
-                                   style="width:16px; height:16px; accent-color:#fff; cursor:pointer;">
+                                   style="width:16px; height:16px; accent-color:#C9F31D; cursor:pointer;">
                             Average Position
                         </div>
                         <div class="metric-value">{{ gsc_data.summary.average_position }}</div>
@@ -2615,20 +2751,9 @@
         {% if (request.args.get('gmb') and not gmb_data) or (request.args.get('gmc') and not gmc_data) %}
         <div class="section-card rounded-2xl p-6 mb-8" style="border:1px dashed #f59e0b;">
             <p class="text-sm text-gray-600"><i class="fas fa-circle-info mr-2" style="color:#f59e0b;"></i>
-            {% if request.args.get('gmb') and not gmb_data %}<b>GMB</b> ka data nahi aaya &mdash; Google Cloud me <b>Business Profile Performance API</b> enable karke <b>logout &rarr; login</b> karo (nayi permission grant). {% endif %}
-            {% if request.args.get('gmc') and not gmc_data %}<b>GMC</b> ka data nahi aaya &mdash; ya to is website ka Merchant Center account nahi hai, ya <b>Content API for Shopping</b> enable + re-login pending hai.{% endif %}
+            {% if request.args.get('gmb') and not gmb_data %}No <b>GMB</b> data was returned &mdash; the APIs are enabled, but Google has given this project a default <b>0 requests/min quota</b> (standard for new projects). Fix: submit the <b>Business Profile API Access Form</b> &mdash; the latest form link is at <a href="https://developers.google.com/my-business/content/prereqs" target="_blank" rel="noopener" style="color:#C9F31D; text-decoration:underline;">developers.google.com/my-business/content/prereqs</a>. Approval typically takes 5&ndash;10 days; no code change is required. See the exact error at <a href="/debug-gmb" target="_blank" style="color:#C9F31D; text-decoration:underline;">/debug-gmb</a>. {% endif %}
+            {% if request.args.get('gmc') and not gmc_data %}No <b>GMC</b> data was returned &mdash; either this website has no Merchant Center account, or the <b>Content API for Shopping</b> still needs to be enabled and the user has to log in again.{% endif %}
             </p>
-        </div>
-        {% endif %}
-
-        <!-- Search Console - Indexed Pages (manual number) -->
-        {% if indexed_pages %}
-        <div class="section-card rounded-2xl p-8 mb-8" id="indexed-pages">
-            <h2 class="text-2xl font-bold text-gray-800 mb-6"><i class="fas fa-list-check mr-2" style="color: #C9F31D;"></i>Search Console &mdash; Indexed Pages</h2>
-            <div style="border-radius:18px; padding:30px; background:#059669; max-width:340px; box-shadow:0 8px 24px rgba(0,0,0,0.18);">
-                <div style="font-size:46px; font-weight:800; color:#ffffff; line-height:1;">{{ indexed_pages }}</div>
-                <div style="font-size:14px; color:rgba(255,255,255,0.9); margin-top:8px;">Indexed Pages (servable on Google)</div>
-            </div>
         </div>
         {% endif %}
 
@@ -2678,7 +2803,7 @@
                     if (!t) { closeList(); html += '<div style="height:8px;"></div>'; return; }
                     if (isHeading(t)) {
                         closeList();
-                        html += '<h3 style="margin-top:20px;margin-bottom:10px;font-size:15px;font-weight:800;letter-spacing:0.5px;color:#0a0d0e;border-left:4px solid #C9F31D;padding:4px 0 4px 12px;background:rgba(201,243,29,0.08);">' +
+                        html += '<h3 style="margin-top:20px;margin-bottom:10px;font-size:15px;font-weight:800;letter-spacing:0.5px;color:#ffffff;border-left:4px solid #C9F31D;padding:4px 0 4px 12px;background:rgba(201,243,29,0.08);">' +
                             esc(t.replace(/:$/, '')) + '</h3>';
                         return;
                     }
