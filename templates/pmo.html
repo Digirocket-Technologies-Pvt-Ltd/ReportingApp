@@ -21,6 +21,23 @@
         .badge { display:inline-block; padding:3px 10px; border-radius:9999px; font-size:12px; font-weight:700; }
         .badge-active { background:#dcfce7; color:#166534; }
         .badge-churned { background:#fee2e2; color:#991b1b; }
+
+        /* On/Off toggle for portal access (per-client) */
+        .access-toggle { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+        .access-toggle-input { position: absolute; opacity: 0; pointer-events: none; }
+        .access-toggle-slider {
+            position: relative; width: 34px; height: 18px; background: #cbd5e1;
+            border-radius: 9999px; transition: background 0.18s ease;
+            flex-shrink: 0;
+        }
+        .access-toggle-slider::after {
+            content: ''; position: absolute; top: 2px; left: 2px;
+            width: 14px; height: 14px; background: #fff; border-radius: 50%;
+            transition: transform 0.18s ease;
+        }
+        .access-toggle-input:checked + .access-toggle-slider { background: #C9F31D; }
+        .access-toggle-input:checked + .access-toggle-slider::after { transform: translateX(16px); }
+        .access-toggle-label { font-size: 12px; font-weight: 600; color: #4b5563; min-width: 22px; }
     </style>
 </head>
 <body class="bg-gradient-to-br from-slate-50 via-blue-50 to-teal-50 min-h-screen">
@@ -103,6 +120,7 @@
                         <th class="px-4 py-3">Start Date</th>
                         <th class="px-4 py-3">Billing Day</th>
                         <th class="px-4 py-3">Status</th>
+                        <th class="px-4 py-3">Access</th>
                         <th class="px-4 py-3">Last Report Sent</th>
                         <th class="px-4 py-3 text-right">Actions</th>
                     </tr>
@@ -113,18 +131,28 @@
                         <td class="px-4 py-3 font-semibold">
                             <a href="{{ url_for('pmo_client_detail', client_id=c.id) }}" class="text-teal-600 hover:underline">{{ c.name }}</a>
                         </td>
-                        <td class="px-4 py-3 text-gray-600">{{ c.email or 'â€”' }}</td>
-                        <td class="px-4 py-3 text-gray-600">{{ c.ga4_property_id or 'â€”' }}</td>
-                        <td class="px-4 py-3 text-gray-600">{{ c.gsc_property_id or 'â€”' }}</td>
-                        <td class="px-4 py-3 text-gray-600">{{ c.nature_of_business or 'â€”' }}</td>
-                        <td class="px-4 py-3 text-gray-600">{{ c.start_date or 'â€”' }}</td>
-                        <td class="px-4 py-3 text-gray-600">{{ c.billing_cycle_day or 'â€”' }}</td>
+                        <td class="px-4 py-3 text-gray-600">{{ c.email or '—' }}</td>
+                        <td class="px-4 py-3 text-gray-600">{{ c.ga4_property_id or '—' }}</td>
+                        <td class="px-4 py-3 text-gray-600">{{ c.gsc_property_id or '—' }}</td>
+                        <td class="px-4 py-3 text-gray-600">{{ c.nature_of_business or '—' }}</td>
+                        <td class="px-4 py-3 text-gray-600">{{ c.start_date or '—' }}</td>
+                        <td class="px-4 py-3 text-gray-600">{{ c.billing_cycle_day or '—' }}</td>
                         <td class="px-4 py-3">
                             {% if c.status == 'churned' %}
                                 <span class="badge badge-churned">Not Active</span>
                             {% else %}
                                 <span class="badge badge-active">Active</span>
                             {% endif %}
+                        </td>
+                        <td class="px-4 py-3">
+                            <label class="access-toggle" title="Toggle portal access for this client">
+                                <input type="checkbox" class="access-toggle-input"
+                                       data-client-id="{{ c.id }}"
+                                       {% if c.portal_access_enabled is not defined or c.portal_access_enabled %}checked{% endif %}
+                                       onchange="toggleClientAccess(this)">
+                                <span class="access-toggle-slider"></span>
+                                <span class="access-toggle-label">{% if c.portal_access_enabled is not defined or c.portal_access_enabled %}On{% else %}Off{% endif %}</span>
+                            </label>
                         </td>
                         <td class="px-4 py-3 text-gray-600">
                             {% if c.last_report %}
@@ -143,7 +171,7 @@
                     </tr>
                     {% endfor %}
                     {% if clients|length == 0 %}
-                    <tr><td colspan="10" class="px-4 py-10 text-center text-gray-400">
+                    <tr><td colspan="11" class="px-4 py-10 text-center text-gray-400">
                         No clients yet. Add your first client using <b>"Add Client"</b> above.
                     </td></tr>
                     {% endif %}
@@ -228,7 +256,7 @@
                 if (match) shown++;
             });
             var counter = document.getElementById('searchCount');
-            counter.textContent = q ? 'Â· showing ' + shown : '';
+            counter.textContent = q ? '· showing ' + shown : '';
         }
 
         function showToast(message, ok) {
@@ -326,6 +354,35 @@
                     showToast(data.message || 'Delete failed', false);
                 }
             } catch (e) { showToast('Error: ' + e, false); }
+        }
+
+        // Per-client portal access toggle. ON = client can see /portal +
+        // /portal/dashboard; OFF = they get bounced with a message.
+        async function toggleClientAccess(checkbox) {
+            var id = checkbox.dataset.clientId;
+            var enabled = !!checkbox.checked;
+            var labelEl = checkbox.parentElement.querySelector('.access-toggle-label');
+            if (labelEl) labelEl.textContent = enabled ? 'On' : 'Off';
+            try {
+                var res = await fetch('/pmo/api/clients/' + id + '/access', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: enabled })
+                });
+                var data = await res.json();
+                if (res.ok && data.success) {
+                    showToast('Portal access ' + (enabled ? 'enabled' : 'disabled'), true);
+                } else {
+                    // Revert UI on failure
+                    checkbox.checked = !enabled;
+                    if (labelEl) labelEl.textContent = !enabled ? 'On' : 'Off';
+                    showToast(data.message || 'Toggle failed', false);
+                }
+            } catch (e) {
+                checkbox.checked = !enabled;
+                if (labelEl) labelEl.textContent = !enabled ? 'On' : 'Off';
+                showToast('Error: ' + e, false);
+            }
         }
     </script>
 </body>

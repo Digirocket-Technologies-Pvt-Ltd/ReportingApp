@@ -386,11 +386,8 @@
         <div class="max-w-7xl mx-auto px-4 py-4">
             <div class="flex justify-between items-center">
                 <div class="flex items-center space-x-4">
-                    <div class="relative">
-                        <div class="w-12 h-12 bg-gradient-to-r from-teal-500 to-teal-600 rounded-xl flex items-center justify-center floating-animation">
-                            <i class="fas fa-chart-line text-white text-xl"></i>
-                        </div>
-                        <div class="absolute -top-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-white"></div>
+                    <div class="w-12 h-12 bg-gradient-to-r from-teal-500 to-teal-600 rounded-xl flex items-center justify-center">
+                        <i class="fas fa-chart-line text-white text-xl"></i>
                     </div>
                     <div>
                         <h1 class="text-2xl font-bold text-gray-800">Analytics Dashboard</h1>
@@ -419,13 +416,14 @@
                     <!-- User Dropdown -->
                     <div class="user-dropdown">
                         <button class="flex items-center space-x-2 bg-white rounded-full px-3 py-2 shadow-sm hover:shadow-md transition-all duration-300" onclick="toggleDropdown()">
-                            {% if session_info and session_info.user_picture %}
-                                <img src="{{ session_info.user_picture }}" alt="Profile" class="w-8 h-8 rounded-full">
-                            {% else %}
-                                <div class="w-8 h-8 bg-gradient-to-r from-teal-500 to-teal-600 rounded-full flex items-center justify-center">
-                                    <i class="fas fa-user text-white text-sm"></i>
-                                </div>
-                            {% endif %}
+                            <!-- Always show the lettered fallback avatar instead of
+                                 the Google profile picture. The Google picture for
+                                 this account is a rocket logo that visually clashes
+                                 with the favicon + welcome-banner rocket; the
+                                 first-letter chip stays clean and on-brand. -->
+                            <div class="w-8 h-8 bg-gradient-to-r from-teal-500 to-teal-600 rounded-full flex items-center justify-center text-white text-sm font-bold">
+                                {% if session_info and session_info.user_name %}{{ session_info.user_name[0]|upper }}{% else %}U{% endif %}
+                            </div>
                             <span class="text-sm font-medium text-gray-700 hidden sm:block">
                                 {% if session_info and session_info.user_name %}
                                     {{ session_info.user_name.split()[0] }}
@@ -911,7 +909,7 @@
             }
             list.innerHTML = items.map(function (it) {
                 var unread = (it.created_at || '') > seen;
-                var sub = timeAgo(it.created_at) + (it.user_email ? ' Â· ' + escapeHtml(it.user_email) : '');
+                var sub = timeAgo(it.created_at) + (it.user_email ? ' · ' + escapeHtml(it.user_email) : '');
                 var bg = unread ? unreadBg : 'transparent';
                 var leftBar = unread ? '3px solid #84cc16' : '3px solid transparent';
                 var weight = unread ? '700' : '400';

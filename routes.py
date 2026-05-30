@@ -1062,38 +1062,28 @@ def init_routes(app):
             screenshots = data.get('screenshots', [])
             ai_text = (data.get('ai_text') or '').strip()
 
-            saved_files = []
-            # Map: screenshot filename (page_N.png will reference this) -> table dict
-            # Used by build_slide_images to attach editable table data to the
-            # corresponding manifest entry, so the PPT builder can render a
-            # native PowerPoint table instead of a flattened image.
-            tables_by_image = {}
+            # Decode + save each screenshot in parallel. Pillow's PNG encode
+            # releases the GIL for the slow bits, so threads give a real win
+            # when 20+ screenshots arrive in one POST.
+            from concurrent.futures import ThreadPoolExecutor as _TPE_save
 
-            for screenshot in screenshots:
-                # Get image data and name
-                image_data = screenshot['data']
-                name = screenshot['name']
-
-                # Remove data:image/png;base64, prefix
-                image_data = image_data.split(',')[1]
-
-                # Decode base64 image
+            def _decode_and_save(screenshot):
+                image_data = screenshot['data'].split(',', 1)[1]
                 image_bytes = base64.b64decode(image_data)
-
-                # Open image with Pillow
                 image = Image.open(io.BytesIO(image_bytes))
-
-                # Save image
-                filename = f'{name}.png'
+                filename = f"{screenshot['name']}.png"
                 filepath = os.path.join(session_dir, filename)
                 image.save(filepath, 'PNG')
+                return filepath, filename, screenshot.get('table')
 
-                saved_files.append(filepath)
-
-                # Stash table payload keyed by source filename (used downstream)
-                tbl = screenshot.get('table')
-                if tbl and (tbl.get('headers') or tbl.get('rows')):
-                    tables_by_image[filename] = tbl
+            saved_files = []
+            tables_by_image = {}
+            if screenshots:
+                with _TPE_save(max_workers=min(8, len(screenshots))) as _ex:
+                    for filepath, filename, tbl in _ex.map(_decode_and_save, screenshots):
+                        saved_files.append(filepath)
+                        if tbl and (tbl.get('headers') or tbl.get('rows')):
+                            tables_by_image[filename] = tbl
 
             # Create a metadata file with timestamp and file information
             metadata_path = os.path.join(session_dir, 'metadata.txt')
@@ -1725,6 +1715,12 @@ def init_routes(app):
                                    client=None, reports=[], messages=[],
                                    session_info=get_session_info())
 
+        # Note: when the admin disables portal_access_enabled on this client,
+        # they STILL see the portal page (so they can chat with the team) —
+        # but the dashboard icon shows a "complete payment" popup instead of
+        # opening the analytics dashboard, and the reports list is hidden.
+        # The actual dashboard route below is the hard gate.
+
         try:
             # Mark every admin message in this client's queries as "read by
             # client" BEFORE fetching, so the freshly-loaded chat shows the
@@ -1785,6 +1781,12 @@ def init_routes(app):
                 # Admins use the full unfiltered dashboard.
                 return redirect(url_for('dashboard'))
             flash('Your account is not linked to a client profile.', 'warning')
+            return redirect(url_for('client_portal'))
+        # Admin can disable dashboard access from PMO; honour that. Send the
+        # user back to the chat portal with a friendly message (don't log them
+        # out — they should still be able to message the team).
+        if client.get('portal_access_enabled') is False:
+            flash('Please complete your payment to continue.', 'warning')
             return redirect(url_for('client_portal'))
 
         raw_ga4 = (client.get('ga4_property_id') or '').strip()
@@ -2070,6 +2072,26 @@ def init_routes(app):
             return jsonify({'success': True, 'client': row})
         except Exception as e:
             print(f'Error updating client: {e}')
+            return jsonify({'success': False, 'message': str(e)}), 500
+
+    @app.route('/pmo/api/clients/<client_id>/access', methods=['POST'])
+    def pmo_toggle_client_access(client_id):
+        """Flip the per-client portal_access_enabled flag. When false, the
+        client gets bounced from /portal and /portal/dashboard with a
+        friendly 'access disabled' message. Existing clients default to ON."""
+        if not is_pmo_admin():
+            return jsonify({'success': False, 'message': 'Not authorized.'}), 403
+        try:
+            body = request.get_json(silent=True) or {}
+            enabled = bool(body.get('enabled'))
+            row = db.update_client(client_id, {'portal_access_enabled': enabled})
+            name = (row or {}).get('name', 'client')
+            db.log_activity('client_access_toggled',
+                            f"Portal access {'enabled' if enabled else 'disabled'} for {name}",
+                            url_for('pmo_portal'), session.get('user_email'))
+            return jsonify({'success': True, 'enabled': enabled})
+        except Exception as e:
+            print(f'Error toggling client access: {e}')
             return jsonify({'success': False, 'message': str(e)}), 500
 
     @app.route('/pmo/api/clients/<client_id>/delete', methods=['POST'])

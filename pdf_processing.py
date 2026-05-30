@@ -242,10 +242,51 @@ def build_slide_images(template_pdf_path, images_folder, output_dir, start_page,
         page_num += 1
         pix.save(os.path.join(output_dir, f"page_{page_num}.png"))
 
-    # 1) Template cover pages (rendered directly from the template - no merge)
+    # 1) Template cover pages (rendered directly from the template - no merge).
+    # SLIDE 1 + 2 OVERRIDE: if a custom image exists in static/images/, use it
+    # instead of the corresponding Template.pdf page.
+    #   - cover.png   -> slide 1 (front cover)
+    #   - agenda.png  -> slide 2 (agenda)
+    # The closing Thank-You slide still comes from Template.pdf.
+    # Accepts .png / .jpg / .jpeg and the common Windows ".png.jpg" variant
+    # (Windows often appends the real extension when you save a JPG with a
+    # ".png" filename in Save-As).
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    images_root = os.path.join(script_dir, 'static', 'images')
+
+    def _find_override(stem):
+        for ext in ('.png', '.jpg', '.jpeg', '.png.jpg', '.png.jpeg'):
+            p = os.path.join(images_root, stem + ext)
+            if os.path.exists(p):
+                return p
+        return None
+
+    custom_cover = _find_override('cover')
+    custom_agenda = _find_override('agenda')
+    overrides = {0: custom_cover, 1: custom_agenda}
+
+    def _render_override_to_pixmap(image_path):
+        """Image -> single-page PDF -> rasterised pixmap at slide zoom."""
+        cover_doc = fitz.open(image_path)
+        pdfbytes = cover_doc.convert_to_pdf()
+        cover_doc.close()
+        tmp = fitz.open(stream=pdfbytes, filetype='pdf')
+        try:
+            return tmp[0].get_pixmap(matrix=matrix)
+        finally:
+            tmp.close()
+
     cover_count = min(start_page, len(template))
     for i in range(cover_count):
-        save_pixmap(template[i].get_pixmap(matrix=matrix))
+        override_path = overrides.get(i)
+        if override_path:
+            try:
+                save_pixmap(_render_override_to_pixmap(override_path))
+            except Exception as e:
+                print(f"  (custom slide {i+1} failed, falling back to template: {e})")
+                save_pixmap(template[i].get_pixmap(matrix=matrix))
+        else:
+            save_pixmap(template[i].get_pixmap(matrix=matrix))
         manifest['slides'].append({
             'type': 'template',
             'slide_image': f'page_{page_num}.png',
@@ -275,14 +316,36 @@ def build_slide_images(template_pdf_path, images_folder, output_dir, start_page,
     else:
         _descriptions = []
 
+    # Pre-render each data slide's ReportLab PDF page bytes in parallel.
+    # add_image_to_pdf is CPU-bound (PIL resize, reportlab canvas) and
+    # reads filesystem images, so threads give a real speedup. We still
+    # rasterise+save serially below (PyMuPDF docs are single-thread per doc).
+    def _build_packet(args):
+        idx_, image_filename, desc_ = args
+        ipath = os.path.join(images_folder, image_filename)
+        pkt = io.BytesIO()
+        try:
+            add_image_to_pdf(pkt, ipath, desc_, template_page_ref, idx_)
+        except Exception as e:
+            print(f"  (slide build failed for {image_filename}: {e})")
+            return None
+        return pkt.getvalue()
+
+    _packet_args = [(i + 1, name, _descriptions[i] if i < len(_descriptions) else "")
+                    for i, name in enumerate(images)]
+    _packets = []
+    if _packet_args:
+        with _TPE(max_workers=min(8, len(_packet_args))) as _ex:
+            _packets = list(_ex.map(_build_packet, _packet_args))
+
     for idx, image in enumerate(images, start=1):
         image_path = os.path.join(images_folder, image)
         description = _descriptions[idx - 1] if idx - 1 < len(_descriptions) else ""
         title = clean_title(os.path.basename(image_path))
-        packet = io.BytesIO()
-        add_image_to_pdf(packet, image_path, description, template_page_ref, idx)
-        packet.seek(0)
-        single = fitz.open(stream=packet.read(), filetype='pdf')
+        pkt_bytes = _packets[idx - 1] if idx - 1 < len(_packets) else None
+        if not pkt_bytes:
+            continue
+        single = fitz.open(stream=pkt_bytes, filetype='pdf')
         save_pixmap(single[0].get_pixmap(matrix=matrix))
         single.close()
         slide_entry = {
@@ -456,6 +519,36 @@ def build_pdf_from_images(images_dir, output_pdf):
             if cursor_y > PAGE_H - 30:
                 break
 
+    # Parallel pre-render: each screenshot -> single-page PDF bytes runs in
+    # parallel threads (PyMuPDF + PIL release the GIL during image work, so
+    # threads give a real ~3-4x speedup). The final assembly then inserts
+    # the pre-rendered pages in order — assembly is fast but MUST be serial
+    # (fitz docs are not thread-safe for cross-doc inserts).
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _img_to_pdf_bytes(name):
+        try:
+            imgdoc = fitz.open(os.path.join(images_dir, name))
+            try:
+                return imgdoc.convert_to_pdf()
+            finally:
+                imgdoc.close()
+        except Exception as e:
+            print(f"  (image->pdf failed for {name}: {e})")
+            return None
+
+    # Only pre-render the slides that will be inserted as images (skip the
+    # AI text slide, which is built directly in the assembly loop).
+    image_names = [n for n in images
+                   if (slide_by_image.get(n) or {}).get('type') != 'ai-text'
+                   or not (slide_by_image.get(n) or {}).get('ai_text')]
+    rendered = {}
+    if image_names:
+        with ThreadPoolExecutor(max_workers=min(8, len(image_names))) as ex:
+            futures = {ex.submit(_img_to_pdf_bytes, n): n for n in image_names}
+            for f in futures:
+                rendered[futures[f]] = f.result()
+
     doc = fitz.open()
     for name in images:
         slide_meta = slide_by_image.get(name) or {}
@@ -466,10 +559,9 @@ def build_pdf_from_images(images_dir, output_pdf):
                 memo_text=slide_meta.get('ai_text', ''),
             )
             continue
-        # Default: drop the screenshot in as an image page
-        imgdoc = fitz.open(os.path.join(images_dir, name))
-        pdfbytes = imgdoc.convert_to_pdf()
-        imgdoc.close()
+        pdfbytes = rendered.get(name)
+        if not pdfbytes:
+            continue
         imgpdf = fitz.open("pdf", pdfbytes)
         doc.insert_pdf(imgpdf)
         imgpdf.close()

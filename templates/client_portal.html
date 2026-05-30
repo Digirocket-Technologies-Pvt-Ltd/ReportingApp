@@ -248,11 +248,25 @@
                 </div>
                 <div class="flex items-center gap-3">
                 {% if client %}
-                <!-- Dashboard icon (opens the client's filtered Analytics dashboard) -->
+                {% set access_on = client.portal_access_enabled is not defined or client.portal_access_enabled %}
+                <!-- Dashboard icon. When portal_access is OFF, clicking it
+                     shows a "complete your payment" popup instead of opening
+                     the analytics dashboard. -->
+                {% if access_on %}
                 <a href="{{ url_for('client_dashboard') }}" class="reports-btn" title="Open your Analytics dashboard">
                     <i class="fas fa-chart-line"></i>
                 </a>
-                <!-- Reports icon (timeline dropdown) -->
+                {% else %}
+                <a href="javascript:void(0)" class="reports-btn"
+                   onclick="showPaymentRequiredPopup()"
+                   title="Dashboard access disabled — please complete your payment"
+                   style="opacity:0.6;">
+                    <i class="fas fa-chart-line"></i>
+                </a>
+                {% endif %}
+                <!-- Reports icon (timeline dropdown). Hidden when access is OFF
+                     so the disabled client only sees the chat. -->
+                {% if access_on %}
                 <div class="reports-menu">
                     {% set new_count = reports|selectattr('is_new')|list|length %}
                     <button class="reports-btn" type="button" onclick="toggleReports(event)" title="Your reports">
@@ -262,7 +276,7 @@
                     <div id="reportsDropdown" class="reports-dropdown">
                         <div class="reports-head">
                             <h3><i class="fas fa-file-lines text-teal-600 mr-1"></i>Your Reports</h3>
-                            <span class="total">{{ reports|length }} total{% if new_count %} â€¢ <b class="text-yellow-600">{{ new_count }} new</b>{% endif %}</span>
+                            <span class="total">{{ reports|length }} total{% if new_count %} • <b class="text-yellow-600">{{ new_count }} new</b>{% endif %}</span>
                         </div>
                         <div class="reports-list">
                             {% if reports %}
@@ -290,7 +304,7 @@
                                             <div class="row-reason">{{ r.subject or 'Your analytics report' }}</div>
                                             <div class="row-time">
                                                 <i class="fas fa-clock mr-1"></i>{{ (r.sent_at or '')[:16]|replace('T', ' ') }}
-                                                {% if r.files and r.files|length > 1 %} â€¢ {{ r.files|length }} files{% endif %}
+                                                {% if r.files and r.files|length > 1 %} • {{ r.files|length }} files{% endif %}
                                             </div>
                                             {% if not primary %}
                                             <div class="no-file-note"><i class="fas fa-triangle-exclamation mr-1"></i>File not stored (sent before file archiving was added). Ask us to re-send it.</div>
@@ -308,6 +322,7 @@
                         </div>
                     </div>
                 </div>
+                {% endif %}
 
                 <div class="profile-menu">
                     <button class="profile-btn" type="button" onclick="toggleProfile(event)">
@@ -417,7 +432,7 @@
         <section class="chat-card">
             <div class="flex items-center justify-between mb-3">
                 <h3 class="text-lg font-bold"><i class="fas fa-comments text-teal-600 mr-2"></i>Chat with our team</h3>
-                <span class="text-xs chat-sub">Reply right here â€” we'll see your messages instantly.</span>
+                <span class="text-xs chat-sub">Reply right here — we'll see your messages instantly.</span>
             </div>
 
             <div class="thread" id="mainThread">
@@ -477,7 +492,7 @@
                 {% else %}
                     <div class="empty-hint">
                         <i class="fas fa-comments text-3xl mb-2 text-gray-300"></i><br>
-                        No messages yet â€” say hello below and our team will get back to you.
+                        No messages yet — say hello below and our team will get back to you.
                     </div>
                 {% endif %}
             </div>
@@ -521,6 +536,43 @@
             if (rd) rd.classList.remove('open');
             if (dd) dd.classList.toggle('open');
         }
+        // Shown when the dashboard chart icon is clicked while the admin has
+        // disabled this client's portal_access_enabled flag. The chat itself
+        // stays usable so the client can resolve billing with the team.
+        function showPaymentRequiredPopup() {
+            var existing = document.getElementById('paymentRequiredOverlay');
+            if (existing) { existing.remove(); }
+            var overlay = document.createElement('div');
+            overlay.id = 'paymentRequiredOverlay';
+            overlay.style.cssText = 'position:fixed; inset:0; z-index:99998; ' +
+                'background:rgba(0,0,0,0.6); display:flex; align-items:center; ' +
+                'justify-content:center; padding:20px;';
+            overlay.innerHTML =
+                '<div style="background:#fff; border-radius:16px; max-width:440px; width:100%; ' +
+                'padding:32px 28px; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,0.4);">' +
+                    '<div style="width:64px; height:64px; margin:0 auto 16px; border-radius:50%; ' +
+                    'background:#fef3c7; display:flex; align-items:center; justify-content:center;">' +
+                        '<i class="fas fa-credit-card" style="font-size:28px; color:#d97706;"></i>' +
+                    '</div>' +
+                    '<h3 style="font-size:20px; font-weight:700; color:#111827; margin-bottom:12px;">' +
+                        'Please complete your payment to continue' +
+                    '</h3>' +
+                    '<p style="font-size:14px; color:#4b5563; margin-bottom:20px; line-height:1.6;">' +
+                        'After making the payment, share your payment receipt in this chat. ' +
+                        'Our team will verify it and grant access ' +
+                        '<b style="color:#111827;">within 24 hours</b>.' +
+                    '</p>' +
+                    '<button type="button" onclick="document.getElementById(\'paymentRequiredOverlay\').remove()" ' +
+                            'style="background:#C9F31D; color:#0c1206; font-weight:700; ' +
+                            'padding:10px 28px; border-radius:10px; border:none; cursor:pointer; ' +
+                            'font-size:14px;">Got it</button>' +
+                '</div>';
+            overlay.addEventListener('click', function (e) {
+                if (e.target === overlay) overlay.remove();
+            });
+            document.body.appendChild(overlay);
+        }
+
         function toggleReports(e) {
             if (e) e.stopPropagation();
             var dd = document.getElementById('profileDropdown');
@@ -598,7 +650,7 @@
                         var nn = parseInt(m[1], 10) - 1;
                         head.innerHTML = head.innerHTML.replace(/<b[^>]*>\d+ new<\/b>/,
                             nn > 0 ? '<b class="text-yellow-600">' + nn + ' new</b>' : '');
-                        if (nn <= 0) head.innerHTML = head.innerHTML.replace(/\s*â€¢\s*$/, '');
+                        if (nn <= 0) head.innerHTML = head.innerHTML.replace(/\s*•\s*$/, '');
                     }
                 }
             }

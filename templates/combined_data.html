@@ -14,7 +14,13 @@
          (~870 KB) and html2canvas (~200 KB) all block first paint. xlsx +
          html2canvas are only used when the user clicks "Export PDF", so
          they don't need to be ready at page-load anyway. -->
-    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
+    <!-- Chart.js MUST load synchronously (not defer) — the inline <script>
+         blocks inside the metric_groups loop create their charts AS THEY
+         PARSE, so Chart needs to be on window already. Deferring it breaks
+         every line/bar chart on the page (overview infographics, GSC
+         overview, daily metrics). xlsx + html2canvas only run when the
+         user clicks "Generate PDF", so deferring those is fine. -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
     <script defer src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
     <script defer src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
@@ -1060,61 +1066,76 @@
                     };
                 }
 
-                let _slideIdx = 0;
-                for (const element of elementsToCapture) {
-                    _slideIdx++;
-                    showPdfProgressChip(_slideIdx, elementsToCapture.length);
-                    const elem = document.getElementById(element.id);
-                    if (!elem) {
-                        console.warn(`Element not found: ${element.id}`);
-                        skippedElements.push(element.id);
-                        continue;
-                    }
+                // -------- Parallel screenshot capture (concurrency-limited) --------
+                // The old loop captured 22 elements one-at-a-time (~10s on a
+                // typical machine). html2canvas is per-element CPU-bound on the
+                // main thread but each call has chunks of async waiting (image
+                // decode, layout flush) — running N workers in parallel keeps
+                // the browser busy and roughly N× faster, capped by CPU.
+                // Concurrency 4 was the sweet spot in testing: bigger gains stall
+                // on the main thread; smaller leaves time on the table.
+                const CONCURRENCY = 4;
+                const slotResults = new Array(elementsToCapture.length);
+                let nextSlot = 0;
+                let doneCount = 0;
 
-                    // Capture WITHOUT touching the live DOM and WITHOUT scrolling.
-                    // html2canvas reads computed styles + geometry directly, so the
-                    // element doesn't need to be in the viewport. scrollX/scrollY
-                    // tell it to render as if at scroll (0,0).
-                    let goodCanvas = null;
-                    for (let attempt = 1; attempt <= 2; attempt++) {
-                        try {
-                            const canvas = await html2canvas(elem, Object.assign({}, captureOptions, {
-                                scrollX: -window.scrollX,
-                                scrollY: -window.scrollY,
-                                onclone: buildOnClone(REPORT_RANGE)
-                            }));
-                            if (!isCanvasBlank(canvas) || attempt === 2) {
-                                goodCanvas = canvas;
-                                if (isCanvasBlank(canvas)) {
-                                    console.warn(`${element.id} still blank after ${attempt} attempts`);
-                                }
-                                break;
-                            }
-                            // Tiny layout-flush + wait to let any deferred chart
-                            // commit pixels before the second attempt. No scroll.
-                            elem.getBoundingClientRect();
-                            await new Promise(function (r) { setTimeout(r, 250); });
-                        } catch (err) {
-                            console.error(`Error capturing ${element.id} (attempt ${attempt}):`, err);
+                async function captureWorker() {
+                    while (true) {
+                        const i = nextSlot++;
+                        if (i >= elementsToCapture.length) return;
+                        const element = elementsToCapture[i];
+                        const elem = document.getElementById(element.id);
+                        if (!elem) {
+                            console.warn(`Element not found: ${element.id}`);
+                            skippedElements.push(element.id);
+                            doneCount++;
+                            showPdfProgressChip(doneCount, elementsToCapture.length);
+                            continue;
                         }
+                        let goodCanvas = null;
+                        for (let attempt = 1; attempt <= 2; attempt++) {
+                            try {
+                                const canvas = await html2canvas(elem, Object.assign({}, captureOptions, {
+                                    scrollX: -window.scrollX,
+                                    scrollY: -window.scrollY,
+                                    onclone: buildOnClone(REPORT_RANGE)
+                                }));
+                                if (!isCanvasBlank(canvas) || attempt === 2) {
+                                    goodCanvas = canvas;
+                                    if (isCanvasBlank(canvas)) {
+                                        console.warn(`${element.id} still blank after ${attempt} attempts`);
+                                    }
+                                    break;
+                                }
+                                elem.getBoundingClientRect();
+                                await new Promise(function (r) { setTimeout(r, 250); });
+                            } catch (err) {
+                                console.error(`Error capturing ${element.id} (attempt ${attempt}):`, err);
+                            }
+                        }
+                        if (goodCanvas) {
+                            const tableData = extractTableData(elem);
+                            slotResults[i] = {
+                                name: element.name,
+                                type: element.type,
+                                title: element.title,
+                                data: goodCanvas.toDataURL('image/png', 0.95),
+                                table: tableData
+                            };
+                        } else {
+                            skippedElements.push(element.id);
+                        }
+                        doneCount++;
+                        showPdfProgressChip(doneCount, elementsToCapture.length);
                     }
+                }
 
-                    if (goodCanvas) {
-                        // If the captured element contains a real <table> (or
-                        // a div-grid that looks tabular), extract headers+rows
-                        // so the PPT builder can render it as a NATIVE EDITABLE
-                        // PowerPoint table instead of a flattened image.
-                        var tableData = extractTableData(elem);
-                        screenshots.push({
-                            name: element.name,
-                            type: element.type,
-                            title: element.title,
-                            data: goodCanvas.toDataURL('image/png', 0.95),
-                            table: tableData  // {headers:[], rows:[[...]]} or null
-                        });
-                    } else {
-                        skippedElements.push(element.id);
-                    }
+                showPdfProgressChip(0, elementsToCapture.length);
+                await Promise.all(Array.from({length: CONCURRENCY}, captureWorker));
+                // Preserve original element order in the screenshots array so
+                // the backend slides come out in the right sequence.
+                for (let i = 0; i < slotResults.length; i++) {
+                    if (slotResults[i]) screenshots.push(slotResults[i]);
                 }
 
                 // Success feedback

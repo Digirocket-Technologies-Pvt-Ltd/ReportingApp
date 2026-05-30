@@ -590,10 +590,34 @@ def list_chats():
 
 
 def count_open_chats():
-    """Number of client chats whose latest message is from the client
-    (i.e., awaiting a reply)."""
+    """Number of CLIENTS who have at least one UNREAD client message
+    waiting for the admin. Once an admin opens /pmo/queries (which calls
+    mark_all_messages_read('client')), every client message gets a read_at
+    stamp and this count drops to 0 — so the PMO portal badge clears as
+    soon as the admin has actually looked at the chats.
+
+    Counts distinct clients (not raw messages), so one client sending 5
+    messages still shows as a single waiting chat."""
+    if not is_configured():
+        return 0
     try:
-        return len([c for c in list_chats() if c.get('status') == 'open'])
+        # Pull the query_id of every unread client message, then dedupe by
+        # the parent client_id via report_queries. Two cheap REST calls.
+        r = requests.get(
+            _rest('query_messages?sender_type=eq.client&read_at=is.null&select=query_id'),
+            headers=_headers(), timeout=TIMEOUT,
+        )
+        r.raise_for_status()
+        qids = list({row['query_id'] for row in r.json() if row.get('query_id')})
+        if not qids:
+            return 0
+        ids = ','.join(qids)
+        r2 = requests.get(
+            _rest(f'report_queries?id=in.({ids})&select=client_id'),
+            headers=_headers(), timeout=TIMEOUT,
+        )
+        r2.raise_for_status()
+        return len({row['client_id'] for row in r2.json() if row.get('client_id')})
     except Exception as e:
         print(f'[db] count_open_chats failed (non-fatal): {e}')
         return 0

@@ -17,6 +17,10 @@ create table if not exists clients (
     created_at          timestamptz not null default now()
 );
 
+-- Toggle: when false, the client cannot access /portal or /portal/dashboard.
+-- Existing rows default to true so no one is locked out by the migration.
+alter table clients add column if not exists portal_access_enabled boolean not null default true;
+
 -- 2) Report logs table (one row per email sent) -------------------
 create table if not exists report_logs (
     id            uuid primary key default gen_random_uuid(),
