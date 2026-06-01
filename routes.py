@@ -1079,7 +1079,10 @@ def init_routes(app):
             saved_files = []
             tables_by_image = {}
             if screenshots:
-                with _TPE_save(max_workers=min(8, len(screenshots))) as _ex:
+                # Cap at 4: each worker holds a full decoded PIL image in
+                # memory; on Render's free tier (~512 MB) a higher cap was
+                # OOM-killing the build with 20+ screenshots.
+                with _TPE_save(max_workers=min(4, len(screenshots))) as _ex:
                     for filepath, filename, tbl in _ex.map(_decode_and_save, screenshots):
                         saved_files.append(filepath)
                         if tbl and (tbl.get('headers') or tbl.get('rows')):

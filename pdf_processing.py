@@ -301,6 +301,11 @@ def build_slide_images(template_pdf_path, images_folder, output_dir, start_page,
     # Fan them out across a thread pool so they run in parallel; the Kimi
     # API handles concurrent requests fine and total wait drops to roughly
     # the slowest single call.
+    #
+    # Pool cap of 4: Pillow + base64 + the vision payload each hold the full
+    # image in memory, and Render's free tier has only ~512 MB. With 8
+    # workers + 20-slide reports we were OOM-killed mid-build, which the
+    # browser saw as "Error generating PDF report".
     from concurrent.futures import ThreadPoolExecutor as _TPE
 
     def _desc_for(image_filename):
@@ -311,7 +316,7 @@ def build_slide_images(template_pdf_path, images_folder, output_dir, start_page,
             return ""
 
     if images:
-        with _TPE(max_workers=min(8, len(images))) as _ex:
+        with _TPE(max_workers=min(4, len(images))) as _ex:
             _descriptions = list(_ex.map(_desc_for, images))
     else:
         _descriptions = []

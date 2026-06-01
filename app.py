@@ -18,9 +18,12 @@ app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)  # Session expires after 2 hours
 app.config['SESSION_COOKIE_NAME'] = 'analytics_session'
-# Cap request body so a few attachments per message can go through but
-# nothing huge (per file max ~10 MB enforced separately in the route).
-app.config['MAX_CONTENT_LENGTH'] = 25 * 1024 * 1024
+# Cap request body. Most uploads (chat attachments) are small, but the
+# PDF generator POSTs ~20-30 base64 screenshots in one shot - at JPEG q=0.92
+# that's typically 5-15 MB but can spike higher on long pages, so 75 MB
+# gives plenty of headroom without letting a runaway upload hose the
+# worker. Per-attachment max is still enforced separately in the route.
+app.config['MAX_CONTENT_LENGTH'] = 75 * 1024 * 1024
 
 # Additional security configurations
 app.config['WTF_CSRF_ENABLED'] = True

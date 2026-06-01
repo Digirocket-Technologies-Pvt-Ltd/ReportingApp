@@ -1119,7 +1119,12 @@
                                 name: element.name,
                                 type: element.type,
                                 title: element.title,
-                                data: goodCanvas.toDataURL('image/png', 0.95),
+                                // JPEG (q=0.92) instead of PNG: text screenshots
+                                // look identical to the eye but the base64 payload
+                                // is ~5x smaller, so 20+ slides easily fit under
+                                // the request body cap. Pillow on the server saves
+                                // whichever format we send back out as PNG.
+                                data: goodCanvas.toDataURL('image/jpeg', 0.92),
                                 table: tableData
                             };
                         } else {
@@ -1171,12 +1176,31 @@
                     // The user stays on this page; the panel persists until closed.
                     showPdfReadyPanel(redirectUrl);
                 } else {
-                    throw new Error('Failed to generate report');
+                    // Try to surface whatever the server actually said. The route
+                    // returns { error: "..." } on failure and Flask returns plain
+                    // text for 413 (payload too large), so cover both.
+                    let detail = response.status + ' ' + response.statusText;
+                    try {
+                        const ctype = response.headers.get('content-type') || '';
+                        if (ctype.indexOf('application/json') !== -1) {
+                            const err = await response.json();
+                            if (err && (err.error || err.message)) {
+                                detail = err.error || err.message;
+                            }
+                        } else {
+                            const txt = await response.text();
+                            if (txt) detail = txt.slice(0, 240);
+                        }
+                    } catch (e) { /* keep the status-line fallback */ }
+                    throw new Error(detail);
                 }
             } catch (error) {
                 console.error('Error taking screenshots:', error);
                 hidePdfProgressChip();
-                showNotification('error', 'Error generating PDF report. Please try again.');
+                const msg = (error && error.message)
+                    ? 'PDF generation failed: ' + error.message
+                    : 'Error generating PDF report. Please try again.';
+                showNotification('error', msg);
             } finally {
                 // Re-enable both buttons + stop the PDF-icon spinner (null-safe)
                 ['exportPDF', 'exportPDF2'].forEach(function (id) {
