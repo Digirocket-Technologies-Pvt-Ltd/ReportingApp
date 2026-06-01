@@ -33,8 +33,15 @@ def _serve():
 
     try:
         from waitress import serve
-        print(f' * Running on http://{host}:{port}  (waitress, multi-threaded)')
-        serve(app, host=host, port=port, threads=8)
+        # 4 worker threads by default. Higher caps were stacking concurrent
+        # PDF generations and OOM-killing the Render free-tier worker (~512
+        # MB total). Bump via WAITRESS_THREADS on bigger plans.
+        try:
+            threads = max(1, int(os.getenv('WAITRESS_THREADS', '4')))
+        except ValueError:
+            threads = 4
+        print(f' * Running on http://{host}:{port}  (waitress, {threads} threads)')
+        serve(app, host=host, port=port, threads=threads)
     except ImportError:
         print(' * waitress not installed - using Flask dev server')
         print('   For best speed:  pip install waitress')

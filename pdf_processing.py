@@ -209,7 +209,8 @@ def add_image_to_pdf(packet, image_path, description, template_page, image_index
     can.save()
 
 
-def build_slide_images(template_pdf_path, images_folder, output_dir, start_page, zoom=2, ai_text='', tables_by_image=None):
+def build_slide_images(template_pdf_path, images_folder, output_dir, start_page,
+                       zoom=None, ai_text='', tables_by_image=None):
     """Build the slide images for the video WITHOUT merging PDFs.
 
     The old approach merged many reportlab pages into one PDF with PyPDF2, which
@@ -231,6 +232,16 @@ def build_slide_images(template_pdf_path, images_folder, output_dir, start_page,
     """
     import json
     os.makedirs(output_dir, exist_ok=True)
+    # Slide-render DPI. Default 1.5 so a 22-slide PDF fits comfortably under
+    # Render's 512 MB free-tier RAM. Each step up of `zoom` quadruples
+    # the pixmap size; 1.5 -> ~1440x810 per slide which is sharper than the
+    # email/PDF view ever shows. Bump via PDF_RENDER_ZOOM if you're on a
+    # bigger box and want truly print-grade output.
+    if zoom is None:
+        try:
+            zoom = float(os.getenv('PDF_RENDER_ZOOM', '1.5'))
+        except ValueError:
+            zoom = 1.5
     template = fitz.open(template_pdf_path)
     template_page_ref = PdfReader(template_pdf_path).pages[0]  # only for dimensions
     matrix = fitz.Matrix(zoom, zoom)
@@ -296,17 +307,19 @@ def build_slide_images(template_pdf_path, images_folder, output_dir, start_page,
     images = sorted([f for f in os.listdir(images_folder)
                      if f.lower().endswith(('.png', '.jpg', '.jpeg'))])
 
-    # Each per-image AI caption (Kimi vision) used to run sequentially - with
-    # ~15-17 screenshots and ~3-8 s per call this dominated the PDF wait.
-    # Fan them out across a thread pool so they run in parallel; the Kimi
-    # API handles concurrent requests fine and total wait drops to roughly
-    # the slowest single call.
+    # Per-image AI captions (one-line Kimi vision description under each
+    # slide) are OFF by default. They were the single biggest cause of the
+    # Render free-tier 502 / OOM: every call loads + downscales + base64s
+    # the full screenshot in Python memory, and at 20 slides that easily
+    # tipped the 512 MB worker over.
     #
-    # Pool cap of 4: Pillow + base64 + the vision payload each hold the full
-    # image in memory, and Render's free tier has only ~512 MB. With 8
-    # workers + 20-slide reports we were OOM-killed mid-build, which the
-    # browser saw as "Error generating PDF report".
+    # Set PDF_AI_CAPTIONS=1 in the environment to turn them back on (e.g.
+    # on a paid Render tier with more RAM). The Summary & Conclusion AI
+    # memo on the report is unaffected - it runs client-side from the
+    # view, not here.
     from concurrent.futures import ThreadPoolExecutor as _TPE
+
+    _ai_captions_on = os.getenv('PDF_AI_CAPTIONS', '0').lower() in ('1', 'true', 'yes', 'on')
 
     def _desc_for(image_filename):
         try:
@@ -315,11 +328,14 @@ def build_slide_images(template_pdf_path, images_folder, output_dir, start_page,
             print(f"  (description failed for {image_filename}: {e})")
             return ""
 
-    if images:
+    if images and _ai_captions_on:
+        # Pool cap of 4: each worker holds a full image in memory.
         with _TPE(max_workers=min(4, len(images))) as _ex:
             _descriptions = list(_ex.map(_desc_for, images))
     else:
-        _descriptions = []
+        # Empty captions -> add_image_to_pdf just leaves the description
+        # area blank, slides still get the image + title + brand stamp.
+        _descriptions = ['' for _ in images]
 
     # Pre-render each data slide's ReportLab PDF page bytes in parallel.
     # add_image_to_pdf is CPU-bound (PIL resize, reportlab canvas) and
@@ -340,7 +356,12 @@ def build_slide_images(template_pdf_path, images_folder, output_dir, start_page,
                     for i, name in enumerate(images)]
     _packets = []
     if _packet_args:
-        with _TPE(max_workers=min(8, len(_packet_args))) as _ex:
+        # Pool cap matches the AI caption pool - each worker opens the
+        # source screenshot in Pillow + builds a ReportLab page, which
+        # peaks at a few MB. Override with PDF_RENDER_WORKERS env var
+        # on bigger boxes.
+        _render_workers = int(os.getenv('PDF_RENDER_WORKERS', '4'))
+        with _TPE(max_workers=min(_render_workers, len(_packet_args))) as _ex:
             _packets = list(_ex.map(_build_packet, _packet_args))
 
     for idx, image in enumerate(images, start=1):
