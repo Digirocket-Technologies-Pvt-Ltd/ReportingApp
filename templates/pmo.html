@@ -35,7 +35,7 @@
             width: 14px; height: 14px; background: #fff; border-radius: 50%;
             transition: transform 0.18s ease;
         }
-        .access-toggle-input:checked + .access-toggle-slider { background: #C9F31D; }
+        .access-toggle-input:checked + .access-toggle-slider { background: #C4F82A; }
         .access-toggle-input:checked + .access-toggle-slider::after { transform: translateX(16px); }
         .access-toggle-label { font-size: 12px; font-weight: 600; color: #4b5563; min-width: 22px; }
     </style>
@@ -156,7 +156,7 @@
                         </td>
                         <td class="px-4 py-3 text-gray-600">
                             {% if c.last_report %}
-                                <span class="text-green-600 font-semibold"><i class="fas fa-check-circle mr-1"></i>{{ c.last_report.report_period or 'Sent' }}</span>
+                                <span class="font-semibold" style="color:#ffffff;"><i class="fas fa-check-circle mr-1" style="color:#C4F82A;"></i>{{ c.last_report.report_period or 'Sent' }}</span>
                                 <div class="text-xs text-gray-400">{{ (c.last_report.sent_at or '')[:10] }}</div>
                             {% else %}
                                 <span class="text-gray-400">Not sent yet</span>
@@ -385,5 +385,6 @@
             }
         }
     </script>
+    {% include '_drok_widget.html' %}
 </body>
 </html>

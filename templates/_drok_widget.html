@@ -1,0 +1,290 @@
+{# DROK chat widget — self-contained partial.
+
+Include with:
+    {% include '_drok_widget.html' %}
+just before </body> on any page that should show the floating DROK
+assistant. CSS, HTML and JS are all bundled so callers don't need to
+add anything else.
+
+Re-include on multiple pages is safe — the inner guard (`window.DROK_WIDGET_LOADED`)
+prevents the script from initialising twice if it ever gets duplicated.
+#}
+<style>
+    /* ---- DROK chat widget (floating bottom-right) ---- */
+    #drokFab {
+        position: fixed; right: 24px; bottom: 24px; z-index: 9990;
+        width: 60px; height: 60px; border-radius: 50%;
+        background: linear-gradient(135deg, #C9F31D 0%, #A6D81C 100%);
+        box-shadow: 0 10px 30px rgba(201, 243, 29, 0.45);
+        display: flex; align-items: center; justify-content: center;
+        cursor: pointer; border: none; outline: none;
+        transition: transform 0.18s ease, box-shadow 0.18s ease;
+    }
+    #drokFab:hover { transform: translateY(-2px) scale(1.05);
+                     box-shadow: 0 14px 36px rgba(201, 243, 29, 0.55); }
+    #drokFab i { font-size: 26px; color: #0c1206; }
+    #drokFab img.drok-fab-logo {
+        width: 38px; height: 38px; object-fit: contain;
+        border-radius: 8px;
+    }
+    #drokFab .drok-badge {
+        position: absolute; top: 0; right: 0;
+        width: 14px; height: 14px; border-radius: 50%;
+        background: #22c55e; border: 2px solid #ffffff;
+    }
+    #drokPanel {
+        position: fixed; right: 24px; bottom: 100px; z-index: 9991;
+        width: 380px; max-width: calc(100vw - 48px);
+        height: 540px; max-height: calc(100vh - 140px);
+        background: #0a0d0e; border-radius: 18px;
+        box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+        border: 1px solid #2a2e31;
+        display: none; flex-direction: column; overflow: hidden;
+    }
+    #drokPanel.open { display: flex; animation: drokSlideIn 0.22s ease-out; }
+    @keyframes drokSlideIn {
+        from { opacity: 0; transform: translateY(20px) scale(0.96); }
+        to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .drok-head {
+        background: linear-gradient(135deg, #14181a 0%, #1b1e20 100%);
+        color: #fff; padding: 14px 16px;
+        display: flex; align-items: center; gap: 10px;
+    }
+    .drok-head .drok-avatar {
+        width: 38px; height: 38px; border-radius: 50%;
+        background: linear-gradient(135deg, #C9F31D, #A6D81C);
+        display: flex; align-items: center; justify-content: center;
+        color: #0c1206; font-weight: 800; font-size: 14px;
+        overflow: hidden;
+    }
+    .drok-head .drok-avatar img {
+        width: 100%; height: 100%; object-fit: cover;
+    }
+    .drok-head .drok-title { font-weight: 700; font-size: 15px; }
+    .drok-head .drok-sub { font-size: 11px; opacity: 0.7; }
+    .drok-head .drok-close {
+        margin-left: auto; background: none; border: none;
+        color: #fff; cursor: pointer; font-size: 22px; line-height: 1;
+        padding: 0 4px;
+    }
+    .drok-body {
+        flex: 1; overflow-y: auto; padding: 16px;
+        background: #0a0d0e; display: flex; flex-direction: column; gap: 10px;
+    }
+    .drok-msg { max-width: 80%; padding: 10px 14px; border-radius: 14px;
+                font-size: 13.5px; line-height: 1.45; white-space: pre-wrap; }
+    .drok-msg.user { align-self: flex-end;
+                     background: #C9F31D; color: #0c1206;
+                     border-bottom-right-radius: 4px; }
+    .drok-msg.bot  { align-self: flex-start;
+                     background: #1b1e20; color: #f1f5f9;
+                     border: 1px solid #2a2e31;
+                     border-bottom-left-radius: 4px; }
+    .drok-msg.typing { font-style: italic; opacity: 0.7; }
+    .drok-input-bar {
+        display: flex; gap: 8px; padding: 12px; background: #14181a;
+        border-top: 1px solid #2a2e31;
+    }
+    .drok-input-bar input {
+        flex: 1; padding: 10px 14px; border: 1px solid #2a2e31;
+        border-radius: 12px; outline: none; font-size: 14px;
+        background: #1b1e20; color: #f1f5f9;
+    }
+    .drok-input-bar input::placeholder { color: #6b7280; }
+    .drok-input-bar input:focus { border-color: #C9F31D;
+                                  background: #25282b; }
+    .drok-input-bar button {
+        background: linear-gradient(135deg, #C9F31D, #A6D81C);
+        color: #0c1206; border: none; padding: 0 16px;
+        border-radius: 12px; font-weight: 700; cursor: pointer;
+        display: flex; align-items: center; gap: 6px;
+    }
+    .drok-input-bar button:disabled { opacity: 0.5; cursor: not-allowed; }
+</style>
+
+<button id="drokFab" type="button" onclick="drokToggle()" title="Chat with DROK">
+    <img class="drok-fab-logo" src="{{ url_for('static', filename='images/drok-logo.png.png') }}"
+         alt="DROK"
+         onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/drok-logo.png') }}'; this.onerror=function(){this.style.display='none'; var i=document.createElement('i'); i.className='fas fa-robot'; this.parentNode.appendChild(i);};">
+    <span class="drok-badge"></span>
+</button>
+<div id="drokPanel" role="dialog" aria-label="DROK chat assistant">
+    <div class="drok-head">
+        <div class="drok-avatar">
+            <img src="{{ url_for('static', filename='images/drok-logo.png.png') }}" alt="DROK"
+                 onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/drok-logo.png') }}'; this.onerror=function(){this.outerHTML='D';};">
+        </div>
+        <div>
+            <div class="drok-title">DROK Assistant</div>
+            <div class="drok-sub">DigiRocket AI &bull; powered by drok-v5</div>
+        </div>
+        <button type="button" class="drok-close" onclick="drokToggle()" aria-label="Close">&times;</button>
+    </div>
+    <div class="drok-body" id="drokBody">
+        <div class="drok-msg bot">
+            I'm your AI assistant. How can I help you today?
+        </div>
+    </div>
+    <form class="drok-input-bar" onsubmit="return drokSend(event)">
+        <input type="text" id="drokInput" placeholder="Type your message..." autocomplete="off" maxlength="500">
+        <button type="submit" id="drokSendBtn">
+            <i class="fas fa-paper-plane"></i>
+        </button>
+    </form>
+</div>
+<script>
+(function () {
+    // Guard against duplicate inclusion on a single page.
+    if (window.DROK_WIDGET_LOADED) return;
+    window.DROK_WIDGET_LOADED = true;
+
+    var DROK_HISTORY = [];
+    var DROK_MAX_TURNS = 4;
+    var DROK_STORAGE_KEY = 'drok_chat_history_v1';
+
+    // Persist history across page navigations within the same tab.
+    function drokSaveHistory() {
+        try {
+            sessionStorage.setItem(DROK_STORAGE_KEY, JSON.stringify(DROK_HISTORY));
+        } catch (e) { /* storage full or disabled — ignore */ }
+    }
+
+    function drokLoadHistory() {
+        try {
+            var raw = sessionStorage.getItem(DROK_STORAGE_KEY);
+            if (!raw) return;
+            var saved = JSON.parse(raw);
+            if (!Array.isArray(saved) || !saved.length) return;
+            DROK_HISTORY = saved;
+            var body = document.getElementById('drokBody');
+            if (!body) return;
+            // Drop the hard-coded welcome bubble — we're replaying real history.
+            body.innerHTML = '';
+            saved.forEach(function (m) {
+                var el = document.createElement('div');
+                el.className = 'drok-msg ' + (m.who === 'user' ? 'user' : 'bot');
+                el.textContent = m.text;
+                body.appendChild(el);
+            });
+            body.scrollTop = body.scrollHeight;
+        } catch (e) { /* corrupted blob — ignore, start fresh */ }
+    }
+
+    window.drokToggle = function () {
+        var p = document.getElementById('drokPanel');
+        if (!p) return;
+        var open = p.classList.toggle('open');
+        if (open) setTimeout(function () {
+            var inp = document.getElementById('drokInput');
+            if (inp) inp.focus();
+        }, 220);
+    };
+
+    function drokAppend(text, who) {
+        var body = document.getElementById('drokBody');
+        var el = document.createElement('div');
+        el.className = 'drok-msg ' + who;
+        el.textContent = text;
+        body.appendChild(el);
+        body.scrollTop = body.scrollHeight;
+        return el;
+    }
+
+    window.drokSend = async function (e) {
+        if (e) e.preventDefault();
+        var input = document.getElementById('drokInput');
+        var btn = document.getElementById('drokSendBtn');
+        var msg = (input.value || '').trim();
+        if (!msg) return false;
+        drokAppend(msg, 'user');
+        input.value = '';
+        btn.disabled = true;
+
+        // Empty bot bubble we append chunks into as they stream in.
+        var botEl = drokAppend('', 'bot');
+        botEl.classList.add('typing');
+        botEl.textContent = '…';
+
+        var history = DROK_HISTORY.slice(-DROK_MAX_TURNS * 2).map(function (m) {
+            return {
+                role: m.who === 'user' ? 'user' : 'assistant',
+                content: m.text
+            };
+        });
+
+        var fullText = '';
+        try {
+            var res = await fetch('/api/drok-chat-stream', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: msg, history: history })
+            });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+
+            // First chunk arrival — drop the typing placeholder.
+            var body = document.getElementById('drokBody');
+            var reader = res.body.getReader();
+            var decoder = new TextDecoder('utf-8');
+            var firstChunk = true;
+            while (true) {
+                var step = await reader.read();
+                if (step.done) break;
+                var part = decoder.decode(step.value, { stream: true });
+                if (!part) continue;
+                if (firstChunk) {
+                    botEl.classList.remove('typing');
+                    botEl.textContent = '';
+                    firstChunk = false;
+                }
+                fullText += part;
+                botEl.textContent = fullText;
+                body.scrollTop = body.scrollHeight;
+            }
+            // Flush any tail bytes the decoder is still holding.
+            var tail = decoder.decode();
+            if (tail) {
+                fullText += tail;
+                botEl.textContent = fullText;
+            }
+            if (!fullText.trim()) {
+                botEl.textContent = 'DROK is offline right now. Please try again in a moment.';
+            }
+            DROK_HISTORY.push({ who: 'user', text: msg });
+            DROK_HISTORY.push({ who: 'bot',  text: fullText });
+            drokSaveHistory();
+        } catch (err) {
+            botEl.classList.remove('typing');
+            botEl.textContent = 'Connection error. Please check your internet and try again.';
+        } finally {
+            btn.disabled = false;
+            input.focus();
+        }
+        return false;
+    };
+
+    // Click outside the panel (but not on the FAB) closes it.
+    document.addEventListener('click', function (e) {
+        var panel = document.getElementById('drokPanel');
+        var fab = document.getElementById('drokFab');
+        if (!panel || !panel.classList.contains('open')) return;
+        if (panel.contains(e.target) || (fab && fab.contains(e.target))) return;
+        panel.classList.remove('open');
+    });
+
+    // Escape to close.
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') {
+            var panel = document.getElementById('drokPanel');
+            if (panel && panel.classList.contains('open')) panel.classList.remove('open');
+        }
+    });
+
+    // Restore prior conversation as soon as the widget DOM is ready.
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', drokLoadHistory);
+    } else {
+        drokLoadHistory();
+    }
+})();
+</script>

@@ -1603,6 +1603,80 @@ def init_routes(app):
             print(f'Error sending report email: {e}')
             return jsonify({'success': False, 'message': str(e)}), 500
 
+    @app.route('/api/drok-chat-stream', methods=['POST'])
+    def api_drok_chat_stream():
+        """Streaming version of /api/drok-chat — yields response chunks
+        as they arrive from the standalone DROK endpoint so the chat
+        widget can show words appearing in real time instead of waiting
+        for the full reply. Same auth + payload as the non-streaming
+        endpoint; the widget can choose either."""
+        if not is_authenticated():
+            return jsonify({'success': False, 'message': 'Login required'}), 401
+        try:
+            import drok
+            from flask import Response, stream_with_context
+            body = request.get_json(silent=True) or {}
+            user_msg = (body.get('message') or '').strip()
+            if not user_msg:
+                return jsonify({'success': False, 'message': 'Empty message'}), 400
+            history = body.get('history')
+            if not (isinstance(history, list) and history):
+                history = None
+
+            def generate():
+                got_any = False
+                for chunk in drok.stream_api(user_msg, conversation_context=history):
+                    got_any = True
+                    yield chunk
+                # If streaming produced nothing (API down / error), fall back
+                # to the non-streaming reply (which itself falls back to
+                # local Ollama if configured).
+                if not got_any:
+                    fallback = drok.chat_reply(user_msg, conversation_context=history)
+                    yield fallback or 'DROK is offline right now. Please try again in a moment.'
+
+            return Response(
+                stream_with_context(generate()),
+                mimetype='text/plain; charset=utf-8',
+                headers={'X-Accel-Buffering': 'no', 'Cache-Control': 'no-cache'},
+            )
+        except Exception as e:
+            print(f'[drok-chat-stream] {e}')
+            return jsonify({'success': False, 'message': str(e)}), 500
+
+    @app.route('/api/drok-chat', methods=['POST'])
+    def api_drok_chat():
+        """Floating DROK chat widget on the dashboard. Accepts a user
+        message + optional rolling context (last few turns) and returns
+        DROK's reply. Uses the local Ollama daemon — slow on CPU but
+        zero-cost for now."""
+        if not is_authenticated():
+            return jsonify({'success': False, 'message': 'Login required'}), 401
+        try:
+            import drok
+            body = request.get_json(silent=True) or {}
+            user_msg = (body.get('message') or '').strip()
+            if not user_msg:
+                return jsonify({'success': False, 'message': 'Empty message'}), 400
+            # Prefer `history` (proper messages list) when the new widget
+            # sends it; fall back to flat `context` string for older callers.
+            history = body.get('history')
+            if isinstance(history, list) and history:
+                reply = drok.chat_reply(user_msg, conversation_context=history)
+            else:
+                ctx = body.get('context') or ''
+                reply = drok.chat_reply(user_msg, conversation_context=ctx or None)
+            if not reply:
+                # Ollama down or model not pulled — friendly fallback
+                return jsonify({
+                    'success': False,
+                    'message': 'DROK is offline right now. Please try again in a moment.',
+                }), 503
+            return jsonify({'success': True, 'reply': reply})
+        except Exception as e:
+            print(f'[drok-chat] {e}')
+            return jsonify({'success': False, 'message': str(e)}), 500
+
     @app.route('/api/notifications')
     def api_notifications():
         """Recent activity feed for the notification bell.

@@ -765,18 +765,12 @@
                     name: '01-analytics-intelligence-overview',
                     title: 'Analytics Intelligence Overview'
                 },
-                { id: 'overview-infographic-1', type: 'div', name: '01b-overview-infographic-1', title: 'Overview Infographic 1' },
-                { id: 'overview-infographic-2', type: 'div', name: '01c-overview-infographic-2', title: 'Overview Infographic 2' },
+                { id: 'overview-infographic-1', type: 'div', name: '01b-overview-infographic-1', title: 'Analytics Data 1' },
+                { id: 'overview-infographic-2', type: 'div', name: '01c-overview-infographic-2', title: 'Analytics Data 2' },
                 { id: 'gsc-infographic', type: 'div', name: '01d-search-console-overview', title: 'Search Console Overview' },
                 { id: 'user-acquisition', type: 'table', name: '01e-user-acquisition', title: 'User Acquisition' },
                 { id: 'landing-pages', type: 'table', name: '01f-landing-pages', title: 'Landing Page Overview' },
                 { id: 'tech-overview', type: 'table', name: '01g-tech-overview', title: 'Tech Overview' },
-                {
-                    id: "daily-line",
-                    type: "div",
-                    name: "02-daily-chart",
-                    title: "Daily Chart Overview"
-                },
                 {
                     id: 'top-pages',
                     type: 'div',
@@ -879,10 +873,14 @@
                     var b = document.getElementById(id);
                     if (b) {
                         b.disabled = true; b.style.opacity = '0.85';
-                        // Spin the PDF icon so the user gets immediate visual
-                        // feedback that the report is being prepared.
+                        // Swap the static PDF icon for a spinning circle so the
+                        // user gets clean "loading" feedback (rotating the PDF
+                        // icon looked like the file was tumbling).
                         var icon = b.querySelector('i');
-                        if (icon) icon.classList.add('fa-spin');
+                        if (icon) {
+                            icon.classList.remove('fa-file-pdf');
+                            icon.classList.add('fa-circle-notch', 'fa-spin');
+                        }
                     }
                 });
 
@@ -1202,13 +1200,16 @@
                     : 'Error generating PDF report. Please try again.';
                 showNotification('error', msg);
             } finally {
-                // Re-enable both buttons + stop the PDF-icon spinner (null-safe)
+                // Re-enable both buttons + restore the static PDF icon
                 ['exportPDF', 'exportPDF2'].forEach(function (id) {
                     var b = document.getElementById(id);
                     if (b) {
                         b.disabled = false; b.style.opacity = '1';
                         var icon = b.querySelector('i');
-                        if (icon) icon.classList.remove('fa-spin');
+                        if (icon) {
+                            icon.classList.remove('fa-circle-notch', 'fa-spin');
+                            icon.classList.add('fa-file-pdf');
+                        }
                     }
                 });
                 // Restore the user's original toggle state (which lines they had
@@ -1374,9 +1375,9 @@
                     if (this.getAttribute('data-pdf-ready') !== 'true') {
                         e.preventDefault();
                         if (typeof showNotification === 'function') {
-                            showNotification('error', 'Please generate a PDF first, then click "Latest Report".');
+                            showNotification('error', 'Please generate a PDF first, then click "Preview Report".');
                         } else {
-                            alert('Please generate a PDF first, then click "Latest Report".');
+                            alert('Please generate a PDF first, then click "Preview Report".');
                         }
                     }
                 });
@@ -1681,7 +1682,7 @@
                        data-pdf-ready="false"
                        class="header-secondary-btn header-secondary-btn--disabled">
                         <i class="fas fa-folder-open"></i>
-                        <span class="hidden lg:inline">Latest Report</span>
+                        <span class="hidden lg:inline">Preview Report</span>
                     </a>
 
                     <!-- PDF generate: prominent icon-led button, kicks off background capture -->
@@ -2003,7 +2004,7 @@
         {% set CARD_COLORS = ['#2563eb','#00AEAF','#7CC92A','#f59e0b','#6366f1','#ec4899','#10b981','#ef4444'] %}
         {% for group in metric_groups %}
         <div class="section-card rounded-2xl p-8 mb-8" id="overview-infographic-{{ loop.index }}">
-            <h2 class="text-2xl font-bold text-gray-800 mb-6"><i class="fas fa-chart-simple mr-2 text-teal-600"></i>Overview Infographic {{ loop.index }}</h2>
+            <h2 class="text-2xl font-bold text-gray-800 mb-6"><i class="fas fa-chart-simple mr-2 text-teal-600"></i>Analytics Data {{ loop.index }}</h2>
 
             <!-- 4 metric cards with checkbox toggles (same UX as GSC) -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6">
@@ -2208,30 +2209,6 @@
             </div>
         </div>
         {% endif %}
-
-        <!-- Daily Chart -->
-        <div class="section-card rounded-2xl p-8 mb-8" id="daily-line">
-            <div class="flex items-center justify-between mb-6">
-                <div>
-                    <h2 class="text-2xl font-bold text-gray-800 flex items-center">
-                        <i class="fas fa-chart-area mr-3" style="color: #C9F31D;"></i>
-                        Daily Analytics Trends
-                    </h2>
-                    <p class="text-gray-600 mt-1">Interactive visualization of your key metrics over time</p>
-                </div>
-                <div class="flex items-center">
-                    <span class="text-xs font-medium" style="color: #ffffff;">Live Data</span>
-                </div>
-            </div>
-            <div class="chart-container">
-                <canvas id="dailyMetricsChart"></canvas>
-                <div id="dailyMetricsEmpty" class="hidden absolute inset-0 flex flex-col items-center justify-center text-center px-6">
-                    <i class="fas fa-chart-line text-5xl text-gray-300 mb-3"></i>
-                    <p class="text-gray-500 font-medium">No daily GA4 data for this date range.</p>
-                    <p class="text-gray-400 text-sm mt-1">Try a different property or wider date range.</p>
-                </div>
-            </div>
-        </div>
 
         <!-- GA4 Data Section -->
         <section id="ga4" class="mb-12">
@@ -3000,5 +2977,6 @@
             checkSessionStatus();
         });
     </script>
+    {% include '_drok_widget.html' %}
 </body>
 </html>

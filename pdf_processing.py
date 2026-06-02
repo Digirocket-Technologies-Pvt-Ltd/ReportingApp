@@ -266,7 +266,12 @@ def build_slide_images(template_pdf_path, images_folder, output_dir, start_page,
     images_root = os.path.join(script_dir, 'static', 'images')
 
     def _find_override(stem):
-        for ext in ('.png', '.jpg', '.jpeg', '.png.jpg', '.png.jpeg'):
+        # Windows Save-As frequently appends the real extension, so a file the
+        # user "named" stem.png often lands on disk as stem.png.png or
+        # stem.png.jpg. Accept every common variant.
+        for ext in ('.png', '.jpg', '.jpeg',
+                    '.png.png', '.png.jpg', '.png.jpeg',
+                    '.jpg.png', '.jpg.jpg'):
             p = os.path.join(images_root, stem + ext)
             if os.path.exists(p):
                 return p
@@ -411,9 +416,19 @@ def build_slide_images(template_pdf_path, images_folder, output_dir, start_page,
             slide_entry['title'] = 'Summary & Conclusion'
         manifest['slides'].append(slide_entry)
 
-    # 3) Remaining template pages (Thank You etc.)
-    for i in range(start_page, len(template)):
-        save_pixmap(template[i].get_pixmap(matrix=matrix))
+    # 3) Remaining template pages (Thank You etc.) — with optional
+    # thankyou.png override for the FIRST remaining page (the closing
+    # Thank You slide). Same pattern as cover / agenda overrides above.
+    custom_thankyou = _find_override('thankyou')
+    for offset, i in enumerate(range(start_page, len(template))):
+        if offset == 0 and custom_thankyou:
+            try:
+                save_pixmap(_render_override_to_pixmap(custom_thankyou))
+            except Exception as e:
+                print(f"  (custom thankyou failed, falling back to template: {e})")
+                save_pixmap(template[i].get_pixmap(matrix=matrix))
+        else:
+            save_pixmap(template[i].get_pixmap(matrix=matrix))
         manifest['slides'].append({
             'type': 'template',
             'slide_image': f'page_{page_num}.png',

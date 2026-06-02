@@ -522,7 +522,7 @@
         </div>
 
         <!-- Quick Stats Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div class="bg-white rounded-xl p-6 shadow-lg card-hover border border-gray-100">
                 <div class="flex items-center justify-between">
                     <div>
@@ -559,17 +559,6 @@
                 </div>
             </div>
             
-            <div class="bg-white rounded-xl p-6 shadow-lg card-hover border border-gray-100">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <p class="text-sm font-medium text-gray-600">Status</p>
-                        <p class="text-lg font-semibold text-green-600">All Systems Go</p>
-                    </div>
-                    <div class="w-12 h-12 bg-black rounded-lg flex items-center justify-center">
-                        <i class="fas fa-check-circle text-white text-xl"></i>
-                    </div>
-                </div>
-            </div>
         </div>
 
         <div class="section-divider"></div>
@@ -706,6 +695,7 @@
                             </div>
                             <div>
                                 <h3 class="text-lg font-semibold text-gray-800">Overview infographic</h3>
+                                <p class="text-xs text-gray-500 mt-0.5">Analytics overview Infographic</p>
                             </div>
                         </div>
                         <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -1131,5 +1121,7 @@
             });
         });
     </script>
+
+    {% include '_drok_widget.html' %}
 </body>
 </html>
