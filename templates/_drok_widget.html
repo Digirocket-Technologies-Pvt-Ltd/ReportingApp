@@ -63,11 +63,19 @@ prevents the script from initialising twice if it ever gets duplicated.
     }
     .drok-head .drok-title { font-weight: 700; font-size: 15px; }
     .drok-head .drok-sub { font-size: 11px; opacity: 0.7; }
-    .drok-head .drok-close {
-        margin-left: auto; background: none; border: none;
-        color: #fff; cursor: pointer; font-size: 22px; line-height: 1;
-        padding: 0 4px;
+    .drok-head .drok-actions {
+        margin-left: auto; display: flex; align-items: center; gap: 6px;
     }
+    .drok-head .drok-clear,
+    .drok-head .drok-close {
+        background: none; border: none; color: #fff; cursor: pointer;
+        line-height: 1; padding: 4px 6px; border-radius: 6px;
+        transition: background 0.15s ease;
+    }
+    .drok-head .drok-clear { font-size: 13px; opacity: 0.85; }
+    .drok-head .drok-clear:hover { background: rgba(255,255,255,0.08); opacity: 1; }
+    .drok-head .drok-close { font-size: 22px; }
+    .drok-head .drok-close:hover { background: rgba(255,255,255,0.08); }
     .drok-body {
         flex: 1; overflow-y: auto; padding: 16px;
         background: #0a0d0e; display: flex; flex-direction: column; gap: 10px;
@@ -119,7 +127,13 @@ prevents the script from initialising twice if it ever gets duplicated.
             <div class="drok-title">DROK Assistant</div>
             <div class="drok-sub">DigiRocket AI &bull; powered by drok-v5</div>
         </div>
-        <button type="button" class="drok-close" onclick="drokToggle()" aria-label="Close">&times;</button>
+        <div class="drok-actions">
+            <button type="button" class="drok-clear" onclick="drokClearChat()"
+                    title="Start a new chat (clears history)">
+                <i class="fas fa-rotate-right"></i> New
+            </button>
+            <button type="button" class="drok-close" onclick="drokToggle()" aria-label="Close">&times;</button>
+        </div>
     </div>
     <div class="drok-body" id="drokBody">
         <div class="drok-msg bot">
@@ -179,6 +193,21 @@ prevents the script from initialising twice if it ever gets duplicated.
             var inp = document.getElementById('drokInput');
             if (inp) inp.focus();
         }, 220);
+    };
+
+    window.drokClearChat = function () {
+        DROK_HISTORY = [];
+        try { sessionStorage.removeItem(DROK_STORAGE_KEY); } catch (e) {}
+        var body = document.getElementById('drokBody');
+        if (body) {
+            body.innerHTML = '';
+            var el = document.createElement('div');
+            el.className = 'drok-msg bot';
+            el.textContent = "I'm your AI assistant. How can I help you today?";
+            body.appendChild(el);
+        }
+        var inp = document.getElementById('drokInput');
+        if (inp) inp.focus();
     };
 
     function drokAppend(text, who) {

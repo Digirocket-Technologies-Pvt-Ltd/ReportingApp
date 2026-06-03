@@ -30,7 +30,61 @@ Env vars:
 """
 import os
 import re
+import time
+import hashlib
+import threading
 import requests
+
+# In-process answer cache: same user question -> same answer until TTL.
+# Fixes the "why does live give a different answer than local for the same
+# question?" complaint — the upstream DROK API's RAG retrieval is stochastic,
+# so identical questions can return slightly different responses each call.
+# Caching at our layer pins the first answer for a window of time. Cache key
+# is the SHA1 of the normalised question (lowercased, whitespace-collapsed)
+# so casing / extra spaces don't miss the cache.
+_CACHE_TTL = int(os.getenv('DROK_CACHE_TTL', '86400'))   # 24h default
+_CACHE_MAX = int(os.getenv('DROK_CACHE_MAX', '500'))     # entries before LRU evict
+_CACHE = {}              # key -> (answer, expires_at)
+_CACHE_LOCK = threading.Lock()
+
+
+def _cache_key(prompt):
+    norm = re.sub(r'\s+', ' ', (prompt or '').strip().lower())
+    if not norm:
+        return None
+    return hashlib.sha1(norm.encode('utf-8')).hexdigest()
+
+
+def _cache_get(prompt):
+    k = _cache_key(prompt)
+    if not k:
+        return None
+    with _CACHE_LOCK:
+        entry = _CACHE.get(k)
+        if not entry:
+            return None
+        answer, expires_at = entry
+        if expires_at < time.time():
+            _CACHE.pop(k, None)
+            return None
+        return answer
+
+
+def _cache_put(prompt, answer):
+    k = _cache_key(prompt)
+    if not k or not answer:
+        return
+    with _CACHE_LOCK:
+        # Cheap LRU-ish eviction: when over the cap, drop the oldest entry.
+        if len(_CACHE) >= _CACHE_MAX:
+            oldest = min(_CACHE.items(), key=lambda kv: kv[1][1])[0]
+            _CACHE.pop(oldest, None)
+        _CACHE[k] = (answer, time.time() + _CACHE_TTL)
+
+
+def clear_cache():
+    with _CACHE_LOCK:
+        _CACHE.clear()
 
 # ANSI escape sequence (terminal color codes) that occasionally leak into
 # the API's plain-text response.
@@ -111,6 +165,15 @@ def stream_api(prompt, system_prompt=None, conversation_context=None, timeout=No
         for chunk in drok.stream_api("hi"):
             yield chunk   # in a Flask streaming response
     """
+    # Cache hit -> stream the previously-saved answer immediately.
+    # We split it into ~40-char chunks so the widget still gets the
+    # "typewriter" feel instead of one giant blob.
+    cached = _cache_get(prompt)
+    if cached:
+        for i in range(0, len(cached), 40):
+            yield cached[i:i + 40]
+        return
+
     messages = _build_messages(prompt, system_prompt, conversation_context)
     payload = {'messages': messages}
     headers = {
@@ -124,6 +187,7 @@ def stream_api(prompt, system_prompt=None, conversation_context=None, timeout=No
                        'AppleWebKit/537.36 (KHTML, like Gecko) '
                        'Chrome/148.0.0.0 Safari/537.36'),
     }
+    accumulated = []
     try:
         with requests.post(DROK_API_URL, json=payload, headers=headers,
                            timeout=timeout or DROK_API_TIMEOUT,
@@ -142,9 +206,16 @@ def stream_api(prompt, system_prompt=None, conversation_context=None, timeout=No
                 chunk = _INVIS_RE.sub('', chunk)
                 chunk = _CTRL_RE.sub('', chunk)
                 if chunk:
+                    accumulated.append(chunk)
                     yield chunk
     except Exception as e:
         print(f'[drok] streaming api call failed: {e}')
+        return
+    # Stream finished cleanly -> remember this answer so the next user who
+    # asks the same question gets the same reply (within TTL).
+    full = ''.join(accumulated).strip()
+    if full:
+        _cache_put(prompt, full)
 
 
 def _ask_api(prompt, system_prompt=None, max_tokens=400, temperature=0.7,
@@ -181,6 +252,9 @@ def _ask_api(prompt, system_prompt=None, max_tokens=400, temperature=0.7,
         'Sec-Fetch-Mode': 'cors',
         'Sec-Fetch-Site': 'same-origin',
     }
+    cached = _cache_get(prompt)
+    if cached:
+        return cached
     try:
         r = requests.post(DROK_API_URL, json=payload, headers=headers,
                           timeout=timeout or DROK_API_TIMEOUT)
@@ -190,7 +264,10 @@ def _ask_api(prompt, system_prompt=None, max_tokens=400, temperature=0.7,
         # text/plain responses (defaults to ISO-8859-1 which mangles
         # the model's accented quotes and en-dashes).
         r.encoding = 'utf-8'
-        return _clean_text(r.text or '')
+        text = _clean_text(r.text or '')
+        if text:
+            _cache_put(prompt, text)
+        return text
     except Exception as e:
         print(f'[drok] api call failed: {e}')
         return ''

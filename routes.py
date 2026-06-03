@@ -1212,9 +1212,12 @@ def init_routes(app):
 
         pdf_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 'static', 'images', 'analytics_report.pdf')
-        if not os.path.exists(pdf_path):
-            flash('No report found. Please generate one first.', 'error')
-            return redirect(url_for('dashboard'))
+        # Allow the page to load even without a generated report: the user may
+        # have come here from the "Send Email" shortcut just to compose a mail
+        # with their own attachments. The email-send endpoint already handles
+        # include_report=false gracefully, and the template hides the PDF
+        # preview / download panel when has_report is False.
+        has_report = os.path.exists(pdf_path)
 
         # PMO admins get a client dropdown in the email modal so the send can
         # be logged against a specific client. Non-admins just send (no logging).
@@ -1244,10 +1247,11 @@ def init_routes(app):
             slide_images = [url_for('static', filename=f'images/AIVideo/{f}') for f in files]
 
         return render_template('report_display.html',
-                               pdf_url=url_for('static', filename='images/analytics_report.pdf'),
-                               pptx_url=pptx_url,
+                               pdf_url=url_for('static', filename='images/analytics_report.pdf') if has_report else '',
+                               pptx_url=pptx_url if has_report else None,
+                               has_report=has_report,
                                clients=clients,
-                               slide_images=slide_images,
+                               slide_images=slide_images if has_report else [],
                                session_info=get_session_info())
 
     @app.route('/download-report-pptx')

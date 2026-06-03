@@ -73,6 +73,7 @@
     </header>
 
     <main class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        {% if has_report %}
         <!-- Success + Download -->
         <div class="bg-white rounded-2xl shadow-lg p-8 mb-8 text-center">
             <div class="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4" style="background:#C9F31D;">
@@ -98,6 +99,20 @@
                 </button>
             </div>
         </div>
+        {% else %}
+        <!-- No report yet: still let the user compose + send an email with their own attachments. -->
+        <div class="bg-white rounded-2xl shadow-lg p-8 mb-8 text-center">
+            <div class="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4" style="background:#C9F31D;">
+                <i class="fas fa-paper-plane text-2xl" style="color:#0c1206;"></i>
+            </div>
+            <h2 class="text-2xl font-bold text-gray-800 mb-2">Send an Email</h2>
+            <p class="text-gray-600 mb-6">No report has been generated yet, but you can still send an email with your own attachments.</p>
+            <button type="button" onclick="openEmailModal()"
+                    class="inline-flex items-center bg-teal-600 px-8 py-4 rounded-xl font-bold text-lg shadow-lg hover:opacity-90 transition">
+                <i class="fas fa-paper-plane mr-3"></i>Compose Email
+            </button>
+        </div>
+        {% endif %}
 
         {% if slide_images %}
         <!-- Slide Editor: add your own text onto the slides, then download edited PDF -->
@@ -130,15 +145,17 @@
         </div>
         {% endif %}
 
+        {% if has_report %}
         <!-- Preview -->
         <div class="bg-white rounded-2xl shadow-lg p-4 mb-8">
             <iframe id="pdfPreview" src="{{ pdf_url }}" class="w-full rounded-xl" style="height: 80vh; border: none;"></iframe>
         </div>
+        {% endif %}
 
         <!-- Generate another -->
         <div class="text-center">
             <a href="{{ url_for('dashboard') }}" class="inline-flex items-center bg-teal-600 hover:bg-teal-700 text-white px-6 py-3 rounded-xl font-semibold shadow">
-                <i class="fas fa-arrow-left mr-2"></i>Generate Another Report
+                <i class="fas fa-arrow-left mr-2"></i>{% if has_report %}Generate Another Report{% else %}Generate a Report{% endif %}
             </a>
         </div>
     </main>
@@ -193,9 +210,15 @@
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">Attachments</label>
+                    {% if has_report %}
                     <label class="flex items-center gap-2 text-sm text-gray-700 mb-2">
                         <input type="checkbox" id="emIncludeReport"> Include the generated report PDF
                     </label>
+                    {% else %}
+                    <label class="flex items-center gap-2 text-sm text-gray-400 mb-2" title="Generate a report first to attach it here">
+                        <input type="checkbox" id="emIncludeReport" disabled> Include the generated report PDF <span class="text-xs">(no report generated yet)</span>
+                    </label>
+                    {% endif %}
                     <input id="emFileInput" type="file" multiple style="display:none">
                     <button type="button" onclick="document.getElementById('emFileInput').click()"
                             class="inline-flex items-center bg-gray-100 border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-gray-200">
