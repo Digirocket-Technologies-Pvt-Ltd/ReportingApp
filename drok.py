@@ -86,6 +86,43 @@ def clear_cache():
     with _CACHE_LOCK:
         _CACHE.clear()
 
+
+# Standalone "definitional" questions ("what is SEO", "explain SEO",
+# "tell me about local SEO" etc.) should be answered in isolation —
+# trailing history from earlier turns (often pricing-heavy on live)
+# biases the upstream RAG toward a pricing snippet, so the same
+# question gives a clean conceptual answer on a fresh local session
+# but a pricing-focused answer on a long live session. Stripping
+# history for these queries makes answers consistent across sessions.
+_STANDALONE_RE = re.compile(
+    r'^\s*(what\s+(is|are|does)\b|who\s+is\b|explain\b|define\b|'
+    r'tell\s+me\s+about\b|describe\b|how\s+does\b|how\s+do\s+i\b|'
+    r'why\s+(is|do|does)\b)',
+    re.IGNORECASE,
+)
+
+
+def _is_standalone_question(message):
+    return bool(message and _STANDALONE_RE.match(message))
+
+
+def _looks_like_pricing_snippet(answer):
+    """Heuristic: the upstream API occasionally returns a short
+    pricing-leaning RAG snippet instead of the educational LLM answer
+    (we've seen this when there's prior pricing turns in history, even
+    when our caller didn't intend it). If the response is short AND
+    pricing-flavoured, treat it as low quality and retry without
+    conversation history.
+    """
+    if not answer:
+        return False
+    a = answer.lower()
+    short = len(answer) < 350
+    pricing_signals = sum(1 for s in ('$', '/month', 'startup plan',
+                                       'pricing', 'plan includes')
+                          if s in a)
+    return short and pricing_signals >= 2
+
 # ANSI escape sequence (terminal color codes) that occasionally leak into
 # the API's plain-text response.
 _ANSI_RE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
@@ -165,6 +202,11 @@ def stream_api(prompt, system_prompt=None, conversation_context=None, timeout=No
         for chunk in drok.stream_api("hi"):
             yield chunk   # in a Flask streaming response
     """
+    # Drop history for "what is X / explain X" style queries so the
+    # answer doesn't get biased by whatever was discussed earlier.
+    if _is_standalone_question(prompt):
+        conversation_context = None
+
     # Cache hit -> stream the previously-saved answer immediately.
     # We split it into ~40-char chunks so the widget still gets the
     # "typewriter" feel instead of one giant blob.
@@ -211,10 +253,13 @@ def stream_api(prompt, system_prompt=None, conversation_context=None, timeout=No
     except Exception as e:
         print(f'[drok] streaming api call failed: {e}')
         return
-    # Stream finished cleanly -> remember this answer so the next user who
-    # asks the same question gets the same reply (within TTL).
+    # Stream finished cleanly -> remember this answer so the next user
+    # who asks the same question gets the same reply (within TTL).
+    # Don't pin a pricing-snippet response in cache — let the next call
+    # try again (likely with no history thanks to _is_standalone_question)
+    # and hopefully get the proper educational answer.
     full = ''.join(accumulated).strip()
-    if full:
+    if full and not _looks_like_pricing_snippet(full):
         _cache_put(prompt, full)
 
 
@@ -255,8 +300,10 @@ def _ask_api(prompt, system_prompt=None, max_tokens=400, temperature=0.7,
     cached = _cache_get(prompt)
     if cached:
         return cached
-    try:
-        r = requests.post(DROK_API_URL, json=payload, headers=headers,
+
+    def _post(msgs):
+        r = requests.post(DROK_API_URL, json={'messages': msgs},
+                          headers=headers,
                           timeout=timeout or DROK_API_TIMEOUT)
         r.raise_for_status()
         # Response is plain text (Content-Type: text/plain), not JSON.
@@ -264,7 +311,23 @@ def _ask_api(prompt, system_prompt=None, max_tokens=400, temperature=0.7,
         # text/plain responses (defaults to ISO-8859-1 which mangles
         # the model's accented quotes and en-dashes).
         r.encoding = 'utf-8'
-        text = _clean_text(r.text or '')
+        return _clean_text(r.text or '')
+
+    try:
+        text = _post(messages)
+        # Defensive retry: if the response looks like a short
+        # pricing-snippet (history bias kicking in upstream), retry
+        # once with NO history so the model gives the standard
+        # educational reply instead.
+        if conversation_context and _looks_like_pricing_snippet(text):
+            print('[drok] response looks like pricing snippet — '
+                  'retrying without history')
+            try:
+                fresh = _post(_build_messages(prompt, system_prompt, None))
+                if fresh and not _looks_like_pricing_snippet(fresh):
+                    text = fresh
+            except Exception as e:
+                print(f'[drok] retry-no-history failed: {e}')
         if text:
             _cache_put(prompt, text)
         return text
@@ -377,7 +440,13 @@ def chat_reply(user_message, conversation_context=None):
     max_tokens stays at 500 — the user explicitly wants long, complete
     answers; streaming (see /api/drok-chat-stream) gives the speed-up
     without truncating content.
+
+    For "what is X" / "explain X" style definitional questions, we drop
+    the conversation history so the answer is consistent regardless of
+    whatever the user was chatting about earlier in the session.
     """
+    if _is_standalone_question(user_message):
+        conversation_context = None
     return ask_drok(
         user_message,
         system_prompt=None,

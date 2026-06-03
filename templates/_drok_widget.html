@@ -154,8 +154,16 @@ prevents the script from initialising twice if it ever gets duplicated.
     window.DROK_WIDGET_LOADED = true;
 
     var DROK_HISTORY = [];
-    var DROK_MAX_TURNS = 4;
-    var DROK_STORAGE_KEY = 'drok_chat_history_v1';
+    // Smaller window = less prior-topic bleed into a new question.
+    // Was 4; reduced after "WHAT IS SEO" answers started leaning on
+    // earlier pricing-context turns instead of giving a fresh reply.
+    var DROK_MAX_TURNS = 2;
+    // Key version bump invalidates the OLD sessionStorage that may have
+    // been built up before the history-bias fix shipped. v1 users were
+    // getting pricing-skewed replies because their stored history was
+    // priming the model. v2 starts every existing tab fresh.
+    var DROK_STORAGE_KEY = 'drok_chat_history_v2';
+    try { sessionStorage.removeItem('drok_chat_history_v1'); } catch (e) {}
 
     // Persist history across page navigations within the same tab.
     function drokSaveHistory() {
