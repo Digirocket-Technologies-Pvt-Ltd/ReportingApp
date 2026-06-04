@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=3">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Client Onboarded - DigiRocket PMO</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="/static/css/brand-theme.css" rel="stylesheet">
+    <link href="/static/css/dark-theme.css" rel="stylesheet">
+    <script defer src="/static/js/theme-toggle.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Barlow', sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #14181a 0%, #0a0d0e 100%); }
+        header.gradient-bg {
+            background: linear-gradient(135deg, #3a4045 0%, #25282b 100%) !important;
+            border-bottom: 3px solid #C9F31D !important;
+        }
+        header.gradient-bg h1, header.gradient-bg span, header.gradient-bg a,
+        header.gradient-bg i { color: #ffffff !important; opacity: 1 !important; }
+        .pulse-ring {
+            position: absolute; inset: 0; border-radius: 50%;
+            border: 4px solid #C9F31D; animation: pulse-ring 1.6s ease-out infinite;
+        }
+        @keyframes pulse-ring {
+            0%   { transform: scale(0.85); opacity: 0.9; }
+            70%  { transform: scale(1.4);  opacity: 0;   }
+            100% { transform: scale(1.4);  opacity: 0;   }
+        }
+        .detail-row { display:flex; justify-content:space-between; padding:10px 0;
+                      border-bottom:1px solid rgba(255,255,255,0.06); font-size:14px; }
+        .detail-row:last-child { border-bottom:none; }
+        .detail-row .k { color:#9ca3af; }
+        .detail-row .v { color:#f1f5f9; font-weight:600; text-align:right; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-50 via-blue-50 to-teal-50 min-h-screen">
+    <header class="gradient-bg shadow-2xl" style="position:sticky; top:0; z-index:50;">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-20">
+                <div class="flex items-center space-x-4">
+                    <div class="w-12 h-12 bg-white bg-opacity-20 rounded-xl flex items-center justify-center">
+                        <i class="fas fa-rocket text-white text-xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-white text-2xl font-bold">Client Onboarded</h1>
+                        <span class="text-white text-xs opacity-75">Welcome to DigiRocket PMO</span>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <a href="{{ url_for('pmo_portal') }}" class="text-white hover:text-gray-200 p-2 rounded-lg hover:bg-white hover:bg-opacity-10">
+                        <i class="fas fa-arrow-left mr-2"></i>Back to PMO
+                    </a>
+                    <a href="{{ url_for('dashboard') }}" class="text-white hover:text-gray-200 p-2 rounded-lg hover:bg-white hover:bg-opacity-10">
+                        <i class="fas fa-home mr-2"></i>Dashboard
+                    </a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        <!-- Success hero -->
+        <div class="rounded-2xl shadow-2xl p-10 mb-8 text-center"
+             style="background:#0a0d0e; border:1px solid #2a2e31;">
+            <div class="relative inline-flex items-center justify-center w-24 h-24 rounded-full mx-auto mb-6"
+                 style="background:#C9F31D;">
+                <span class="pulse-ring"></span>
+                <i class="fas fa-check text-4xl" style="color:#0c1206;"></i>
+            </div>
+            <h2 class="text-3xl font-extrabold mb-2" style="color:#f1f5f9;">
+                {{ client.name }} onboarded successfully!
+            </h2>
+            <p class="text-gray-400 mb-6">
+                The client has been added to your PMO database. You can now create their SEO strategy or return to the portal.
+            </p>
+            <div class="flex flex-wrap gap-3 justify-center">
+                <a href="{{ url_for('view_combined_data') }}{% if client.ga4_property_id %}?ga4_property={{ client.ga4_property_id }}{% endif %}"
+                   class="inline-flex items-center px-7 py-3 rounded-xl font-bold text-base shadow-lg hover:shadow-xl transition"
+                   style="background:#C9F31D; color:#0c1206;">
+                    <i class="fas fa-chess-knight mr-2"></i>Create Strategy
+                </a>
+                <a href="{{ url_for('pmo_portal') }}"
+                   class="inline-flex items-center px-7 py-3 rounded-xl font-semibold text-base border transition hover:bg-white hover:bg-opacity-5"
+                   style="border-color:#3a4045; color:#f1f5f9;">
+                    <i class="fas fa-list mr-2"></i>Back to PMO Portal
+                </a>
+            </div>
+        </div>
+
+        <!-- Client snapshot -->
+        <div class="rounded-2xl shadow-lg p-8" style="background:#0a0d0e; border:1px solid #2a2e31;">
+            <h3 class="text-lg font-bold mb-4" style="color:#f1f5f9;">
+                <i class="fas fa-id-badge mr-2" style="color:#C9F31D;"></i>Client Snapshot
+            </h3>
+            <div class="space-y-0">
+                <div class="detail-row"><span class="k">Name</span>            <span class="v">{{ client.name or 'N/A' }}</span></div>
+                <div class="detail-row"><span class="k">Email</span>           <span class="v">{{ client.email or 'N/A' }}</span></div>
+                <div class="detail-row"><span class="k">Nature of Business</span><span class="v">{{ client.nature_of_business or 'N/A' }}</span></div>
+                <div class="detail-row"><span class="k">GA4 Property ID</span> <span class="v">{{ client.ga4_property_id or 'N/A' }}</span></div>
+                <div class="detail-row"><span class="k">GSC Property ID</span> <span class="v">{{ client.gsc_property_id or 'N/A' }}</span></div>
+                <div class="detail-row"><span class="k">TAT</span>             <span class="v">{{ client.tat or 'N/A' }}</span></div>
+                <div class="detail-row"><span class="k">Target SEO Website</span><span class="v">{{ client.target_seo_website or 'N/A' }}</span></div>
+                <div class="detail-row"><span class="k">Competitor Website</span><span class="v">{{ client.competitor_website or 'N/A' }}</span></div>
+                <div class="detail-row"><span class="k">Start Date</span>      <span class="v">{{ client.start_date or 'N/A' }}</span></div>
+                <div class="detail-row"><span class="k">Billing Day</span>     <span class="v">{{ client.billing_cycle_day or 'N/A' }}</span></div>
+                <div class="detail-row"><span class="k">Status</span>          <span class="v">{{ (client.status or 'active')|capitalize }}</span></div>
+            </div>
+        </div>
+    </main>
+
+    {% include '_drok_widget.html' %}
+</body>
+</html>

@@ -1730,6 +1730,12 @@
                                class="dropdown-item">
                                 <i class="fas fa-paper-plane mr-2"></i>Send Email
                             </a>
+                            {% if is_admin %}
+                            <div style="border-top: 1px solid #e5e7eb;"></div>
+                            <a href="{{ url_for('pmo_portal') }}" class="dropdown-item">
+                                <i class="fas fa-users-gear mr-2"></i>PMO Portal
+                            </a>
+                            {% endif %}
                             <div style="border-top: 1px solid #e5e7eb;"></div>
                             <a href="{{ url_for('logout') }}" class="dropdown-item text-red-600 hover:bg-red-50 hover:text-red-700">
                                 <i class="fas fa-sign-out-alt mr-2"></i>Logout
@@ -1767,7 +1773,7 @@
                         </label>
                         <label class="flex items-center gap-2 text-xs font-medium text-gray-600">
                             <input type="checkbox" name="ai_insights" value="1" {% if request.args.get('ai_insights') %}checked{% endif %} style="flex-shrink:0; margin:0;">
-                            <span style="line-height:1;">Add AI Insights &amp; Action Plan</span>
+                            <span style="line-height:1;">Summary &amp; Conclusion</span>
                         </label>
                         <label class="flex items-center gap-2 text-xs font-medium text-gray-600">
                             <input type="checkbox" name="gmb" value="1" {% if request.args.get('gmb') %}checked{% endif %} style="flex-shrink:0; margin:0;">

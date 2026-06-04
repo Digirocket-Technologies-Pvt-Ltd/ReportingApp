@@ -81,11 +81,26 @@ def get_client(client_id):
     return rows[0] if rows else None
 
 
+def _raise_with_supabase_detail(r):
+    """raise_for_status but surface Supabase's JSON error so the caller
+    sees "column X does not exist" instead of a bare 400."""
+    if r.status_code >= 400:
+        try:
+            j = r.json()
+            msg = j.get('message') or j.get('error') or j.get('hint') or r.text
+            details = j.get('details') or ''
+            full = (msg + (' — ' + details if details else '')).strip()
+        except Exception:
+            full = (r.text or '').strip()[:500]
+        raise requests.HTTPError(
+            f'{r.status_code} {r.reason}: {full or "(empty)"}', response=r)
+
+
 def add_client(data):
     r = requests.post(_rest('clients'),
                       headers=_headers({'Prefer': 'return=representation'}),
                       json=data, timeout=TIMEOUT)
-    r.raise_for_status()
+    _raise_with_supabase_detail(r)
     rows = r.json()
     return rows[0] if rows else None
 
@@ -94,7 +109,7 @@ def update_client(client_id, data):
     r = requests.patch(_rest(f'clients?id=eq.{client_id}'),
                        headers=_headers({'Prefer': 'return=representation'}),
                        json=data, timeout=TIMEOUT)
-    r.raise_for_status()
+    _raise_with_supabase_detail(r)
     rows = r.json()
     return rows[0] if rows else None
 

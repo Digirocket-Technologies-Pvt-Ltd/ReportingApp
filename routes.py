@@ -9,6 +9,7 @@ from data_processing import validate_dates
 from google.oauth2.credentials import Credentials
 from config import CLIENT_ID, CLIENT_SECRET, REDIRECT_URI, SCOPES
 import os
+import time
 import base64
 from PIL import Image
 import io
@@ -565,6 +566,9 @@ def init_routes(app):
                 _ctx = dict(_hit[1])
                 # session_info / report_exists may change between hits - refresh
                 _ctx['session_info'] = get_session_info()
+                # Re-check role too: cheap (env-var lookup) and protects against
+                # stale entries from before this field was cached.
+                _ctx['is_admin'] = is_pmo_admin()
                 _report_pdf_path = os.path.join(
                     os.path.dirname(os.path.abspath(__file__)),
                     'static', 'images', 'analytics_report.pdf')
@@ -998,6 +1002,9 @@ def init_routes(app):
                 session_info=session_info,
                 report_exists=report_exists,
                 report_pdf_url=report_pdf_url,
+                # Drives the PMO Portal entry in the user dropdown - only
+                # admins should see that menu item, same as on /dashboard.
+                is_admin=is_pmo_admin(),
             )
             # Stash for the 5-min fast-path so a refresh / back-button hit
             # skips the entire API + AI pipeline.
@@ -2116,6 +2123,15 @@ def init_routes(app):
             billing = int(billing) if billing else None
         except ValueError:
             billing = None
+        # product_links arrives as an array from the frontend; persist as
+        # a JSON string so the DB column can be plain TEXT (no Postgres
+        # array / JSONB migration required). list_clients's reader on the
+        # template side decodes it back.
+        raw_links = d.get('product_links') or []
+        if isinstance(raw_links, str):
+            raw_links = [raw_links]
+        product_links = [str(x).strip() for x in raw_links if str(x).strip()]
+        import json as _json
         return {
             'name': clean(d.get('name')),
             'email': clean(d.get('email')),
@@ -2126,7 +2142,97 @@ def init_routes(app):
             'start_date': clean(d.get('start_date')),
             'status': clean(d.get('status')) or 'active',
             'notes': clean(d.get('notes')),
+            'tat': clean(d.get('tat')),
+            'competitor_website': clean(d.get('competitor_website')),
+            'target_seo_website': clean(d.get('target_seo_website')),
+            'product_links': _json.dumps(product_links) if product_links else None,
         }
+
+    # ---- Email OTP verification for "Add Client" onboarding ----
+    # Flow:
+    #   1) Admin types the client's email into the modal -> clicks "Verify"
+    #      -> /pmo/api/verify-email/send generates a 6-digit code and emails
+    #         it via the existing Brevo sender.
+    #   2) Admin asks the client for the code, types it in -> /pmo/api/
+    #      verify-email/check marks the email as verified in the session.
+    #   3) /pmo/api/clients (add) refuses to save until the submitted email
+    #      matches a verified one in the session.
+    def _pmo_otp_store():
+        store = session.get('_pmo_otp') or {}
+        # Lazily drop expired entries so the session dict doesn't grow.
+        now = time.time()
+        store = {k: v for k, v in store.items()
+                 if isinstance(v, dict) and v.get('expires_at', 0) > now}
+        session['_pmo_otp'] = store
+        return store
+
+    @app.route('/pmo/api/verify-email/send', methods=['POST'])
+    def pmo_verify_email_send():
+        if not is_pmo_admin():
+            return jsonify({'success': False, 'message': 'Not authorized.'}), 403
+        body = request.get_json(silent=True) or {}
+        email = (body.get('email') or '').strip().lower()
+        if not email or '@' not in email:
+            return jsonify({'success': False,
+                            'message': 'Enter a valid email first.'}), 400
+        # 6-digit zero-padded code, 10-minute TTL.
+        import secrets
+        code = f'{secrets.randbelow(1000000):06d}'
+        store = _pmo_otp_store()
+        store[email] = {
+            'code': code,
+            'expires_at': time.time() + 600,
+            'verified': False,
+            'attempts': 0,
+        }
+        session['_pmo_otp'] = store
+        try:
+            from email_sender import send_email_with_attachments
+            subject = f'Your DigiRocket onboarding code: {code}'
+            html = (f"Your DigiRocket onboarding verification code is:\n\n"
+                    f"    {code}\n\n"
+                    f"It expires in 10 minutes. If you didn't request this, "
+                    f"you can safely ignore the email.")
+            send_email_with_attachments(email, subject, html, [])
+        except Exception as e:
+            print(f'[pmo-otp] send failed for {email}: {e}')
+            return jsonify({'success': False,
+                            'message': f'Could not send code: {e}'}), 500
+        return jsonify({'success': True,
+                        'message': f'Code sent to {email}. It expires in 10 minutes.'})
+
+    @app.route('/pmo/api/verify-email/check', methods=['POST'])
+    def pmo_verify_email_check():
+        if not is_pmo_admin():
+            return jsonify({'success': False, 'message': 'Not authorized.'}), 403
+        body = request.get_json(silent=True) or {}
+        email = (body.get('email') or '').strip().lower()
+        code = (body.get('code') or '').strip()
+        store = _pmo_otp_store()
+        entry = store.get(email)
+        if not entry:
+            return jsonify({'success': False,
+                            'message': 'No code on file. Click Verify to send one.'}), 400
+        if entry.get('attempts', 0) >= 5:
+            store.pop(email, None)
+            session['_pmo_otp'] = store
+            return jsonify({'success': False,
+                            'message': 'Too many wrong attempts. Send a new code.'}), 429
+        entry['attempts'] = entry.get('attempts', 0) + 1
+        if code != entry.get('code'):
+            session['_pmo_otp'] = store
+            return jsonify({'success': False,
+                            'message': 'Incorrect code. Try again.'}), 400
+        entry['verified'] = True
+        session['_pmo_otp'] = store
+        return jsonify({'success': True, 'message': 'Email verified.'})
+
+    def _is_email_verified(email):
+        if not email:
+            return False
+        store = _pmo_otp_store()
+        entry = store.get(email.strip().lower())
+        return bool(entry and entry.get('verified'))
 
     @app.route('/pmo/api/clients', methods=['POST'])
     def pmo_add_client():
@@ -2136,13 +2242,56 @@ def init_routes(app):
             payload = _client_payload()
             if not payload.get('name'):
                 return jsonify({'success': False, 'message': 'Client name is required.'}), 400
+            # Gate: onboarding requires a verified email.
+            email = (payload.get('email') or '').strip()
+            if not _is_email_verified(email):
+                return jsonify({
+                    'success': False,
+                    'message': ('Email not verified yet. Click "Verify" next '
+                                'to the email field, ask the client for the '
+                                'code, and confirm it before onboarding.'),
+                }), 400
             row = db.add_client(payload)
             db.log_activity('client_added', f"New client added: {payload['name']}",
                             url_for('pmo_portal'), session.get('user_email'))
-            return jsonify({'success': True, 'client': row})
+            # Burn the OTP so it can't onboard a second client.
+            store = _pmo_otp_store()
+            store.pop(email.lower(), None)
+            session['_pmo_otp'] = store
+            return jsonify({
+                'success': True,
+                'client': row,
+                'redirect_url': url_for('pmo_client_welcome',
+                                        client_id=(row or {}).get('id', '')),
+            })
         except Exception as e:
             print(f'Error adding client: {e}')
             return jsonify({'success': False, 'message': str(e)}), 500
+
+    @app.route('/pmo/clients/<client_id>/welcome')
+    def pmo_client_welcome(client_id):
+        """Post-onboarding success page shown after Add Client succeeds.
+        Confirms the new client, then offers Create Strategy / Back to PMO
+        as next actions."""
+        if not is_pmo_admin():
+            return redirect(url_for('login'))
+        try:
+            client = db.get_client_by_id(client_id) if hasattr(db, 'get_client_by_id') else None
+            if not client:
+                # Fallback: scan list_clients (handles older db.py versions).
+                for c in (db.list_clients() or []):
+                    if str(c.get('id')) == str(client_id):
+                        client = c
+                        break
+        except Exception as e:
+            print(f'pmo_client_welcome: load failed: {e}')
+            client = None
+        if not client:
+            flash('Client not found.', 'error')
+            return redirect(url_for('pmo_portal'))
+        return render_template('pmo_client_welcome.html',
+                               client=client,
+                               session_info=get_session_info())
 
     @app.route('/pmo/api/clients/<client_id>', methods=['POST'])
     def pmo_update_client(client_id):

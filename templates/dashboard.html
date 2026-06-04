@@ -395,6 +395,17 @@
                 </div>
                 
                 <div class="flex items-center space-x-4">
+                    <!-- SpyderSage AI: external link to the sibling product. Opens
+                         in a new tab; rel=noopener so the new window can't access
+                         this one. Styled to match the header chip language. -->
+                    <a href="https://www.spydersage.ai" target="_blank" rel="noopener noreferrer"
+                       title="Open SpyderSage AI in a new tab"
+                       class="flex items-center space-x-2 bg-white rounded-full px-3 py-2 shadow-sm hover:shadow-md transition-all duration-300 text-gray-700 hover:text-teal-600">
+                        <i class="fas fa-spider text-base" style="color:#C9F31D;"></i>
+                        <span class="text-sm font-medium hidden sm:block">SpyderSage</span>
+                        <i class="fas fa-arrow-up-right-from-square text-xs text-gray-400"></i>
+                    </a>
+
                     <div class="relative" id="notifWrap">
                         <button id="notifBtn" type="button" onclick="toggleNotif(event)"
                                 class="relative p-2 text-gray-600 hover:text-teal-600 transition-colors">
@@ -412,7 +423,7 @@
                             </div>
                         </div>
                     </div>
-                    
+
                     <!-- User Dropdown -->
                     <div class="user-dropdown">
                         <button class="flex items-center space-x-2 bg-white rounded-full px-3 py-2 shadow-sm hover:shadow-md transition-all duration-300" onclick="toggleDropdown()">
@@ -719,7 +730,7 @@
                         <label class="flex items-center gap-2 mt-3 text-sm font-medium text-gray-700 cursor-pointer">
                             <input type="checkbox" name="ai_insights" value="1">
                             <i class="fas fa-robot text-teal-600"></i>
-                            Add AI Insights &amp; Action Plan
+                            Summary &amp; Conclusion
                         </label>
                         <label class="flex items-center gap-2 mt-3 text-sm font-medium text-gray-700 cursor-pointer">
                             <input type="checkbox" name="gmb" value="1">
