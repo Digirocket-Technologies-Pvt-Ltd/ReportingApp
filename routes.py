@@ -2234,6 +2234,82 @@ def init_routes(app):
         entry = store.get(email.strip().lower())
         return bool(entry and entry.get('verified'))
 
+    def _send_client_welcome_email(client):
+        """Email a polite onboarding-confirmation to the client right after
+        Add Client succeeds. Lists the key account details so the client
+        has a written record of what was provisioned for them."""
+        to_email = (client.get('email') or '').strip()
+        if not to_email:
+            return
+        name = (client.get('name') or 'there').strip()
+
+        def _v(key, default='N/A'):
+            v = client.get(key)
+            if v is None or (isinstance(v, str) and not v.strip()):
+                return default
+            return str(v).strip()
+
+        # product_links is stored as a JSON-encoded array string; decode for
+        # display so the email shows each link on its own line.
+        raw_links = client.get('product_links')
+        links_lines = []
+        if raw_links:
+            try:
+                import json as _json
+                parsed = _json.loads(raw_links) if isinstance(raw_links, str) else raw_links
+                if isinstance(parsed, list):
+                    links_lines = [str(x).strip() for x in parsed if str(x).strip()]
+            except Exception:
+                links_lines = [str(raw_links)]
+        product_links_block = '\n    '.join(links_lines) if links_lines else 'N/A'
+
+        details = (
+            f"  Client Name        : {name}\n"
+            f"  Email              : {to_email}\n"
+            f"  Nature of Business : {_v('nature_of_business')}\n"
+            f"  GA4 Property ID    : {_v('ga4_property_id')}\n"
+            f"  GSC Property ID    : {_v('gsc_property_id')}\n"
+            f"  Target SEO Website : {_v('target_seo_website')}\n"
+            f"  Competitor Website : {_v('competitor_website')}\n"
+            f"  Product / Ecommerce Links:\n    {product_links_block}\n"
+            f"  TAT                : {_v('tat')}\n"
+            f"  Start Date         : {_v('start_date')}\n"
+            f"  Billing Cycle Day  : {_v('billing_cycle_day')}\n"
+            f"  Status             : {_v('status', 'active').capitalize()}"
+        )
+
+        # Absolute login URL based on the current request host (works on
+        # localhost AND the deployed Render URL without extra config).
+        login_url = url_for('login', _external=True)
+
+        body = (
+            f"Dear {name},\n\n"
+            "We are pleased to inform you that your account has been "
+            "successfully created on our dashboard.\n\n"
+            "You can now log in and access your account using the details "
+            "provided below:\n\n"
+            f"Login link: {login_url}\n\n"
+            "Client details\n"
+            "...........................\n"
+            f"{details}\n"
+            "...........................\n\n"
+            "Our dashboard allows you to access reports, monitor progress, "
+            "and manage your account information conveniently in one place.\n\n"
+            "If you have any questions or need assistance accessing your "
+            "account, please feel free to contact our support team. We "
+            "will be happy to help.\n\n"
+            "Thank you for choosing our services. We look forward to "
+            "working with you.\n\n"
+            "Best Regards,\n\n"
+            "DigiRocket Technologies\n"
+            "info@digirocket.io\n"
+            "Contact Number: +1 815 688 6366\n"
+            "                +91 987 119 6816"
+        )
+        subject = 'Welcome to DigiRocket — Your account is ready'
+        from email_sender import send_email_with_attachments
+        send_email_with_attachments(to_email, subject, body, [])
+
     @app.route('/pmo/api/clients', methods=['POST'])
     def pmo_add_client():
         if not is_pmo_admin():
@@ -2258,6 +2334,12 @@ def init_routes(app):
             store = _pmo_otp_store()
             store.pop(email.lower(), None)
             session['_pmo_otp'] = store
+            # Best-effort welcome email — onboarding still succeeds if the
+            # send fails (the row is already in Supabase).
+            try:
+                _send_client_welcome_email(row or payload)
+            except Exception as e:
+                print(f'[pmo-onboard] welcome email failed: {e}')
             return jsonify({
                 'success': True,
                 'client': row,
