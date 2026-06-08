@@ -155,6 +155,9 @@
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
+                    <a href="{{ url_for('staff_messages') }}" class="text-white hover:text-gray-200 p-2 rounded-lg hover:bg-white hover:bg-opacity-10">
+                        <i class="fas fa-comments mr-2"></i>Employee Query
+                    </a>
                     <a href="{{ url_for('pmo_portal') }}" class="text-white hover:text-gray-200 p-2 rounded-lg hover:bg-white hover:bg-opacity-10">
                         <i class="fas fa-users-gear mr-2"></i>PMO Portal
                     </a>
@@ -232,6 +235,14 @@
                         {% if chat.status == 'resolved' %}<span class="badge badge-resolved">Resolved</span>
                         {% elif chat.status == 'answered' %}<span class="badge badge-answered">Answered</span>
                         {% else %}<span class="badge badge-open">Awaiting reply</span>{% endif %}
+                        <!-- Convert this chat into a helpdesk ticket (transcript travels along). -->
+                        <form method="POST" action="{{ url_for('pmo_chat_to_ticket', client_id=c.id) }}"
+                              onsubmit="return confirm('Create a ticket from this chat? The full transcript will be copied.')">
+                            <button type="submit" class="text-xs font-bold px-3 py-1 rounded-lg"
+                                    style="background:#C9F31D;color:#14181a" title="Convert chat to ticket">
+                                <i class="fas fa-ticket mr-1"></i>Convert to ticket
+                            </button>
+                        </form>
                     </div>
                 </div>
 

@@ -6,9 +6,22 @@ from google.oauth2.credentials import Credentials
 from config import CLIENT_ID, CLIENT_SECRET, REDIRECT_URI, SCOPES
 
 
-# PMO team always logs in with this ID -> permanent built-in admin.
-# Add more admins via the PMO_ADMINS env var (comma-separated), no code change needed.
-DEFAULT_PMO_ADMINS = ['analytics@digirocketads.com']
+# PMO team always logs in with these IDs -> permanent built-in admins
+# (full PMO portal + dashboard access). Add more via the PMO_ADMINS env var
+# (comma-separated), no code change needed.
+DEFAULT_PMO_ADMINS = [
+    'analytics@digirocketads.com',                       # agency account (see AGENCY_EMAIL below)
+    'nikhar.makkar@digirockettechnologies.com',          # PMO
+    'sidharth.anant@digirockettechnologies.com',         # PMO
+    'shweta.singh@digirockettechnologies.com',           # PMO
+]
+
+# The ONE Google account whose OAuth refresh_token is used as the "agency"
+# credential to fetch GA4/GSC data on clients' behalf. Pinning this to a
+# single account means other PMO admins logging in will NOT clobber the
+# agency token (which would break client dashboards if they lack GA4 access).
+# Override with the AGENCY_EMAIL env var if the agency account ever changes.
+DEFAULT_AGENCY_EMAIL = 'analytics@digirocketads.com'
 
 
 def pmo_admins():
@@ -25,6 +38,19 @@ def is_pmo_admin():
         return False
     return (session.get('user_email') or '').lower() in pmo_admins()
 
+
+def agency_email():
+    """The single account whose token powers client GA4/GSC dashboards."""
+    return (os.getenv('AGENCY_EMAIL') or DEFAULT_AGENCY_EMAIL).strip().lower()
+
+
+def is_agency_account():
+    """True only for the designated agency Google account. Used to decide
+    whose refresh_token gets saved as the shared agency credential."""
+    if not is_authenticated():
+        return False
+    return (session.get('user_email') or '').lower() == agency_email()
+
 def is_authenticated():
     """Check if user is authenticated by verifying access token exists"""
     return 'access_token' in session and session.get('access_token') is not None
@@ -33,7 +59,13 @@ def refresh_token_if_needed():
     """Refresh the access token if it's expired"""
     if not is_authenticated():
         return False
-        
+
+    # Email-OTP (and any non-Google) sessions don't carry a Google token, so
+    # there's nothing to refresh against Google — the session is valid as long
+    # as it hasn't passed Flask's PERMANENT_SESSION_LIFETIME.
+    if (session.get('auth_provider') or 'google') != 'google':
+        return True
+
     # Check if token is expired
     if 'token_expiry' in session and datetime.now().timestamp() > session['token_expiry']:
         if 'refresh_token' not in session:
@@ -99,7 +131,9 @@ def get_user_info():
 
 def logout_user():
     """Logout user by revoking tokens and clearing session"""
-    if 'access_token' in session:
+    # Only Google-issued tokens can/should be revoked at Google. Email-OTP
+    # sessions hold a sentinel token, so just clear the session for those.
+    if (session.get('auth_provider') or 'google') == 'google' and 'access_token' in session:
         try:
             # Revoke the access token
             revoke_url = 'https://oauth2.googleapis.com/revoke'

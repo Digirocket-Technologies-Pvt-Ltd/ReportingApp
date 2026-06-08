@@ -1,0 +1,213 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=3">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Tickets</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="/static/css/brand-theme.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family:'Barlow',sans-serif; background:#f6f7fb; }
+        .topbar { background: linear-gradient(135deg,#14181a 0%,#0a0d0e 100%); }
+        .card { background:#fff; border-radius:14px; box-shadow:0 2px 10px rgba(0,0,0,.05); }
+        .pill { display:inline-block; padding:3px 12px; border-radius:9999px; font-size:11px; font-weight:700; text-transform:capitalize; }
+        .st-raised{background:#e2e8f0;color:#334155}.st-reviewed{background:#ede9fe;color:#6d28d9}
+        .st-assigned{background:#ffedd5;color:#c2410c}.st-in_progress{background:#dbeafe;color:#1d4ed8}
+        .st-resolved{background:#dcfce7;color:#166534}.st-closed{background:#e5e7eb;color:#6b7280}
+        .road { display:flex; align-items:flex-start; }
+        .road .stage { flex:1; text-align:center; position:relative; }
+        .road .dot { width:24px;height:24px;border-radius:50%;margin:0 auto;display:flex;align-items:center;justify-content:center;
+                     background:#e5e7eb;color:#9ca3af;font-size:10px;z-index:2;position:relative; }
+        .road .stage.done .dot { background:#22c55e;color:#fff; }
+        .road .stage.current .dot { background:#3b82f6;color:#fff; }
+        .road .line { position:absolute; top:11px; left:-50%; width:100%; height:3px; background:#e5e7eb; z-index:1; }
+        .road .stage.done .line,.road .stage.current .line { background:#22c55e; }
+        .road .stage:first-child .line { display:none; }
+        .road .lbl { font-size:10px; font-weight:600; margin-top:6px; color:#cbd2d9; }
+        /* ---- Dark theme (helpdesk) ---- */
+        body { background:#0f1417 !important; color:#e6e8eb !important; }
+        .card { background:#1a2025 !important; border:1px solid #262d33 !important; box-shadow:none !important; }
+        .text-gray-800,.text-gray-700 { color:#e6e8eb !important; }
+        .text-gray-600,.text-gray-500 { color:#aab2bd !important; }
+        .text-gray-400,.text-gray-300 { color:#7b848f !important; }
+        .border { border-color:#262d33 !important; }
+        input,select,textarea { background:#222a30 !important; color:#e6e8eb !important; border:1px solid #333b43 !important; }
+        input::placeholder,textarea::placeholder { color:#6b7682 !important; }
+        .road .dot { background:#2c343b; color:#7b848f; }
+        /* Rich-text editor */
+        .rte { border:1px solid #333b43; border-radius:10px; overflow:hidden; background:#222a30; }
+        .rte-toolbar { display:flex; align-items:center; gap:2px; padding:6px 8px; background:#1a2025; border-bottom:1px solid #333b43; }
+        .rte-toolbar button { width:30px; height:28px; border-radius:6px; color:#cbd2d9; background:transparent; border:0; cursor:pointer; font-size:14px; }
+        .rte-toolbar button:hover { background:#2c343b; color:#fff; }
+        .rte-sep { width:1px; height:18px; background:#333b43; margin:0 4px; }
+        .rte-area { min-height:48vh; max-height:62vh; overflow-y:auto; padding:12px 14px; color:#e6e8eb; font-size:15px; line-height:1.6; outline:none; }
+        .rte-area:empty:before { content:attr(data-placeholder); color:#6b7682; }
+        .rte-area ul,.rte-area ol { margin:4px 0 4px 20px; } .rte-area li { list-style:disc; } .rte-area ol li { list-style:decimal; }
+        /* Custom file attach */
+        .attach-btn { display:inline-flex; align-items:center; gap:8px; background:#222a30;
+            border:1px dashed #3a444d; color:#cbd2d9; padding:9px 14px; border-radius:10px;
+            font-size:13px; font-weight:600; cursor:pointer; transition:all .15s; }
+        .attach-btn:hover { border-color:#C9F31D; color:#fff; background:#2a333a; }
+        .attach-btn i { color:#C9F31D; }
+        .file-list { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+        .file-chip { display:inline-flex; align-items:center; gap:6px; background:#1a2025;
+            border:1px solid #333b43; color:#cbd2d9; padding:4px 10px; border-radius:999px; font-size:12px; }
+        .file-chip i { color:#C9F31D; }
+        /* Left ticket menu (sidebar) */
+        .ticket-menu { display:flex; flex-direction:column; gap:8px; }
+        .ticket-item { text-align:left; width:100%; background:#1a2025; border:1px solid #262d33;
+            border-radius:12px; padding:12px 14px; cursor:pointer; transition:all .15s; }
+        .ticket-item:hover { border-color:#3a444d; background:#20272d; }
+        .ticket-item.active { border-color:#C9F31D; background:#20272d; }
+        .ti-title { color:#e6e8eb; font-weight:600; font-size:13px; margin-top:6px; line-height:1.35;
+            display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+    </style>
+</head>
+<body class="min-h-screen">
+    <div class="topbar text-white px-6 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <a href="{{ url_for('client_portal') }}" class="opacity-80 hover:opacity-100"><i class="fas fa-arrow-left"></i></a>
+            <span class="text-lg font-bold">My Tickets</span>
+        </div>
+        <span class="text-sm opacity-70">{{ client.name }}</span>
+    </div>
+
+    <div class="w-full px-6 py-6">
+        {% with msgs = get_flashed_messages(with_categories=true) %}
+          {% for cat, m in msgs %}
+            <div class="mb-3 px-4 py-2 rounded-lg text-sm font-semibold
+                        {{ 'bg-green-100 text-green-800' if cat=='success' else 'bg-yellow-100 text-yellow-800' if cat=='warning' else 'bg-red-100 text-red-800' if cat in ['error','danger'] else 'bg-blue-100 text-blue-800' }}">{{ m }}</div>
+          {% endfor %}
+        {% endwith %}
+
+      <div class="flex flex-col lg:flex-row gap-6 items-start">
+        <!-- LEFT: tickets menu -->
+        <aside class="w-full lg:w-80 flex-shrink-0">
+            <h3 class="font-bold text-gray-700 mb-3">Your tickets</h3>
+            <div class="ticket-menu">
+                {% if not tickets %}
+                <div class="card p-6 text-center text-gray-300 text-sm"><i class="fas fa-ticket mr-1"></i>No tickets yet.</div>
+                {% endif %}
+                {% for t in tickets %}
+                <button type="button" class="ticket-item" id="item-{{ t.id }}" onclick="selectTicket('{{ t.id }}')">
+                    <div class="flex items-center justify-between gap-2">
+                        <span class="font-mono text-xs text-gray-400">#{{ t.number }}</span>
+                        <span class="pill st-{{ t.status }}">{{ t.status.replace('_',' ') }}</span>
+                    </div>
+                    <div class="ti-title">{{ t.title }}</div>
+                </button>
+                {% endfor %}
+            </div>
+        </aside>
+
+        <!-- RIGHT: report form + selected ticket roadmap -->
+        <main class="flex-1 w-full space-y-6">
+        <!-- Raise a ticket -->
+        <div class="card p-6">
+            <h2 class="font-bold text-gray-800 mb-3"><i class="fas fa-pen-to-square mr-2" style="color:#C9F31D"></i>Report a problem</h2>
+            <form method="POST" action="{{ url_for('portal_ticket_create') }}" enctype="multipart/form-data"
+                  id="ticketForm" onsubmit="document.getElementById('descInput').value = document.getElementById('rte').innerHTML;">
+                <input name="title" required class="w-full border rounded-lg px-3 py-2 mb-3" placeholder="What's the issue? (short title)">
+                <!-- Rich-text editor (Bold / Italic / Underline / List) -->
+                <div class="rte mb-3">
+                    <div class="rte-toolbar">
+                        <button type="button" onmousedown="event.preventDefault()" onclick="rteCmd('bold')" title="Bold"><b>B</b></button>
+                        <button type="button" onmousedown="event.preventDefault()" onclick="rteCmd('italic')" title="Italic"><i>I</i></button>
+                        <button type="button" onmousedown="event.preventDefault()" onclick="rteCmd('underline')" title="Underline"><u>U</u></button>
+                        <span class="rte-sep"></span>
+                        <button type="button" onmousedown="event.preventDefault()" onclick="rteCmd('insertUnorderedList')" title="Bullet list"><i class="fas fa-list-ul"></i></button>
+                        <button type="button" onmousedown="event.preventDefault()" onclick="rteCmd('insertOrderedList')" title="Numbered list"><i class="fas fa-list-ol"></i></button>
+                    </div>
+                    <div id="rte" class="rte-area" contenteditable="true" data-placeholder="Tell us more..."></div>
+                </div>
+                <input type="hidden" name="description" id="descInput">
+                <div class="flex items-end justify-between gap-3">
+                    <div>
+                        <input type="file" name="attachments" id="fileInput" multiple class="hidden" onchange="showFiles(this)">
+                        <button type="button" onclick="document.getElementById('fileInput').click()" class="attach-btn">
+                            <i class="fas fa-paperclip"></i><span>Attach files</span>
+                        </button>
+                        <div id="fileList" class="file-list"></div>
+                    </div>
+                    <button class="px-5 py-2 rounded-lg font-bold" style="background:#C9F31D;color:#14181a">Submit ticket</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Placeholder shown until a ticket is picked from the left menu -->
+        {% if tickets %}
+        <div id="detailPlaceholder" class="card p-10 text-center text-gray-400">
+            <i class="fas fa-hand-pointer text-3xl mb-3" style="color:#C9F31D"></i>
+            <p>Select a ticket from the left to see its progress.</p>
+        </div>
+        {% endif %}
+
+        <!-- Selected ticket detail (roadmap) -->
+        {% for t in tickets %}
+        {% set cur = roles.stage_index(t.status) %}
+        <div id="detail-{{ t.id }}" class="card p-5 ticket-detail hidden">
+            <div class="flex items-center justify-between mb-3 gap-2">
+                <div><span class="text-gray-400 font-mono text-xs mr-1">#{{ t.number }}</span><span class="font-bold text-gray-800">{{ t.title }}</span></div>
+                <div class="flex items-center gap-3">
+                    <span class="pill st-{{ t.status }}">{{ t.status.replace('_',' ') }}</span>
+                    <button type="button" onclick="closeDetail()" class="text-gray-400 hover:text-white" title="Close"><i class="fas fa-times"></i></button>
+                </div>
+            </div>
+            <div class="road">
+                {% for key, label in roles.STAGES %}
+                {% set idx = loop.index0 %}
+                <div class="stage {{ 'done' if idx < cur or t.status=='closed' else 'current' if idx==cur else '' }}">
+                    <div class="line"></div>
+                    <div class="dot">{% if idx < cur or t.status=='closed' %}<i class="fas fa-check"></i>{% else %}{{ idx+1 }}{% endif %}</div>
+                    <div class="lbl">{{ label }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+        </main>
+      </div>
+    </div>
+    <script>
+        // Insert a line break on Enter (not a block element) so saved HTML stays clean.
+        try { document.execCommand('defaultParagraphSeparator', false, 'br'); } catch (e) {}
+        function rteCmd(cmd) {
+            document.getElementById('rte').focus();
+            document.execCommand(cmd, false, null);
+        }
+        // Left menu: click a ticket -> show its roadmap on the right.
+        function selectTicket(id) {
+            const item = document.getElementById('item-' + id);
+            const wasActive = item && item.classList.contains('active');
+            // Reset everything first.
+            document.querySelectorAll('.ticket-detail').forEach(d => d.classList.add('hidden'));
+            document.querySelectorAll('.ticket-item').forEach(i => i.classList.remove('active'));
+            const ph = document.getElementById('detailPlaceholder');
+            // Clicking the already-open ticket closes it (toggle).
+            if (wasActive) { if (ph) ph.classList.remove('hidden'); return; }
+            if (ph) ph.classList.add('hidden');
+            const d = document.getElementById('detail-' + id); if (d) d.classList.remove('hidden');
+            if (item) item.classList.add('active');
+        }
+        function closeDetail() {
+            document.querySelectorAll('.ticket-detail').forEach(d => d.classList.add('hidden'));
+            document.querySelectorAll('.ticket-item').forEach(i => i.classList.remove('active'));
+            const ph = document.getElementById('detailPlaceholder'); if (ph) ph.classList.remove('hidden');
+        }
+        // Show chosen files as chips instead of the plain native text.
+        function showFiles(input) {
+            const list = document.getElementById('fileList');
+            list.innerHTML = '';
+            Array.from(input.files).forEach(f => {
+                const chip = document.createElement('span');
+                chip.className = 'file-chip';
+                chip.innerHTML = '<i class="fas fa-file"></i>' + f.name;
+                list.appendChild(chip);
+            });
+        }
+    </script>
+</body>
+</html>

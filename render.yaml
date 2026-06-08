@@ -4,7 +4,12 @@ services:
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 300 --workers 1
+    # gthread worker + threads: the single worker can still answer Render's
+    # health checks while one thread is busy generating a PDF (a plain sync
+    # worker blocks completely -> Render marks it unhealthy -> 502).
+    # --max-requests recycles the worker periodically so image-rendering memory
+    # never piles up and OOM-kills the 512 MB free-tier box.
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 300 --workers 1 --worker-class gthread --threads 4 --max-requests 150 --max-requests-jitter 30
     envVars:
       - key: PYTHON_VERSION
         value: "3.12.7"

@@ -1,0 +1,245 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=3">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Employee Query — Helpdesk</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family:'Barlow',sans-serif; background:#0f1417; color:#e6e8eb; }
+        .topbar { background: linear-gradient(135deg,#14181a 0%,#0a0d0e 100%); }
+        .card { background:#1a2025; border:1px solid #262d33; border-radius:14px; }
+        .contact { display:block; width:100%; text-align:left; padding:10px 12px; border-radius:10px;
+            border:1px solid transparent; cursor:pointer; transition:all .12s; background:transparent; }
+        .contact:hover { background:#222a30; }
+        .contact.active { background:#20272d; border-color:#C9F31D; }
+        .contact .nm { font-weight:600; color:#e6e8eb; font-size:14px; }
+        .contact .sub { font-size:11px; color:#7b848f; }
+        .grp-h { font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:#7b848f; margin:14px 6px 6px; }
+        .badge { background:#C9F31D; color:#14181a; font-size:11px; font-weight:800; border-radius:999px; padding:1px 7px; }
+        .thread { flex:1; overflow-y:auto; padding:16px; background:#12181b; border-radius:12px; }
+        .bubble { max-width:70%; padding:10px 14px; border-radius:14px; margin-bottom:14px; }
+        .bubble.mine { background:#C9F31D; color:#14181a; margin-left:auto; border-bottom-right-radius:4px; }
+        .bubble.theirs { background:#222a30; color:#e6e8eb; border:1px solid #333b43; border-bottom-left-radius:4px; }
+        .bubble .body { font-size:14px; line-height:1.5; white-space:pre-wrap; word-break:break-word; }
+        .bubble .meta { font-size:11px; margin-top:5px; opacity:.7; }
+        .bubble.mine .meta { color:#14181a; }
+        .bubble.theirs .meta { color:#9aa3ad; }
+        input[type=text] { background:#222a30; color:#e6e8eb; border:1px solid #333b43; border-radius:10px; padding:10px 13px; }
+        input::placeholder { color:#6b7682; }
+        /* ticks */
+        .tick-sent { margin-left:5px; font-size:11px; color:rgba(20,24,26,.45); }
+        .tick-read { margin-left:5px; font-size:11px; color:#1d4ed8; }
+        /* reply */
+        .reply-icon { background:transparent; border:0; color:inherit; opacity:.4; cursor:pointer;
+            font-size:11px; margin-right:6px; padding:0; transition:opacity .12s; }
+        .reply-icon:hover { opacity:1; }
+        .reply-quote { background:rgba(0,0,0,.18); border-left:3px solid rgba(255,255,255,.35);
+            border-radius:6px; padding:5px 8px; margin-bottom:6px; cursor:pointer; }
+        .bubble.mine .reply-quote { background:rgba(12,18,6,.12); border-left-color:rgba(12,18,6,.4); }
+        .reply-quote .rq-who { font-weight:700; font-size:11px; opacity:.85; }
+        .reply-quote .rq-text { font-size:12px; opacity:.7; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .reply-banner { display:flex; align-items:center; justify-content:space-between; gap:8px;
+            background:rgba(201,243,29,.08); border-left:3px solid #C9F31D; border-radius:8px;
+            padding:6px 10px; margin-bottom:8px; }
+        .reply-banner .rb-who { font-size:12px; font-weight:700; color:#C9F31D; }
+        .reply-banner .rb-text { font-size:12px; color:#9aa3ad; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:520px; }
+        @keyframes hl { 0%{ box-shadow:0 0 0 3px rgba(201,243,29,.7);} 100%{ box-shadow:0 0 0 0 rgba(201,243,29,0);} }
+        .bubble.flash { animation:hl 1.6s ease; }
+        /* attached-file chips */
+        .file-list { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+        .file-chip { display:inline-flex; align-items:center; gap:6px; background:#1a2025;
+            border:1px solid #333b43; color:#cbd2d9; padding:4px 10px; border-radius:999px; font-size:12px; }
+        .file-chip i { color:#C9F31D; }
+    </style>
+</head>
+<body class="h-screen flex flex-col">
+    <div class="topbar text-white px-6 py-3 flex items-center justify-between flex-shrink-0">
+        <div class="flex items-center gap-3">
+            <a href="{{ url_for('tickets_board') }}" class="opacity-80 hover:opacity-100"><i class="fas fa-arrow-left"></i></a>
+            <span class="text-lg font-bold"><i class="fas fa-comments mr-2" style="color:#C9F31D"></i>Employee Query</span>
+        </div>
+        <div class="flex items-center gap-2 text-sm">
+            <a href="{{ url_for('tickets_board') }}" class="px-3 py-1 rounded-lg hover:bg-white hover:bg-opacity-10">Board</a>
+            <span class="opacity-60">{{ name_map.get(me) }}</span>
+            <a href="{{ url_for('logout') }}" class="px-3 py-1 rounded-lg hover:bg-white hover:bg-opacity-10"><i class="fas fa-sign-out-alt"></i></a>
+        </div>
+    </div>
+
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+      {% for cat, m in msgs %}
+        <div class="mx-6 mt-3 px-4 py-2 rounded-lg text-sm font-semibold
+                    {{ 'bg-green-100 text-green-800' if cat=='success' else 'bg-yellow-100 text-yellow-800' if cat=='warning' else 'bg-red-100 text-red-800' if cat in ['error','danger'] else 'bg-blue-100 text-blue-800' }}">{{ m }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    <div class="flex-1 flex gap-4 p-4 overflow-hidden">
+        <!-- LEFT: people list grouped -->
+        <aside class="w-72 flex-shrink-0 card p-3 overflow-y-auto">
+            <h3 class="font-bold text-gray-200 px-2 mb-2">People</h3>
+            <input id="contactSearch" type="text" oninput="filterContacts()" placeholder="Search people..."
+                   class="w-full mb-2" autocomplete="off">
+
+            {# macro-ish contact link #}
+            {% macro contact_link(s) %}
+            {% set em = (s.email or '')|lower %}
+            <a href="{{ url_for('staff_messages', **{'with': em}) }}"
+               class="contact {{ 'active' if partner and (partner.email or '')|lower == em }}"
+               data-name="{{ (s.name or em)|lower }}">
+                <div class="flex items-center justify-between gap-2">
+                    <span class="nm">{{ s.name or em.split('@')[0] }}</span>
+                    {% if unread.get(em) %}<span class="badge">{{ unread.get(em) }}</span>{% endif %}
+                </div>
+                <div class="sub">{{ roles.role_label(s.role) }}{% if s.team %} · {{ roles.team_label(s.team) }}{% endif %}</div>
+            </a>
+            {% endmacro %}
+
+            <!-- People with new messages float to the top -->
+            {% if unread_contacts %}
+            <div class="grp">
+                <div class="grp-h" style="color:#C9F31D"><i class="fas fa-circle text-xs mr-1"></i>New messages</div>
+                {% for s in unread_contacts %}{{ contact_link(s) }}{% endfor %}
+            </div>
+            {% endif %}
+
+            {% for grp, people in groups.items() %}
+            <div class="grp">
+                <div class="grp-h">{{ grp }}</div>
+                {% for s in people %}{{ contact_link(s) }}{% endfor %}
+            </div>
+            {% endfor %}
+            {% if not groups %}<p class="text-xs text-gray-500 px-2">No other team members yet.</p>{% endif %}
+            <p id="noResults" class="text-xs text-gray-500 px-2 mt-2" style="display:none">No people match.</p>
+        </aside>
+
+        <!-- RIGHT: conversation -->
+        <main class="flex-1 card flex flex-col overflow-hidden">
+            {% if not partner %}
+                <div class="flex-1 flex flex-col items-center justify-center text-gray-500">
+                    <i class="fas fa-comments text-4xl mb-3" style="color:#2c343b"></i>
+                    <p>Select a person on the left to start chatting.</p>
+                </div>
+            {% else %}
+                <div class="px-5 py-3 border-b border-gray-800 flex items-center gap-3 flex-shrink-0">
+                    <div class="w-9 h-9 rounded-full bg-gray-700 flex items-center justify-center font-bold text-white">
+                        {{ (partner.name or partner.email)[0]|upper }}
+                    </div>
+                    <div>
+                        <div class="font-bold text-gray-100">{{ partner.name or partner.email.split('@')[0] }}</div>
+                        <div class="text-xs text-gray-400">{{ roles.role_label(partner.role) }}{% if partner.team %} · {{ roles.team_label(partner.team) }}{% endif %}</div>
+                    </div>
+                </div>
+
+                <div class="thread m-4" id="thread">
+                    {% if not convo %}<p class="text-center text-gray-500 text-sm py-6">No messages yet. Say hello 👋</p>{% endif %}
+                    {% for m in convo %}
+                    {% set mine = (m.sender_email or '')|lower == me %}
+                    <div class="flex group" id="m-{{ m.id }}">
+                        <div class="bubble {{ 'mine' if mine else 'theirs' }}">
+                            {% if m.reply_to %}
+                            <div class="reply-quote" onclick="jumpTo('{{ m.reply_to.id }}')">
+                                <div class="rq-who">{{ name_map.get((m.reply_to.sender_email or '')|lower, 'User') }}</div>
+                                <div class="rq-text">{{ (m.reply_to.body or '[attachment]')|truncate(60) }}</div>
+                            </div>
+                            {% endif %}
+                            {% if m.body %}<div class="body">{{ m.body }}</div>{% endif %}
+                            {% for a in m.attachments %}
+                                <a href="{{ a.url }}" target="_blank" class="block text-xs underline mt-1"><i class="fas fa-paperclip mr-1"></i>{{ a.name }}</a>
+                            {% endfor %}
+                            <!-- sender name + date + time directly under the message -->
+                            <div class="meta">
+                                <button type="button" class="reply-icon"
+                                        data-id="{{ m.id }}"
+                                        data-who="{{ (name_map.get((m.sender_email or '')|lower, 'User'))|e }}"
+                                        data-text="{{ (m.body or '[attachment]')|truncate(60)|e }}"
+                                        onclick="setReplyFromBtn(this)" title="Reply"><i class="fas fa-reply"></i></button>
+                                {{ name_map.get((m.sender_email or '')|lower, (m.sender_email or '').split('@')[0]) }}
+                                · {{ m.created_at[:10] }} {{ m.created_at[11:16] }}
+                                {% if mine %}
+                                    {% if m.read_at %}<i class="fas fa-check-double tick-read" title="Seen"></i>
+                                    {% else %}<i class="fas fa-check tick-sent" title="Sent"></i>{% endif %}
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div class="px-4 pb-4 flex-shrink-0">
+                    <div id="replyBanner" class="reply-banner" style="display:none">
+                        <div class="overflow-hidden">
+                            <div class="rb-who"></div>
+                            <div class="rb-text"></div>
+                        </div>
+                        <button type="button" onclick="cancelReply()" class="text-gray-400 hover:text-white px-2"><i class="fas fa-times"></i></button>
+                    </div>
+                    <div id="chatFileList" class="file-list"></div>
+                    <form method="POST" action="{{ url_for('staff_message_send') }}" enctype="multipart/form-data"
+                          class="flex items-center gap-2">
+                        <input type="hidden" name="to" value="{{ partner.email }}">
+                        <input type="hidden" name="reply_to_id" id="replyToId">
+                        <input type="text" name="body" id="msgBody" class="flex-1" placeholder="Type a message to {{ partner.name or partner.email.split('@')[0] }}...">
+                        <label class="cursor-pointer text-gray-400 hover:text-white px-1"><i class="fas fa-paperclip"></i><input type="file" name="attachments" id="chatFiles" multiple class="hidden" onchange="showChatFiles(this)"></label>
+                        <button class="px-4 py-2 rounded-lg font-bold" style="background:#C9F31D;color:#14181a"><i class="fas fa-paper-plane"></i></button>
+                    </form>
+                </div>
+            {% endif %}
+        </main>
+    </div>
+
+    <script>
+        const th = document.getElementById('thread'); if (th) th.scrollTop = th.scrollHeight;
+        // Search the People list (hides non-matching contacts + empty groups).
+        function filterContacts() {
+            const q = (document.getElementById('contactSearch').value || '').trim().toLowerCase();
+            let any = false;
+            document.querySelectorAll('.grp').forEach(g => {
+                let vis = 0;
+                g.querySelectorAll('.contact').forEach(c => {
+                    const match = !q || (c.dataset.name || '').includes(q);
+                    c.style.display = match ? '' : 'none';
+                    if (match) vis++;
+                });
+                g.style.display = vis ? '' : 'none';
+                if (vis) any = true;
+            });
+            const nr = document.getElementById('noResults');
+            if (nr) nr.style.display = any ? 'none' : 'block';
+        }
+        // WhatsApp-style reply: pick a message to reply to.
+        function setReplyFromBtn(btn) {
+            document.getElementById('replyToId').value = btn.dataset.id;
+            document.querySelector('#replyBanner .rb-who').textContent = 'Replying to ' + btn.dataset.who;
+            document.querySelector('#replyBanner .rb-text').textContent = btn.dataset.text;
+            document.getElementById('replyBanner').style.display = 'flex';
+            document.getElementById('msgBody').focus();
+        }
+        function cancelReply() {
+            document.getElementById('replyToId').value = '';
+            document.getElementById('replyBanner').style.display = 'none';
+        }
+        function jumpTo(id) {
+            const el = document.getElementById('m-' + id);
+            if (!el) return;
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            const b = el.querySelector('.bubble');
+            if (b) { b.classList.remove('flash'); void b.offsetWidth; b.classList.add('flash'); }
+        }
+        // Show chosen files as chips so the user knows they're attached.
+        function showChatFiles(input) {
+            const list = document.getElementById('chatFileList');
+            if (!list) return;
+            list.innerHTML = '';
+            Array.from(input.files).forEach(f => {
+                const chip = document.createElement('span');
+                chip.className = 'file-chip';
+                chip.innerHTML = '<i class="fas fa-file"></i>' + f.name;
+                list.appendChild(chip);
+            });
+        }
+    </script>
+</body>
+</html>

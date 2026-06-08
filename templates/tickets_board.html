@@ -1,0 +1,228 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=3">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Helpdesk Board</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="/static/css/brand-theme.css" rel="stylesheet">
+    <link href="/static/css/dark-theme.css" rel="stylesheet">
+    <script src="/static/js/theme-toggle.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Barlow', sans-serif; background:#f6f7fb; }
+        .topbar { background: linear-gradient(135deg, #14181a 0%, #0a0d0e 100%); }
+        .pill { display:inline-block; padding:3px 12px; border-radius:9999px; font-size:11px; font-weight:700; text-transform:capitalize; }
+        /* monday.com-style status colours */
+        .st-raised      { background:#e2e8f0; color:#334155; }
+        .st-reviewed    { background:#ede9fe; color:#6d28d9; }
+        .st-assigned    { background:#ffedd5; color:#c2410c; }
+        .st-in_progress { background:#dbeafe; color:#1d4ed8; }
+        .st-resolved    { background:#dcfce7; color:#166534; }
+        .st-closed      { background:#e5e7eb; color:#6b7280; }
+        .pr-low    { background:#f1f5f9; color:#64748b; }
+        .pr-medium { background:#fef9c3; color:#a16207; }
+        .pr-high   { background:#fee2e2; color:#b91c1c; }
+        .pr-urgent { background:#fecaca; color:#991b1b; }
+        .grp-bar { width:6px; border-radius:6px; }
+        .b-raised{background:#94a3b8} .b-reviewed{background:#8b5cf6} .b-assigned{background:#f97316}
+        .b-in_progress{background:#3b82f6} .b-resolved{background:#22c55e} .b-closed{background:#9ca3af}
+        .card { background:#fff; border-radius:14px; box-shadow:0 2px 10px rgba(0,0,0,.05); }
+        .trow:hover { background:#f8fafc; }
+        .chip { padding:6px 12px; border-radius:10px; font-weight:600; font-size:13px; cursor:pointer; }
+        .modal-bg { background:rgba(0,0,0,.6); }
+        /* ---- Dark theme (helpdesk) ---- */
+        body { background:#0f1417 !important; color:#e6e8eb !important; }
+        .card { background:#1a2025 !important; border:1px solid #262d33 !important; box-shadow:none !important; }
+        .text-gray-800,.text-gray-700 { color:#e6e8eb !important; }
+        .text-gray-600,.text-gray-500 { color:#aab2bd !important; }
+        .text-gray-400,.text-gray-300 { color:#7b848f !important; }
+        .border,.border-b,.border-t { border-color:#262d33 !important; }
+        .bg-white { background:#1a2025 !important; }
+        .bg-gray-100 { background:#222a30 !important; color:#e6e8eb !important; }
+        input,select,textarea { background:#222a30 !important; color:#e6e8eb !important; border:1px solid #333b43 !important; }
+        input::placeholder,textarea::placeholder { color:#6b7682 !important; }
+        .trow:hover { background:#222a30 !important; }
+        thead { color:#7b848f !important; }
+        /* polish */
+        .trow td { padding-top:14px; padding-bottom:14px; }
+        .trow { transition:background .12s; }
+        thead th { letter-spacing:.04em; }
+        .tnum { display:inline-block; background:#222a30; border:1px solid #333b43; color:#9aa3ad;
+            font-family:ui-monospace,monospace; font-size:11px; padding:1px 7px; border-radius:6px; margin-right:8px; }
+        .grp-bar { height:22px !important; }
+    </style>
+</head>
+<body class="min-h-screen">
+    <!-- Top bar -->
+    <div class="topbar text-white px-6 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <i class="fas fa-headset text-xl" style="color:#C9F31D"></i>
+            <span class="text-lg font-bold">Helpdesk</span>
+            <span class="text-xs opacity-60 ml-2">{{ roles.team_label(staff.team) if staff.team else roles.role_label(staff.role) }}</span>
+        </div>
+        <div class="flex items-center gap-2 text-sm">
+            <a href="{{ url_for('tickets_board') }}" class="px-3 py-1 rounded-lg bg-white bg-opacity-10 hover:bg-opacity-20">Board</a>
+            <a href="{{ url_for('staff_messages') }}" class="relative px-3 py-1 rounded-lg hover:bg-white hover:bg-opacity-10"><i class="fas fa-comments mr-1"></i>Messages<span id="msgBadge" class="hidden absolute -top-1 -right-1 text-xs font-bold rounded-full px-1.5" style="background:#ef4444;color:#fff"></span></a>
+            {% if roles.can_manage_staff() %}
+            <a href="{{ url_for('staff_admin') }}" class="px-3 py-1 rounded-lg hover:bg-white hover:bg-opacity-10"><i class="fas fa-users mr-1"></i>Staff</a>
+            {% endif %}
+            <a href="{{ url_for('dashboard') }}" class="px-3 py-1 rounded-lg hover:bg-white hover:bg-opacity-10">Dashboard</a>
+            <span class="opacity-60 ml-2">{{ session_info.user_email if session_info }}</span>
+            <a href="{{ url_for('logout') }}" class="px-3 py-1 rounded-lg hover:bg-white hover:bg-opacity-10"><i class="fas fa-sign-out-alt"></i></a>
+        </div>
+    </div>
+
+    <div class="w-full px-6 py-6">
+        {% with msgs = get_flashed_messages(with_categories=true) %}
+          {% for cat, m in msgs %}
+            <div class="mb-3 px-4 py-2 rounded-lg text-sm font-semibold
+                        {{ 'bg-green-100 text-green-800' if cat=='success' else 'bg-yellow-100 text-yellow-800' if cat=='warning' else 'bg-red-100 text-red-800' if cat in ['error','danger'] else 'bg-blue-100 text-blue-800' }}">{{ m }}</div>
+          {% endfor %}
+        {% endwith %}
+
+        <!-- Header + stats -->
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+            <div>
+                <h1 class="text-2xl font-extrabold text-gray-800">Tickets</h1>
+                <p class="text-sm text-gray-500">
+                    {% if roles.can_see_all_tickets() %}All tickets across every team.{% else %}Tickets assigned to you.{% endif %}
+                </p>
+            </div>
+            <div class="flex items-center gap-2">
+                {% if roles.can_create_ticket() %}
+                <button onclick="document.getElementById('newModal').classList.remove('hidden')"
+                        class="chip text-white" style="background:#C9F31D;color:#14181a">
+                    <i class="fas fa-plus mr-1"></i>New ticket
+                </button>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Stat chips -->
+        <div class="flex flex-wrap gap-2 mb-5">
+            {% set order = ['raised','reviewed','assigned','in_progress','resolved','closed'] %}
+            <a href="{{ url_for('tickets_board') }}" class="chip"
+               style="background:{{ '#C9F31D' if not f_status else '#222a30' }};color:{{ '#14181a' if not f_status else '#e6e8eb' }}">All <span class="opacity-60">{{ tickets|length }}</span></a>
+            {% for s in order %}
+            <a href="{{ url_for('tickets_board', status=s, team=f_team) }}" class="chip"
+               style="background:{{ '#C9F31D' if f_status==s else '#222a30' }};color:{{ '#14181a' if f_status==s else '#e6e8eb' }}">
+               {{ s.replace('_',' ')|capitalize }} <span class="opacity-70">{{ counts.get(s, 0) }}</span>
+            </a>
+            {% endfor %}
+        </div>
+
+        <!-- Team filter (only for those who see all) -->
+        {% if roles.can_see_all_tickets() %}
+        <div class="flex flex-wrap gap-2 mb-5 text-sm">
+            <span class="text-gray-400 self-center mr-1">Team:</span>
+            <a href="{{ url_for('tickets_board', status=f_status) }}" class="px-3 py-1 rounded-lg {{ 'bg-gray-800 text-white' if not f_team else 'bg-white text-gray-600' }}">Any</a>
+            {% for key, label in roles.TEAMS %}
+            <a href="{{ url_for('tickets_board', status=f_status, team=key) }}"
+               class="px-3 py-1 rounded-lg {{ 'bg-gray-800 text-white' if f_team==key else 'bg-white text-gray-600' }}">{{ label }}</a>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Board grouped by status (monday.com style groups) -->
+        {% if not tickets %}
+            <div class="card p-10 text-center text-gray-400">
+                <i class="fas fa-inbox text-4xl mb-3"></i>
+                <p>No tickets here yet.</p>
+            </div>
+        {% else %}
+            {% set groups = {} %}
+            {% for t in tickets %}
+                {% if groups.update({t.status: groups.get(t.status, []) + [t]}) %}{% endif %}
+            {% endfor %}
+            {% for s in order %}
+              {% if groups.get(s) %}
+              <div class="mb-6">
+                <div class="flex items-center gap-2 mb-2">
+                    <div class="grp-bar b-{{ s }}" style="height:20px"></div>
+                    <h3 class="font-bold text-gray-700">{{ s.replace('_',' ')|capitalize }}</h3>
+                    <span class="text-xs text-gray-400">{{ groups.get(s)|length }}</span>
+                </div>
+                <div class="card overflow-hidden">
+                    <table class="w-full text-sm">
+                        <thead class="text-gray-400 text-xs uppercase border-b">
+                            <tr>
+                                <th class="text-left font-semibold px-4 py-2">Ticket</th>
+                                <th class="text-left font-semibold px-4 py-2 hidden md:table-cell">Client</th>
+                                <th class="text-left font-semibold px-4 py-2">Team</th>
+                                <th class="text-left font-semibold px-4 py-2 hidden md:table-cell">Assignee</th>
+                                <th class="text-left font-semibold px-4 py-2">Priority</th>
+                                <th class="text-left font-semibold px-4 py-2">Raised</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% for t in groups.get(s) %}
+                            <tr class="trow border-b cursor-pointer" onclick="location.href='{{ url_for('ticket_detail', ticket_id=t.id) }}'">
+                                <td class="px-4 py-3">
+                                    <span class="tnum">#{{ t.number }}</span>
+                                    <span class="font-semibold text-gray-800">{{ t.title }}</span>
+                                </td>
+                                <td class="px-4 py-3 hidden md:table-cell text-gray-600">{{ t.client.name if t.client else (t.raised_by or '—') }}</td>
+                                <td class="px-4 py-3">
+                                    {% if t.team %}<span class="pill st-assigned">{{ roles.team_label(t.team) }}</span>{% else %}<span class="text-gray-300">—</span>{% endif %}
+                                </td>
+                                <td class="px-4 py-3 hidden md:table-cell text-gray-600">{{ t.assigned_to or '—' }}</td>
+                                <td class="px-4 py-3"><span class="pill pr-{{ t.priority }}">{{ t.priority }}</span></td>
+                                <td class="px-4 py-3 text-gray-400 whitespace-nowrap text-xs">{{ t.created_at|reltime }}</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+              </div>
+              {% endif %}
+            {% endfor %}
+        {% endif %}
+    </div>
+
+    <!-- New ticket modal (PMO/triage only) -->
+    {% if roles.can_create_ticket() %}
+    <div id="newModal" class="hidden fixed inset-0 modal-bg flex items-center justify-center z-50 p-4">
+        <div class="card p-6 w-full max-w-lg">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-gray-800">Raise a ticket</h3>
+                <button onclick="document.getElementById('newModal').classList.add('hidden')" class="text-gray-400 hover:text-gray-700"><i class="fas fa-times"></i></button>
+            </div>
+            <form method="POST" action="{{ url_for('ticket_create') }}">
+                <label class="block text-xs font-semibold text-gray-500 mb-1">Title</label>
+                <input name="title" required class="w-full border rounded-lg px-3 py-2 mb-3" placeholder="Short summary of the issue">
+                <label class="block text-xs font-semibold text-gray-500 mb-1">Description</label>
+                <textarea name="description" rows="4" class="w-full border rounded-lg px-3 py-2 mb-3" placeholder="Details..."></textarea>
+                <div class="grid grid-cols-2 gap-3 mb-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-500 mb-1">Team</label>
+                        <select name="team" class="w-full border rounded-lg px-3 py-2">
+                            <option value="">— Unassigned —</option>
+                            {% for key, label in roles.TEAMS %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-500 mb-1">Priority</label>
+                        <select name="priority" class="w-full border rounded-lg px-3 py-2">
+                            {% for p in roles.PRIORITIES %}<option value="{{ p }}" {{ 'selected' if p=='medium' }}>{{ p|capitalize }}</option>{% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <button class="w-full py-2 rounded-lg font-bold" style="background:#C9F31D;color:#14181a">Create ticket</button>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+    <script>
+        // Unread Employee-Query messages -> header badge.
+        fetch('/api/staff/unread').then(r => r.json()).then(d => {
+            if (d && d.count > 0) {
+                const b = document.getElementById('msgBadge');
+                if (b) { b.textContent = d.count; b.classList.remove('hidden'); }
+            }
+        }).catch(() => {});
+    </script>
+</body>
+</html>

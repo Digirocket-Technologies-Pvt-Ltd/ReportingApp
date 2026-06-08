@@ -264,6 +264,10 @@
                     <i class="fas fa-chart-line"></i>
                 </a>
                 {% endif %}
+                <!-- Helpdesk: raise & track support tickets (Amazon-style roadmap). -->
+                <a href="{{ url_for('portal_tickets') }}" class="reports-btn" title="My support tickets">
+                    <i class="fas fa-headset"></i>
+                </a>
                 <!-- Reports icon (timeline dropdown). Hidden when access is OFF
                      so the disabled client only sees the chat. -->
                 {% if access_on %}

@@ -817,3 +817,462 @@ def get_service_credential(key):
     except Exception as e:
         print(f'[db] get_service_credential failed (non-fatal): {e}')
         return None
+
+
+# ============================================================
+#  Helpdesk / Ticketing module
+#  (schema in tickets_schema.sql). Same graceful-degradation
+#  posture as everything above: reads return [] / None and
+#  writes are skipped when Supabase isn't configured.
+# ============================================================
+
+# ---------------- Staff (internal team members) ----------------
+def get_staff_by_email(email):
+    """The staff row whose email matches (case-insensitive), or None.
+    Used at login to grant a user their role + team."""
+    if not is_configured() or not email:
+        return None
+    try:
+        e = email.strip().lower()
+        r = requests.get(_rest(f'staff?email=ilike.{e}&select=*'),
+                         headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        rows = r.json()
+        return rows[0] if rows else None
+    except Exception as e:
+        print(f'[db] get_staff_by_email failed (non-fatal): {e}')
+        return None
+
+
+def list_staff(team=None, role=None, active_only=False):
+    """All staff, newest first. Optionally filter by team / role / active."""
+    if not is_configured():
+        return []
+    try:
+        q = 'staff?select=*&order=created_at.desc'
+        if team:
+            q += f'&team=eq.{team}'
+        if role:
+            q += f'&role=eq.{role}'
+        if active_only:
+            q += '&active=eq.true'
+        r = requests.get(_rest(q), headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        print(f'[db] list_staff failed (non-fatal): {e}')
+        return []
+
+
+def add_staff(data):
+    """Insert a staff member. Returns the new row (raises with Supabase detail)."""
+    if data.get('email'):
+        data = {**data, 'email': data['email'].strip().lower()}
+    r = requests.post(_rest('staff'),
+                      headers=_headers({'Prefer': 'return=representation'}),
+                      json=data, timeout=TIMEOUT)
+    _raise_with_supabase_detail(r)
+    rows = r.json()
+    return rows[0] if rows else None
+
+
+def update_staff(staff_id, data):
+    """Patch a staff member (role/team/active/name)."""
+    r = requests.patch(_rest(f'staff?id=eq.{staff_id}'),
+                       headers=_headers({'Prefer': 'return=representation'}),
+                       json=data, timeout=TIMEOUT)
+    _raise_with_supabase_detail(r)
+    rows = r.json()
+    return rows[0] if rows else None
+
+
+def delete_staff(staff_id):
+    r = requests.delete(_rest(f'staff?id=eq.{staff_id}'),
+                        headers=_headers(), timeout=TIMEOUT)
+    r.raise_for_status()
+    return True
+
+
+def upsert_staff(email, name=None, role=None, team=None):
+    """Insert or update a staff member by email (used for bulk seeding)."""
+    if not is_configured() or not email:
+        return None
+    body = {'email': email.strip().lower()}
+    if name is not None:
+        body['name'] = name
+    if role is not None:
+        body['role'] = role
+    if team is not None:
+        body['team'] = team
+    try:
+        # Upsert on the `email` unique constraint (id is the PK, so without
+        # on_conflict=email PostgREST would try to INSERT and hit a 409).
+        r = requests.post(
+            _rest('staff?on_conflict=email'),
+            headers=_headers({'Prefer': 'resolution=merge-duplicates,return=representation'}),
+            json=body, timeout=TIMEOUT)
+        _raise_with_supabase_detail(r)
+        rows = r.json()
+        return rows[0] if rows else None
+    except Exception as e:
+        print(f'[db] upsert_staff failed (non-fatal): {e}')
+        return None
+
+
+# ---------------- Tickets ----------------
+def create_ticket(data):
+    """Insert a ticket. Returns the new row (with its auto number)."""
+    if not is_configured():
+        return None
+    r = requests.post(_rest('tickets'),
+                      headers=_headers({'Prefer': 'return=representation'}),
+                      json=data, timeout=TIMEOUT)
+    _raise_with_supabase_detail(r)
+    rows = r.json()
+    return rows[0] if rows else None
+
+
+def get_ticket(ticket_id):
+    """One ticket by id, with the client name/email embedded."""
+    if not is_configured() or not ticket_id:
+        return None
+    try:
+        r = requests.get(
+            _rest(f'tickets?id=eq.{ticket_id}&select=*,client:clients(id,name,email)'),
+            headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        rows = r.json()
+        return rows[0] if rows else None
+    except Exception as e:
+        print(f'[db] get_ticket failed (non-fatal): {e}')
+        return None
+
+
+def get_ticket_by_number(number):
+    """One ticket by its human number (#1001)."""
+    if not is_configured() or not number:
+        return None
+    try:
+        r = requests.get(
+            _rest(f'tickets?number=eq.{number}&select=*,client:clients(id,name,email)'),
+            headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        rows = r.json()
+        return rows[0] if rows else None
+    except Exception as e:
+        print(f'[db] get_ticket_by_number failed (non-fatal): {e}')
+        return None
+
+
+def list_tickets(status=None, team=None, assigned_to=None, client_id=None,
+                 statuses=None):
+    """Tickets (newest first) with the client embedded, for the board.
+    Filter by a single status, a list of statuses, team, assignee, client."""
+    if not is_configured():
+        return []
+    try:
+        q = 'tickets?select=*,client:clients(id,name,email)&order=created_at.desc'
+        if status:
+            q += f'&status=eq.{status}'
+        if statuses:
+            q += f'&status=in.({",".join(statuses)})'
+        if team:
+            q += f'&team=eq.{team}'
+        if assigned_to:
+            q += f'&assigned_to=ilike.{assigned_to.strip().lower()}'
+        if client_id:
+            q += f'&client_id=eq.{client_id}'
+        r = requests.get(_rest(q), headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        print(f'[db] list_tickets failed (non-fatal): {e}')
+        return []
+
+
+def update_ticket(ticket_id, data):
+    """Patch a ticket and bump updated_at."""
+    if not is_configured() or not ticket_id:
+        return None
+    body = {**data, 'updated_at': datetime.now(timezone.utc).isoformat()}
+    r = requests.patch(_rest(f'tickets?id=eq.{ticket_id}'),
+                       headers=_headers({'Prefer': 'return=representation'}),
+                       json=body, timeout=TIMEOUT)
+    _raise_with_supabase_detail(r)
+    rows = r.json()
+    return rows[0] if rows else None
+
+
+def count_tickets_by_status():
+    """{status: count} across all tickets, for board badges."""
+    if not is_configured():
+        return {}
+    try:
+        r = requests.get(_rest('tickets?select=status'),
+                         headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        out = {}
+        for row in r.json():
+            s = row.get('status') or 'raised'
+            out[s] = out.get(s, 0) + 1
+        return out
+    except Exception as e:
+        print(f'[db] count_tickets_by_status failed (non-fatal): {e}')
+        return {}
+
+
+# ---------------- Ticket thread (chat) ----------------
+def add_ticket_message(ticket_id, sender_email, sender_role, body,
+                       attachments=None, is_solution=False, mentions=None):
+    """Append a message to a ticket thread. Returns the inserted row."""
+    if not is_configured() or not ticket_id:
+        return None
+    data = {
+        'ticket_id': ticket_id,
+        'sender_email': sender_email,
+        'sender_role': sender_role,
+        'body': body or None,
+        'attachments': attachments or [],
+        'is_solution': bool(is_solution),
+        'mentions': mentions or [],
+    }
+    r = requests.post(_rest('ticket_messages'),
+                      headers=_headers({'Prefer': 'return=representation'}),
+                      json=data, timeout=TIMEOUT)
+    r.raise_for_status()
+    rows = r.json()
+    return rows[0] if rows else None
+
+
+def list_ticket_messages(ticket_id):
+    """All messages for one ticket, oldest first (chat order)."""
+    if not is_configured() or not ticket_id:
+        return []
+    try:
+        r = requests.get(
+            _rest(f'ticket_messages?ticket_id=eq.{ticket_id}&select=*&order=created_at.asc'),
+            headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        print(f'[db] list_ticket_messages failed (non-fatal): {e}')
+        return []
+
+
+# ---------------- Ticket events (the roadmap) ----------------
+def add_ticket_event(ticket_id, stage, actor_email, note=None):
+    """Record a stage transition for the Amazon-style roadmap. Never raises."""
+    if not is_configured() or not ticket_id:
+        return None
+    try:
+        r = requests.post(_rest('ticket_events'),
+                          headers=_headers({'Prefer': 'return=representation'}),
+                          json={'ticket_id': ticket_id, 'stage': stage,
+                                'actor_email': actor_email, 'note': note},
+                          timeout=TIMEOUT)
+        r.raise_for_status()
+        rows = r.json()
+        return rows[0] if rows else None
+    except Exception as e:
+        print(f'[db] add_ticket_event failed (non-fatal): {e}')
+        return None
+
+
+def list_ticket_events(ticket_id):
+    """All events for one ticket, oldest first (roadmap order)."""
+    if not is_configured() or not ticket_id:
+        return []
+    try:
+        r = requests.get(
+            _rest(f'ticket_events?ticket_id=eq.{ticket_id}&select=*&order=created_at.asc'),
+            headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        print(f'[db] list_ticket_events failed (non-fatal): {e}')
+        return []
+
+
+# ---------------- Ticket assignees (multi-assign + @mention) ----------------
+def add_ticket_assignee(ticket_id, email, added_by=None):
+    """Add a person to a ticket's assignee list (idempotent on ticket+email)."""
+    if not is_configured() or not ticket_id or not email:
+        return None
+    try:
+        r = requests.post(
+            _rest('ticket_assignees?on_conflict=ticket_id,email'),
+            headers=_headers({'Prefer': 'resolution=merge-duplicates,return=representation'}),
+            json={'ticket_id': ticket_id, 'email': email.strip().lower(), 'added_by': added_by},
+            timeout=TIMEOUT)
+        _raise_with_supabase_detail(r)
+        rows = r.json()
+        return rows[0] if rows else None
+    except Exception as e:
+        print(f'[db] add_ticket_assignee failed (non-fatal): {e}')
+        return None
+
+
+def remove_ticket_assignee(ticket_id, email):
+    if not is_configured() or not ticket_id or not email:
+        return None
+    try:
+        r = requests.delete(
+            _rest(f'ticket_assignees?ticket_id=eq.{ticket_id}&email=eq.{email.strip().lower()}'),
+            headers=_headers(), timeout=TIMEOUT)
+        return r.status_code in (200, 204)
+    except Exception as e:
+        print(f'[db] remove_ticket_assignee failed (non-fatal): {e}')
+        return None
+
+
+def list_ticket_assignees(ticket_id):
+    """List of assignee emails for a ticket (oldest first)."""
+    if not is_configured() or not ticket_id:
+        return []
+    try:
+        r = requests.get(
+            _rest(f'ticket_assignees?ticket_id=eq.{ticket_id}&select=email&order=created_at.asc'),
+            headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        return [row['email'] for row in r.json() if row.get('email')]
+    except Exception as e:
+        print(f'[db] list_ticket_assignees failed (non-fatal): {e}')
+        return []
+
+
+def ticket_ids_for_assignee(email):
+    """All ticket ids where this person is in the assignee list."""
+    if not is_configured() or not email:
+        return []
+    try:
+        r = requests.get(
+            _rest(f'ticket_assignees?email=eq.{email.strip().lower()}&select=ticket_id'),
+            headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        return list({row['ticket_id'] for row in r.json() if row.get('ticket_id')})
+    except Exception as e:
+        print(f'[db] ticket_ids_for_assignee failed (non-fatal): {e}')
+        return []
+
+
+def list_tickets_for_employee(email, status=None):
+    """Tickets where the employee is the primary assignee OR a co-assignee."""
+    if not is_configured() or not email:
+        return []
+    email = email.strip().lower()
+    ids = ticket_ids_for_assignee(email)
+    conds = [f'assigned_to.eq.{email}']
+    if ids:
+        conds.append(f'id.in.({",".join(ids)})')
+    try:
+        q = (f'tickets?select=*,client:clients(id,name,email)'
+             f'&or=({",".join(conds)})&order=created_at.desc')
+        if status:
+            q += f'&status=eq.{status}'
+        r = requests.get(_rest(q), headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        print(f'[db] list_tickets_for_employee failed (non-fatal): {e}')
+        return []
+
+
+# ---------------- Staff-to-staff chat (Employee Query) ----------------
+def send_staff_message(sender_email, recipient_email, body, attachments=None,
+                       reply_to_id=None):
+    """Insert a direct message between two staff members."""
+    if not is_configured() or not sender_email or not recipient_email:
+        return None
+    data = {
+        'sender_email': sender_email.strip().lower(),
+        'recipient_email': recipient_email.strip().lower(),
+        'body': body or None,
+        'attachments': attachments or [],
+    }
+    if reply_to_id:
+        data['reply_to_id'] = reply_to_id
+    r = requests.post(_rest('staff_messages'),
+                      headers=_headers({'Prefer': 'return=representation'}),
+                      json=data, timeout=TIMEOUT)
+    _raise_with_supabase_detail(r)
+    rows = r.json()
+    return rows[0] if rows else None
+
+
+def staff_conversation(a, b):
+    """All messages between two staff members (either direction), oldest first.
+    Attaches a compact `reply_to` preview to messages that reply to another."""
+    if not is_configured() or not a or not b:
+        return []
+    a = a.strip().lower(); b = b.strip().lower()
+    q = (f'staff_messages?or=(and(sender_email.eq.{a},recipient_email.eq.{b}),'
+         f'and(sender_email.eq.{b},recipient_email.eq.{a}))&order=created_at.asc')
+    try:
+        r = requests.get(_rest(q), headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        rows = r.json()
+        by_id = {m['id']: m for m in rows}
+        for m in rows:
+            rid = m.get('reply_to_id')
+            if rid and rid in by_id:
+                t = by_id[rid]
+                m['reply_to'] = {'id': t['id'], 'body': t.get('body'),
+                                 'sender_email': t.get('sender_email')}
+        return rows
+    except Exception as e:
+        print(f'[db] staff_conversation failed (non-fatal): {e}')
+        return []
+
+
+def mark_staff_messages_read(me, other):
+    """Stamp read_at on messages sent FROM `other` TO `me` (call when `me`
+    opens the conversation)."""
+    if not is_configured() or not me or not other:
+        return None
+    me = me.strip().lower(); other = other.strip().lower()
+    try:
+        r = requests.patch(
+            _rest(f'staff_messages?sender_email=eq.{other}&recipient_email=eq.{me}&read_at=is.null'),
+            headers=_headers({'Prefer': 'return=minimal'}),
+            json={'read_at': datetime.now(timezone.utc).isoformat()},
+            timeout=TIMEOUT)
+        return r.status_code in (200, 204)
+    except Exception as e:
+        print(f'[db] mark_staff_messages_read failed (non-fatal): {e}')
+        return None
+
+
+def staff_unread_counts(me):
+    """{sender_email: count} of messages waiting for `me` (per contact)."""
+    if not is_configured() or not me:
+        return {}
+    me = me.strip().lower()
+    try:
+        r = requests.get(
+            _rest(f'staff_messages?recipient_email=eq.{me}&read_at=is.null&select=sender_email'),
+            headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        out = {}
+        for row in r.json():
+            s = (row.get('sender_email') or '').lower()
+            if s:
+                out[s] = out.get(s, 0) + 1
+        return out
+    except Exception as e:
+        print(f'[db] staff_unread_counts failed (non-fatal): {e}')
+        return {}
+
+
+def staff_total_unread(me):
+    """Total unread messages waiting for `me` (for the header badge)."""
+    if not is_configured() or not me:
+        return 0
+    try:
+        r = requests.get(
+            _rest(f'staff_messages?recipient_email=eq.{me.strip().lower()}&read_at=is.null&select=id'),
+            headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        return len(r.json())
+    except Exception as e:
+        print(f'[db] staff_total_unread failed (non-fatal): {e}')
+        return 0

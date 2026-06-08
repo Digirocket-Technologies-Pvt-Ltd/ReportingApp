@@ -1,6 +1,7 @@
 from flask import Flask, Response, render_template, redirect, url_for, request, jsonify, session, flash, send_file, g
-from auth import is_authenticated, refresh_token_if_needed, logout_user, get_user_info, get_session_info, is_pmo_admin
+from auth import is_authenticated, refresh_token_if_needed, logout_user, get_user_info, get_session_info, is_pmo_admin, is_agency_account
 import db
+import roles
 from ga4 import get_ga4_properties, get_ga4_data, get_property_name, get_ga4_overview, get_ga4_acquisition, get_ga4_extra, get_ga4_daily_overview
 from gsc import get_gsc_sites, get_gsc_detailed_data, normalize_gsc_property, get_gsc_summary
 from gmb import get_gmb_data, gmb_debug
@@ -28,6 +29,36 @@ app = Flask(__name__, static_folder='static')
 
 
 def init_routes(app):
+    # Jinja filter to render whitelisted rich-text (ticket descriptions /
+    # messages) safely — see html_sanitize.py.
+    from html_sanitize import safe_html as _safe_html
+    app.jinja_env.filters['safe_html'] = _safe_html
+
+    def _reltime(iso):
+        """Human 'when': Today HH:MM / Yesterday / N days ago / DD Mon YYYY.
+        Compares in the server's local timezone."""
+        if not iso:
+            return ''
+        try:
+            s = str(iso).replace('Z', '+00:00')
+            dt = datetime.fromisoformat(s)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.astimezone()
+        except Exception:
+            return str(iso)[:10]
+        now = datetime.now().astimezone()
+        days = (now.date() - dt.date()).days
+        if days == 0:
+            return f"Today {dt.strftime('%H:%M')}"
+        if days == 1:
+            return 'Yesterday'
+        if 1 < days < 7:
+            return f'{days} days ago'
+        return dt.strftime('%d %b %Y')
+
+    app.jinja_env.filters['reltime'] = _reltime
+
     # =====================================================================
     #  AGENCY GOOGLE TOKEN (used to fetch GA4/GSC for clients)
     # =====================================================================
@@ -108,12 +139,12 @@ def init_routes(app):
             except Exception:
                 session['is_client'] = False
 
-        # Admin path: silently mirror their refresh_token into the
-        # service_credentials table so client dashboards can use it.
-        # ALWAYS overwrites (latest admin login wins -> no stale tokens).
-        # The session flag is only set on a successful save, so an admin
-        # whose first request fails will retry on the next one.
-        if (is_authenticated() and is_pmo_admin()
+        # Agency path: silently mirror the AGENCY account's refresh_token into
+        # the service_credentials table so client dashboards can use it.
+        # Pinned to the single agency account (is_agency_account) so other PMO
+        # admins logging in never clobber it. The session flag is only set on a
+        # successful save, so a first-request failure retries next request.
+        if (is_authenticated() and is_agency_account()
                 and not session.get('_agency_creds_synced')):
             rt = session.get('refresh_token')
             if rt and db.is_configured():
@@ -136,7 +167,13 @@ def init_routes(app):
                       f"refresh_token in session - ask them to log out + log in")
                 session['_agency_creds_synced'] = True   # don't retry; can't fix automatically
 
-        if not session.get('is_client'):
+        # Swap to the agency Google token for Google-API calls when the user
+        # has no Google token of their own: that's every client, plus any
+        # PMO admin who signed in via email-OTP (so their dashboards still
+        # load). Plain Google-authenticated users keep their own token.
+        non_google = (session.get('auth_provider') or 'google') != 'google'
+        needs_agency = session.get('is_client') or (non_google and is_pmo_admin())
+        if not needs_agency:
             return
         agency_token = _agency_access_token()
         if not agency_token:
@@ -325,6 +362,16 @@ def init_routes(app):
 
     @app.route('/login')
     def login():
+        """Login chooser: Google SSO (for Google accounts) OR a universal
+        email-code (OTP) that works for ANY provider — Outlook/Microsoft 365,
+        Google, etc. The company runs on Outlook, so OTP is the default path."""
+        if is_authenticated():
+            return redirect(url_for('index'))
+        pending = session.get('_login_otp') or {}
+        return render_template('login.html', otp_email=pending.get('email'))
+
+    @app.route('/login/google')
+    def login_google():
         session.clear()
         from urllib.parse import urlencode
         params = {
@@ -339,6 +386,85 @@ def init_routes(app):
         }
         auth_url = 'https://accounts.google.com/o/oauth2/auth?' + urlencode(params)
         return redirect(auth_url)
+
+    # ---- Universal email-code (OTP) login: works for Outlook + Google ----
+    @app.route('/auth/otp/send', methods=['POST'])
+    def otp_send():
+        """Step 1: email a 6-digit login code. Only registered staff or
+        clients can receive one (prevents strangers / email spam)."""
+        email = (request.form.get('email') or '').strip().lower()
+        if not email or '@' not in email:
+            flash('Please enter a valid email address.', 'warning')
+            return redirect(url_for('login'))
+        known = None
+        try:
+            known = db.get_staff_by_email(email) or db.get_client_by_email(email)
+        except Exception as e:
+            print(f'[login-otp] lookup failed: {e}')
+        if not known:
+            flash('This email is not registered yet. Ask an admin to add you under Staff.', 'warning')
+            return redirect(url_for('login'))
+        import secrets
+        code = f'{secrets.randbelow(1000000):06d}'
+        session['_login_otp'] = {'email': email, 'code': code,
+                                 'expires_at': time.time() + 600, 'attempts': 0}
+        try:
+            from email_sender import send_email_with_attachments
+            subject = f'Your DigiRocket login code: {code}'
+            body = (f"Your DigiRocket login verification code is:\n\n"
+                    f"    {code}\n\n"
+                    f"It expires in 10 minutes. If you didn't request this, "
+                    f"you can safely ignore this email.")
+            send_email_with_attachments(email, subject, body, [])
+            flash(f'A 6-digit code was sent to {email}. It expires in 10 minutes.', 'success')
+        except Exception as e:
+            print(f'[login-otp] send failed for {email}: {e}')
+            session.pop('_login_otp', None)
+            flash(f'Could not send the code: {e}', 'error')
+        return redirect(url_for('login'))
+
+    @app.route('/auth/otp/verify', methods=['POST'])
+    def otp_verify():
+        """Step 2: check the code and establish a (non-Google) session."""
+        entry = session.get('_login_otp') or {}
+        email = (entry.get('email') or '').strip().lower()
+        code = (request.form.get('code') or '').strip()
+        if not entry or not email:
+            flash('Your code expired. Please request a new one.', 'warning')
+            return redirect(url_for('login'))
+        if time.time() > entry.get('expires_at', 0):
+            session.pop('_login_otp', None)
+            flash('That code expired. Please request a new one.', 'warning')
+            return redirect(url_for('login'))
+        if entry.get('attempts', 0) >= 5:
+            session.pop('_login_otp', None)
+            flash('Too many wrong attempts. Please request a new code.', 'warning')
+            return redirect(url_for('login'))
+        entry['attempts'] = entry.get('attempts', 0) + 1
+        session['_login_otp'] = entry
+        if code != entry.get('code'):
+            flash('Incorrect code. Try again.', 'error')
+            return redirect(url_for('login'))
+
+        # Verified — build the session. Staff identity takes precedence over
+        # a same-email client profile.
+        staff = db.get_staff_by_email(email)
+        client = db.get_client_by_email(email)
+        import secrets
+        session.pop('_login_otp', None)
+        session['access_token'] = 'otp:' + secrets.token_urlsafe(16)  # sentinel -> is_authenticated()
+        session['auth_provider'] = 'otp'
+        session['user_email'] = email
+        session['user_name'] = (staff or {}).get('name') or (client or {}).get('name') or email
+        session['login_time'] = datetime.now().timestamp()
+        session['token_expiry'] = datetime.now().timestamp() + 2 * 3600
+        session['is_client'] = bool(client and not staff)
+        flash('Logged in successfully.', 'success')
+        if session['is_client']:
+            return redirect(url_for('client_portal'))
+        if staff and staff.get('role') == 'employee':
+            return redirect(url_for('tickets_board'))
+        return redirect(url_for('dashboard'))
 
     @app.route('/logout')
     def logout():
@@ -381,14 +507,14 @@ def init_routes(app):
             # whether to swap to agency credentials without a DB hit per request.
             session['is_client'] = False
             try:
-                if is_pmo_admin():
-                    # Save this admin's refresh_token as the "agency" credentials
-                    # so client dashboards can fetch GA4/GSC data on the
-                    # client's behalf (clients usually don't have direct access).
+                if is_agency_account():
+                    # Save the agency account's refresh_token as the shared
+                    # "agency" credential so client dashboards can fetch GA4/GSC
+                    # on the client's behalf (clients lack direct access).
                     rt = session.get('refresh_token')
                     if rt and db.is_configured():
                         db.save_service_credential('agency_refresh_token', rt)
-                elif db.is_configured() \
+                elif not is_pmo_admin() and db.is_configured() \
                         and db.get_client_by_email(session.get('user_email')):
                     session['is_client'] = True
             except Exception as e:
@@ -2065,6 +2191,50 @@ def init_routes(app):
             flash(f'Could not send the message: {e}', 'error')
         return redirect(url_for('pmo_queries'))
 
+    @app.route('/pmo/chats/<client_id>/to-ticket', methods=['POST'])
+    def pmo_chat_to_ticket(client_id):
+        """Convert a client's chat into a helpdesk ticket, carrying the FULL
+        transcript across so the assigned employee gets the whole context
+        (chat + text + attachments) along with the unique ticket number."""
+        if not is_pmo_admin():
+            return render_template('pmo_denied.html', email=session.get('user_email')), 403
+        client = db.get_client(client_id)
+        if not client:
+            flash('Client not found.', 'error')
+            return redirect(url_for('pmo_queries'))
+        try:
+            transcript = db.client_messages(client_id)
+            # Title: explicit field, else first client line, else a default.
+            title = (request.form.get('title') or '').strip()
+            if not title:
+                first = next((m.get('body') for m in transcript
+                              if m.get('sender_type') == 'client' and m.get('body')), None)
+                title = (first[:70] + '…') if first and len(first) > 70 else (first or f"Chat — {client.get('name') or 'client'}")
+            ticket = db.create_ticket({
+                'title': title,
+                'description': f"Converted from chat with {client.get('name') or client.get('email')}.",
+                'client_id': client_id,
+                'raised_by': (client.get('email') or '').lower(),
+                'team': (request.form.get('team') or '').strip() or None,
+                'priority': (request.form.get('priority') or 'medium').strip(),
+                'status': 'raised',
+            })
+            # Copy every chat message into the ticket thread (context travels).
+            for m in transcript:
+                role = 'client' if m.get('sender_type') == 'client' else 'triage'
+                db.add_ticket_message(ticket['id'], m.get('sender_email'), role,
+                                      m.get('body'), attachments=m.get('attachments') or [])
+            db.add_ticket_event(ticket['id'], 'raised', session.get('user_email'),
+                                'Created from client chat (transcript copied)')
+            _ticket_notify(ticket, f"Ticket #{ticket['number']} created from {client.get('name') or 'client'}'s chat",
+                           link=url_for('ticket_detail', ticket_id=ticket['id']))
+            flash(f"Ticket #{ticket['number']} created from the chat.", 'success')
+            return redirect(url_for('ticket_detail', ticket_id=ticket['id']))
+        except Exception as e:
+            print(f'[pmo] chat-to-ticket failed: {e}')
+            flash(f'Could not convert chat to ticket: {e}', 'error')
+            return redirect(url_for('pmo_queries'))
+
     # Legacy aliases: older templates / bookmarks posted to the per-query
     # endpoints. Forward them to the per-client endpoint so nothing breaks.
     @app.route('/pmo/queries/<query_id>/message', methods=['POST'])
@@ -2508,6 +2678,558 @@ def init_routes(app):
             result['gsc_error'] = 'No Search Console property set for this client'
 
         return jsonify(result)
+
+    # =====================================================================
+    #  HELPDESK / TICKETING MODULE
+    #  client raises -> triage reviews -> dispatch assigns -> employee
+    #  resolves -> closed. Roles + permissions live in roles.py.
+    # =====================================================================
+    def _require_staff():
+        """Gate for staff-only ticket pages. Returns a redirect Response if
+        the visitor isn't recognised internal staff, else None."""
+        if not is_authenticated() or not refresh_token_if_needed():
+            flash('Please log in to access the helpdesk.', 'warning')
+            return redirect(url_for('login'))
+        if not roles.is_staff():
+            flash('Your account is not set up as a team member. '
+                  'Ask an admin to add you under Staff.', 'warning')
+            return redirect(url_for('index'))
+        return None
+
+    def _ticket_notify(ticket, message, link=None, email=None):
+        """Drop a line in the activity feed (notification bell). Best-effort."""
+        try:
+            db.log_activity('ticket', message, link=link,
+                            user_email=email or session.get('user_email'))
+        except Exception as e:
+            print(f'[tickets] notify failed (non-fatal): {e}')
+
+    def _load_ticket(ticket_id):
+        """Fetch a ticket and attach its full assignee list (multi-assign)."""
+        t = db.get_ticket(ticket_id)
+        if t:
+            t['assignees'] = db.list_ticket_assignees(ticket_id)
+        return t
+
+    @app.route('/tickets')
+    def tickets_board():
+        """monday.com-style board / inbox, filtered to what the role may see."""
+        guard = _require_staff()
+        if guard:
+            return guard
+
+        staff = roles.current_staff()
+        f_status = (request.args.get('status') or '').strip() or None
+        f_team = (request.args.get('team') or '').strip() or None
+
+        if roles.can_see_all_tickets():
+            tickets = db.list_tickets(status=f_status, team=f_team)
+        else:
+            # Employees see every ticket they're assigned to — primary OR
+            # a co-assignee (multi-assign / @mention).
+            tickets = db.list_tickets_for_employee(roles.my_email(), status=f_status)
+
+        counts = db.count_tickets_by_status()
+        return render_template('tickets_board.html',
+                               tickets=tickets,
+                               counts=counts,
+                               staff=staff,
+                               roles=roles,
+                               f_status=f_status,
+                               f_team=f_team,
+                               session_info=get_session_info())
+
+    @app.route('/tickets/<ticket_id>')
+    def ticket_detail(ticket_id):
+        """Roadmap + thread + role-aware action panel for one ticket."""
+        guard = _require_staff()
+        if guard:
+            return guard
+        # Fetch the 5 independent reads concurrently (they only need ticket_id),
+        # instead of 5 sequential Supabase round-trips -> much faster page load.
+        with ThreadPoolExecutor(max_workers=5) as _ex:
+            f_ticket = _ex.submit(db.get_ticket, ticket_id)
+            f_assignees = _ex.submit(db.list_ticket_assignees, ticket_id)
+            f_messages = _ex.submit(db.list_ticket_messages, ticket_id)
+            f_events = _ex.submit(db.list_ticket_events, ticket_id)
+            f_all = _ex.submit(db.list_staff, active_only=True)
+        ticket = f_ticket.result()
+        if not ticket:
+            flash('Ticket not found.', 'warning')
+            return redirect(url_for('tickets_board'))
+        ticket['assignees'] = f_assignees.result()
+        if not roles.can_view_ticket(ticket):
+            flash('You do not have access to that ticket.', 'warning')
+            return redirect(url_for('tickets_board'))
+
+        messages = f_messages.result()
+        events = f_events.result()
+        # Build {stage: event} from the trail so the roadmap can show who+when.
+        events_by_stage = {}
+        for e in events:
+            events_by_stage[e.get('stage')] = e
+
+        all_staff = f_all.result()
+        # Derive team members from all_staff (no extra DB call).
+        team_members = [s for s in all_staff
+                        if s.get('team') == ticket.get('team') and s.get('role') == 'employee'] \
+            if ticket.get('team') else []
+        # Name lookup for assignee chips + @mention picker.
+        name_map = {(s.get('email') or '').lower(): (s.get('name') or s.get('email'))
+                    for s in all_staff}
+        return render_template('ticket_detail.html',
+                               ticket=ticket,
+                               messages=messages,
+                               events=events,
+                               events_by_stage=events_by_stage,
+                               team_members=team_members,
+                               all_staff=all_staff,
+                               name_map=name_map,
+                               staff=roles.current_staff(),
+                               roles=roles,
+                               session_info=get_session_info())
+
+    @app.route('/tickets/new', methods=['POST'])
+    def ticket_create():
+        """Staff raises a ticket from the board (internal request)."""
+        guard = _require_staff()
+        if guard:
+            return guard
+        if not roles.can_create_ticket():
+            flash('Only the PMO team can raise tickets here. Clients raise their own from the portal.', 'warning')
+            return redirect(url_for('tickets_board'))
+        title = (request.form.get('title') or '').strip()
+        if not title:
+            flash('A title is required to raise a ticket.', 'warning')
+            return redirect(url_for('tickets_board'))
+        data = {
+            'title': title,
+            'description': (request.form.get('description') or '').strip() or None,
+            'team': (request.form.get('team') or '').strip() or None,
+            'priority': (request.form.get('priority') or 'medium').strip(),
+            'raised_by': roles.my_email(),
+            'status': 'raised',
+        }
+        try:
+            ticket = db.create_ticket(data)
+            db.add_ticket_event(ticket['id'], 'raised', roles.my_email(),
+                                'Raised by team')
+            _ticket_notify(ticket, f"New ticket #{ticket['number']}: {title}",
+                           link=url_for('ticket_detail', ticket_id=ticket['id']))
+            flash(f"Ticket #{ticket['number']} created.", 'success')
+            return redirect(url_for('ticket_detail', ticket_id=ticket['id']))
+        except Exception as e:
+            flash(f'Could not create ticket: {e}', 'error')
+            return redirect(url_for('tickets_board'))
+
+    @app.route('/tickets/<ticket_id>/review', methods=['POST'])
+    def ticket_review(ticket_id):
+        """Triage approves (and routes to a team) or rejects a raised ticket."""
+        guard = _require_staff()
+        if guard:
+            return guard
+        if not roles.can_review():
+            flash('Only the triage team can review tickets.', 'warning')
+            return redirect(url_for('ticket_detail', ticket_id=ticket_id))
+        ticket = _load_ticket(ticket_id)
+        if not ticket:
+            return redirect(url_for('tickets_board'))
+
+        action = request.form.get('action')
+        note = (request.form.get('note') or '').strip() or None
+        now = datetime.now(timezone.utc).isoformat()
+        if action == 'reject':
+            db.update_ticket(ticket_id, {'status': 'closed', 'closed_by': roles.my_email(),
+                                         'closed_at': now, 'review_note': note})
+            db.add_ticket_event(ticket_id, 'closed', roles.my_email(),
+                                f'Rejected at review: {note or "no reason given"}')
+            flash('Ticket rejected and closed.', 'success')
+        else:
+            team = (request.form.get('team') or ticket.get('team') or '').strip() or None
+            db.update_ticket(ticket_id, {'status': 'reviewed', 'approved_by': roles.my_email(),
+                                         'approved_at': now, 'team': team, 'review_note': note})
+            db.add_ticket_event(ticket_id, 'reviewed', roles.my_email(),
+                                f'Approved -> {roles.team_label(team)}' if team else 'Approved')
+            _ticket_notify(ticket, f"Ticket #{ticket['number']} approved, awaiting assignment",
+                           link=url_for('ticket_detail', ticket_id=ticket_id))
+            flash('Ticket approved. Client notified; ready for dispatch.', 'success')
+        return redirect(url_for('ticket_detail', ticket_id=ticket_id))
+
+    @app.route('/tickets/<ticket_id>/assign', methods=['POST'])
+    def ticket_assign(ticket_id):
+        """Dispatch assigns an approved ticket to a specific team member."""
+        guard = _require_staff()
+        if guard:
+            return guard
+        if not roles.can_assign():
+            flash('Only dispatch / triage can assign tickets.', 'warning')
+            return redirect(url_for('ticket_detail', ticket_id=ticket_id))
+        ticket = _load_ticket(ticket_id)
+        if not ticket:
+            return redirect(url_for('tickets_board'))
+        # Multiple people can be assigned at once (checkbox list).
+        assignees = [e.strip().lower() for e in request.form.getlist('assigned_to') if e.strip()]
+        # de-dupe, keep order
+        assignees = list(dict.fromkeys(assignees))
+        team = (request.form.get('team') or ticket.get('team') or '').strip() or None
+        if not assignees:
+            flash('Pick at least one team member to assign the ticket to.', 'warning')
+            return redirect(url_for('ticket_detail', ticket_id=ticket_id))
+        now = datetime.now(timezone.utc).isoformat()
+        for em in assignees:
+            db.add_ticket_assignee(ticket_id, em, added_by=roles.my_email())
+        # Primary assignee (first) goes on the ticket row for display/back-compat.
+        db.update_ticket(ticket_id, {'status': 'assigned', 'assigned_to': assignees[0],
+                                     'assigned_at': now, 'team': team,
+                                     'dispatched_by': roles.my_email(),
+                                     'dispatched_at': now})
+        who = ', '.join(a.split('@')[0] for a in assignees)
+        db.add_ticket_event(ticket_id, 'assigned', roles.my_email(),
+                            f'Assigned to {who} ({roles.team_label(team)})')
+        for em in assignees:
+            _ticket_notify(ticket, f"Ticket #{ticket['number']} assigned to you",
+                           link=url_for('ticket_detail', ticket_id=ticket_id), email=em)
+        flash(f'Assigned to {who}.', 'success')
+        return redirect(url_for('ticket_detail', ticket_id=ticket_id))
+
+    @app.route('/tickets/<ticket_id>/start', methods=['POST'])
+    def ticket_start(ticket_id):
+        """Assigned employee marks the ticket in progress."""
+        guard = _require_staff()
+        if guard:
+            return guard
+        ticket = _load_ticket(ticket_id)
+        if not ticket:
+            return redirect(url_for('tickets_board'))
+        if not roles.can_work_ticket(ticket):
+            flash('Only the assigned team member can start this ticket.', 'warning')
+            return redirect(url_for('ticket_detail', ticket_id=ticket_id))
+        db.update_ticket(ticket_id, {'status': 'in_progress'})
+        db.add_ticket_event(ticket_id, 'in_progress', roles.my_email(), 'Work started')
+        flash('Ticket moved to In progress.', 'success')
+        return redirect(url_for('ticket_detail', ticket_id=ticket_id))
+
+    @app.route('/tickets/<ticket_id>/resolve', methods=['POST'])
+    def ticket_resolve(ticket_id):
+        """Assigned employee posts the solution and resolves the ticket. The
+        solution is recorded in the thread tagged 'Re: #N — solution'."""
+        guard = _require_staff()
+        if guard:
+            return guard
+        ticket = _load_ticket(ticket_id)
+        if not ticket:
+            return redirect(url_for('tickets_board'))
+        if not roles.can_work_ticket(ticket):
+            flash('Only the assigned team member can resolve this ticket.', 'warning')
+            return redirect(url_for('ticket_detail', ticket_id=ticket_id))
+        solution = (request.form.get('solution') or '').strip()
+        if not solution:
+            flash('Describe the solution before resolving.', 'warning')
+            return redirect(url_for('ticket_detail', ticket_id=ticket_id))
+        attachments = _process_uploads(ticket_id, request.files.getlist('attachments'))
+        body = f"Re: #{ticket['number']} — solution:\n{solution}"
+        db.add_ticket_message(ticket_id, roles.my_email(), roles.role() or 'employee',
+                              body, attachments=attachments, is_solution=True)
+        now = datetime.now(timezone.utc).isoformat()
+        db.update_ticket(ticket_id, {'status': 'resolved', 'resolved_by': roles.my_email(),
+                                     'resolved_at': now})
+        db.add_ticket_event(ticket_id, 'resolved', roles.my_email(), 'Solution posted')
+        _ticket_notify(ticket, f"Ticket #{ticket['number']} resolved",
+                       link=url_for('ticket_detail', ticket_id=ticket_id))
+        flash('Ticket resolved and solution posted to the thread.', 'success')
+        return redirect(url_for('ticket_detail', ticket_id=ticket_id))
+
+    @app.route('/tickets/<ticket_id>/close', methods=['POST'])
+    def ticket_close(ticket_id):
+        """Triage / admin closes a resolved ticket (or reopens it)."""
+        guard = _require_staff()
+        if guard:
+            return guard
+        ticket = _load_ticket(ticket_id)
+        if not ticket:
+            return redirect(url_for('tickets_board'))
+        action = request.form.get('action', 'close')
+        if action == 'reopen':
+            if not roles.can_review():
+                flash('Only triage / admin can reopen a ticket.', 'warning')
+                return redirect(url_for('ticket_detail', ticket_id=ticket_id))
+            db.update_ticket(ticket_id, {'status': 'assigned', 'closed_at': None, 'closed_by': None})
+            db.add_ticket_event(ticket_id, 'reopened', roles.my_email(), 'Ticket reopened')
+            flash('Ticket reopened.', 'success')
+        else:
+            if not (roles.can_review() or roles.is_assignee(ticket)):
+                flash('Only triage / admin or the assignee can close this ticket.', 'warning')
+                return redirect(url_for('ticket_detail', ticket_id=ticket_id))
+            now = datetime.now(timezone.utc).isoformat()
+            db.update_ticket(ticket_id, {'status': 'closed', 'closed_by': roles.my_email(),
+                                         'closed_at': now})
+            db.add_ticket_event(ticket_id, 'closed', roles.my_email(), 'Ticket closed')
+            flash('Ticket closed.', 'success')
+        return redirect(url_for('ticket_detail', ticket_id=ticket_id))
+
+    @app.route('/tickets/<ticket_id>/message', methods=['POST'])
+    def ticket_message(ticket_id):
+        """Append a message (text + optional files) to the ticket thread."""
+        guard = _require_staff()
+        if guard:
+            return guard
+        ticket = _load_ticket(ticket_id)
+        if not ticket or not roles.can_view_ticket(ticket):
+            return redirect(url_for('tickets_board'))
+        body = (request.form.get('body') or '').strip()
+        attachments = _process_uploads(ticket_id, request.files.getlist('attachments'))
+        # @mentions: hidden field holds comma-separated emails picked in the UI.
+        raw = (request.form.get('mentions') or '')
+        mentions = []
+        for em in raw.split(','):
+            em = em.strip().lower()
+            if em and em not in mentions and db.get_staff_by_email(em):
+                mentions.append(em)
+        if not body and not attachments:
+            flash('Type a message or attach a file.', 'warning')
+            return redirect(url_for('ticket_detail', ticket_id=ticket_id))
+        db.add_ticket_message(ticket_id, roles.my_email(), roles.role() or 'employee',
+                              body, attachments=attachments, mentions=mentions)
+        # Tagging someone adds them to the ticket as an assignee + notifies them.
+        for em in mentions:
+            db.add_ticket_assignee(ticket_id, em, added_by=roles.my_email())
+            _ticket_notify(ticket, f"You were tagged on ticket #{ticket['number']}",
+                           link=url_for('ticket_detail', ticket_id=ticket_id), email=em)
+        if mentions:
+            who = ', '.join(e.split('@')[0] for e in mentions)
+            db.add_ticket_event(ticket_id, 'assigned', roles.my_email(),
+                                f'Tagged & added: {who}')
+        return redirect(url_for('ticket_detail', ticket_id=ticket_id))
+
+    @app.route('/api/teams/<team>/members')
+    def api_team_members(team):
+        """JSON: active employees of one team (powers the assign dropdown)."""
+        guard = _require_staff()
+        if guard:
+            return jsonify({'members': []}), 403
+        members = db.list_staff(team=team, role='employee', active_only=True)
+        return jsonify({'members': [
+            {'email': m['email'], 'name': m.get('name') or m['email']} for m in members
+        ]})
+
+    # ---------------- Staff administration ----------------
+    @app.route('/staff')
+    def staff_admin():
+        """Manage who's on the team, their role and team."""
+        guard = _require_staff()
+        if guard:
+            return guard
+        if not roles.can_manage_staff():
+            flash('You do not have access to staff management.', 'warning')
+            return redirect(url_for('tickets_board'))
+        staff_list = db.list_staff()
+        return render_template('staff_admin.html',
+                               staff_list=staff_list,
+                               roles=roles,
+                               staff=roles.current_staff(),
+                               session_info=get_session_info())
+
+    @app.route('/staff/save', methods=['POST'])
+    def staff_save():
+        guard = _require_staff()
+        if guard:
+            return guard
+        if not roles.can_manage_staff():
+            flash('You do not have access to staff management.', 'warning')
+            return redirect(url_for('tickets_board'))
+        staff_id = (request.form.get('id') or '').strip()
+        email = (request.form.get('email') or '').strip().lower()
+        payload = {
+            'name': (request.form.get('name') or '').strip() or None,
+            'role': (request.form.get('role') or 'employee').strip(),
+            'team': (request.form.get('team') or '').strip() or None,
+            'active': request.form.get('active') == 'on',
+        }
+        try:
+            if staff_id:
+                db.update_staff(staff_id, payload)
+                flash('Staff member updated.', 'success')
+            else:
+                if not email:
+                    flash('Email is required to add a staff member.', 'warning')
+                    return redirect(url_for('staff_admin'))
+                db.add_staff({**payload, 'email': email})
+                flash(f'{email} added to the team.', 'success')
+        except Exception as e:
+            flash(f'Could not save staff member: {e}', 'error')
+        return redirect(url_for('staff_admin'))
+
+    @app.route('/staff/<staff_id>/delete', methods=['POST'])
+    def staff_delete(staff_id):
+        guard = _require_staff()
+        if guard:
+            return guard
+        if not roles.can_manage_staff():
+            flash('You do not have access to staff management.', 'warning')
+            return redirect(url_for('tickets_board'))
+        try:
+            db.delete_staff(staff_id)
+            flash('Staff member removed.', 'success')
+        except Exception as e:
+            flash(f'Could not remove staff member: {e}', 'error')
+        return redirect(url_for('staff_admin'))
+
+    # ---------------- Staff-to-staff chat (Employee Query) ----------------
+    @app.route('/staff/messages')
+    def staff_messages():
+        """Internal chat: managers (PMO/founder/assigner) <-> employees.
+        Left = all other staff (grouped by team); right = the open thread."""
+        guard = _require_staff()
+        if guard:
+            return guard
+        me = roles.my_email()
+        everyone = db.list_staff(active_only=True)
+        # Contacts = all active staff except myself.
+        contacts = [s for s in everyone if (s.get('email') or '').lower() != me]
+
+        unread = db.staff_unread_counts(me)
+        # People who have unread messages waiting -> shown first ("New messages").
+        unread_contacts = [s for s in contacts
+                           if (s.get('email') or '').lower() in unread]
+        unread_contacts.sort(key=lambda s: unread.get((s.get('email') or '').lower(), 0),
+                             reverse=True)
+
+        # Group the REST by team (people with unread are shown only once, up top).
+        groups = {}
+        for s in contacts:
+            if (s.get('email') or '').lower() in unread:
+                continue
+            if s.get('role') in ('supervisor', 'triage', 'dispatcher'):
+                key = 'Management'
+            else:
+                key = roles.team_label(s.get('team')) if s.get('team') else 'Other'
+            groups.setdefault(key, []).append(s)
+        with_email = (request.args.get('with') or '').strip().lower() or None
+        convo, partner = [], None
+        if with_email:
+            partner = db.get_staff_by_email(with_email)
+            if partner:
+                convo = db.staff_conversation(me, with_email)
+                db.mark_staff_messages_read(me, with_email)
+
+        name_map = {(s.get('email') or '').lower(): (s.get('name') or s.get('email')) for s in everyone}
+        name_map[me] = (roles.current_staff() or {}).get('name') or me
+        return render_template('staff_messages.html',
+                               me=me, groups=groups, unread=unread,
+                               unread_contacts=unread_contacts,
+                               convo=convo, partner=partner, name_map=name_map,
+                               roles=roles, staff=roles.current_staff(),
+                               session_info=get_session_info())
+
+    @app.route('/staff/messages/send', methods=['POST'])
+    def staff_message_send():
+        guard = _require_staff()
+        if guard:
+            return guard
+        me = roles.my_email()
+        to = (request.form.get('to') or '').strip().lower()
+        body = (request.form.get('body') or '').strip()
+        if not to or not db.get_staff_by_email(to):
+            flash('Pick a valid team member to message.', 'warning')
+            return redirect(url_for('staff_messages'))
+        # Folder must be storage-safe (no '@' from the email, which breaks the
+        # Supabase object key and silently dropped the upload).
+        attachments = _process_uploads('staff-chat', request.files.getlist('attachments'))
+        reply_to_id = (request.form.get('reply_to_id') or '').strip() or None
+        if not body and not attachments:
+            flash('Type a message or attach a file.', 'warning')
+            return redirect(url_for('staff_messages', **{'with': to}))
+        try:
+            db.send_staff_message(me, to, body, attachments, reply_to_id=reply_to_id)
+            my_name = (roles.current_staff() or {}).get('name') or me
+            _ticket_notify(None, f"New message from {my_name}",
+                           link=url_for('staff_messages', **{'with': me}), email=to)
+        except Exception as e:
+            print(f'[staff-chat] send failed: {e}')
+            msg = str(e)
+            if 'staff_messages' in msg and 'find the table' in msg:
+                flash('Chat is not set up yet — run staff_chat_schema.sql in Supabase first.', 'error')
+            else:
+                flash(f'Could not send the message: {e}', 'error')
+        return redirect(url_for('staff_messages', **{'with': to}))
+
+    @app.route('/api/staff/unread')
+    def api_staff_unread():
+        """JSON unread count for the header badge."""
+        if not roles.is_staff():
+            return jsonify({'count': 0})
+        return jsonify({'count': db.staff_total_unread(roles.my_email())})
+
+    # ---------------- Client-facing: raise & track tickets ----------------
+    @app.route('/portal/tickets')
+    def portal_tickets():
+        """A client's own tickets, each with the Amazon-style roadmap."""
+        if not is_authenticated() or not refresh_token_if_needed():
+            flash('Please log in.', 'warning')
+            return redirect(url_for('login'))
+        client = _current_client()
+        if not client:
+            if roles.is_staff():
+                return redirect(url_for('tickets_board'))
+            flash('Your account is not linked to a client profile.', 'warning')
+            return redirect(url_for('client_portal'))
+        tickets = db.list_tickets(client_id=client['id'])
+        # Attach a tiny roadmap context (events) to each for the timeline.
+        events_by_ticket = {}
+        for t in tickets:
+            evs = db.list_ticket_events(t['id'])
+            events_by_ticket[t['id']] = {e.get('stage'): e for e in evs}
+        return render_template('client_tickets.html',
+                               client=client, tickets=tickets,
+                               events_by_ticket=events_by_ticket,
+                               roles=roles,
+                               session_info=get_session_info())
+
+    @app.route('/portal/tickets/new', methods=['POST'])
+    def portal_ticket_create():
+        """Client raises a ticket from the portal (the 'Facebook-post' intake)."""
+        if not is_authenticated() or not refresh_token_if_needed():
+            return redirect(url_for('login'))
+        client = _current_client()
+        if not client:
+            flash('Only clients can raise tickets here.', 'warning')
+            return redirect(url_for('client_portal'))
+        title = (request.form.get('title') or '').strip()
+        description = (request.form.get('description') or '').strip()
+        if not title:
+            flash('Please give your issue a short title.', 'warning')
+            return redirect(url_for('portal_tickets'))
+        try:
+            ticket = db.create_ticket({
+                'title': title,
+                'description': description or None,
+                'client_id': client['id'],
+                'raised_by': (client.get('email') or session.get('user_email') or '').lower(),
+                'priority': (request.form.get('priority') or 'medium').strip(),
+                'status': 'raised',
+            })
+            db.add_ticket_event(ticket['id'], 'raised',
+                                client.get('email') or session.get('user_email'),
+                                'Raised by client')
+            # Seed the thread with the client's own description.
+            if description:
+                db.add_ticket_message(ticket['id'],
+                                      client.get('email') or session.get('user_email'),
+                                      'client', description)
+            attachments = _process_uploads(ticket['id'], request.files.getlist('attachments'))
+            if attachments:
+                db.add_ticket_message(ticket['id'],
+                                      client.get('email') or session.get('user_email'),
+                                      'client', None, attachments=attachments)
+            _ticket_notify(ticket,
+                           f"New client ticket #{ticket['number']}: {title}",
+                           link=url_for('ticket_detail', ticket_id=ticket['id']),
+                           email=client.get('email'))
+            flash(f"Ticket #{ticket['number']} raised. The team will review it shortly.",
+                  'success')
+        except Exception as e:
+            flash(f'Could not raise ticket: {e}', 'error')
+        return redirect(url_for('portal_tickets'))
 
 # Initialize the Flask app with routes
 init_routes(app)

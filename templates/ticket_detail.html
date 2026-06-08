@@ -1,0 +1,393 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=3">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ticket #{{ ticket.number }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="/static/css/brand-theme.css" rel="stylesheet">
+    <link href="/static/css/dark-theme.css" rel="stylesheet">
+    <script src="/static/js/theme-toggle.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family:'Barlow',sans-serif; background:#f6f7fb; }
+        .topbar { background: linear-gradient(135deg, #14181a 0%, #0a0d0e 100%); }
+        .card { background:#fff; border-radius:14px; box-shadow:0 2px 10px rgba(0,0,0,.05); }
+        .pill { display:inline-block; padding:3px 12px; border-radius:9999px; font-size:11px; font-weight:700; text-transform:capitalize; }
+        .st-raised{background:#e2e8f0;color:#334155}.st-reviewed{background:#ede9fe;color:#6d28d9}
+        .st-assigned{background:#ffedd5;color:#c2410c}.st-in_progress{background:#dbeafe;color:#1d4ed8}
+        .st-resolved{background:#dcfce7;color:#166534}.st-closed{background:#e5e7eb;color:#6b7280}
+        .pr-low{background:#f1f5f9;color:#64748b}.pr-medium{background:#fef9c3;color:#a16207}
+        .pr-high{background:#fee2e2;color:#b91c1c}.pr-urgent{background:#fecaca;color:#991b1b}
+        /* Amazon-style roadmap */
+        .road { display:flex; align-items:flex-start; }
+        .road .stage { flex:1; text-align:center; position:relative; }
+        .road .dot { width:30px;height:30px;border-radius:50%;margin:0 auto;display:flex;align-items:center;justify-content:center;
+                     background:#e5e7eb;color:#9ca3af;font-size:13px;z-index:2;position:relative; }
+        .road .stage.done .dot { background:#22c55e;color:#fff; }
+        .road .stage.current .dot { background:#3b82f6;color:#fff; box-shadow:0 0 0 4px rgba(59,130,246,.2); }
+        .road .line { position:absolute; top:15px; left:-50%; width:100%; height:4px; background:#e5e7eb; z-index:1; }
+        .road .stage.done .line, .road .stage.current .line { background:#22c55e; }
+        .road .stage:first-child .line { display:none; }
+        .road .lbl { font-size:12px; font-weight:700; margin-top:8px; color:#374151; }
+        .road .who { font-size:10px; color:#9ca3af; margin-top:2px; line-height:1.3; }
+        .bubble { max-width:78%; padding:10px 14px; border-radius:14px; box-shadow:0 1px 2px rgba(0,0,0,.05); }
+        .bubble.mine { background:#eaf7c1; margin-left:auto; border-bottom-right-radius:4px; }
+        .bubble.theirs { background:#fff; border:1px solid #e5e7eb; border-bottom-left-radius:4px; }
+        .bubble.solution { background:#dcfce7; border:1px solid #86efac; }
+        .bubble .body { font-size:14px; line-height:1.5; color:#1f2937; }
+        .rich ul,.rich ol { margin:4px 0 4px 20px; } .rich li { list-style:disc; }
+        .rich ol li { list-style:decimal; } .rich p { margin:0 0 6px; }
+        .bubble .meta { font-size:10px; color:#6b7280; margin-top:4px; }
+        .thread { max-height:460px; overflow-y:auto; background:#12181b; border-radius:12px; padding:14px; }
+        /* ---- Dark theme (helpdesk) ---- */
+        body { background:#0f1417 !important; color:#e6e8eb !important; }
+        .card { background:#1a2025 !important; border:1px solid #262d33 !important; box-shadow:none !important; }
+        .text-gray-800,.text-gray-700 { color:#e6e8eb !important; }
+        .text-gray-600,.text-gray-500 { color:#aab2bd !important; }
+        .text-gray-400,.text-gray-300 { color:#7b848f !important; }
+        .border,.border-b,.border-t { border-color:#262d33 !important; }
+        .bg-white { background:#1a2025 !important; }
+        input,select,textarea { background:#222a30 !important; color:#e6e8eb !important; border:1px solid #333b43 !important; }
+        input::placeholder,textarea::placeholder { color:#6b7682 !important; }
+        .bubble.theirs { background:#222a30 !important; border-color:#333b43 !important; }
+        .bubble.theirs .body { color:#e6e8eb !important; }
+        .road .lbl { color:#cbd2d9 !important; }
+        .road .dot { background:#2c343b; color:#7b848f; }
+        /* Custom file attach */
+        .attach-btn { display:inline-flex; align-items:center; gap:8px; background:#222a30;
+            border:1px dashed #3a444d; color:#cbd2d9; padding:8px 13px; border-radius:10px;
+            font-size:13px; font-weight:600; cursor:pointer; transition:all .15s; }
+        .attach-btn:hover { border-color:#C9F31D; color:#fff; background:#2a333a; }
+        .attach-btn i { color:#C9F31D; }
+        .file-list { display:flex; flex-wrap:wrap; gap:6px; }
+        .file-chip { display:inline-flex; align-items:center; gap:6px; background:#1a2025;
+            border:1px solid #333b43; color:#cbd2d9; padding:4px 10px; border-radius:999px; font-size:12px; }
+        .file-chip i { color:#C9F31D; }
+        /* multi-assign + mentions */
+        .member-list { display:flex; flex-direction:column; gap:6px; max-height:190px; overflow-y:auto;
+            background:#222a30; border:1px solid #333b43; border-radius:8px; padding:8px; }
+        .mcheck { display:flex; align-items:center; gap:8px; font-size:13px; color:#cbd2d9; cursor:pointer; }
+        .achip { background:#222a30; border:1px solid #3a444d; color:#e6e8eb; font-size:11px;
+            padding:2px 9px; border-radius:999px; }
+        .mention-box { position:absolute; bottom:52px; left:0; width:280px; max-height:220px; overflow-y:auto;
+            background:#1a2025; border:1px solid #333b43; border-radius:10px; z-index:40;
+            box-shadow:0 8px 24px rgba(0,0,0,.5); }
+        .mention-item { padding:9px 12px; cursor:pointer; font-size:13px; color:#e6e8eb; display:flex; justify-content:space-between; gap:8px; }
+        .mention-item:hover, .mention-item.sel { background:#222a30; }
+        .mention-item .e { color:#7b848f; font-size:11px; }
+    </style>
+</head>
+<body class="min-h-screen">
+    <div class="topbar text-white px-6 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <a href="{{ url_for('tickets_board') }}" class="opacity-80 hover:opacity-100"><i class="fas fa-arrow-left"></i></a>
+            <span class="text-lg font-bold">Ticket #{{ ticket.number }}</span>
+        </div>
+        <div class="flex items-center gap-2 text-sm">
+            <a href="{{ url_for('tickets_board') }}" class="px-3 py-1 rounded-lg hover:bg-white hover:bg-opacity-10">Board</a>
+            {% if roles.can_manage_staff() %}<a href="{{ url_for('staff_admin') }}" class="px-3 py-1 rounded-lg hover:bg-white hover:bg-opacity-10">Staff</a>{% endif %}
+            <a href="{{ url_for('logout') }}" class="px-3 py-1 rounded-lg hover:bg-white hover:bg-opacity-10"><i class="fas fa-sign-out-alt"></i></a>
+        </div>
+    </div>
+
+    <div class="w-full px-6 py-6">
+        {% with msgs = get_flashed_messages(with_categories=true) %}
+          {% for cat, m in msgs %}
+            <div class="mb-3 px-4 py-2 rounded-lg text-sm font-semibold
+                        {{ 'bg-green-100 text-green-800' if cat=='success' else 'bg-yellow-100 text-yellow-800' if cat=='warning' else 'bg-red-100 text-red-800' if cat in ['error','danger'] else 'bg-blue-100 text-blue-800' }}">{{ m }}</div>
+          {% endfor %}
+        {% endwith %}
+
+        <!-- Roadmap -->
+        {% set cur = roles.stage_index(ticket.status) %}
+        <div class="card p-6 mb-5">
+            <div class="road">
+                {% for key, label in roles.STAGES %}
+                {% set idx = loop.index0 %}
+                {% set ev = events_by_stage.get(key) %}
+                <div class="stage {{ 'done' if idx < cur or ticket.status=='closed' else 'current' if idx==cur else '' }}">
+                    <div class="line"></div>
+                    <div class="dot">
+                        {% if idx < cur or ticket.status=='closed' %}<i class="fas fa-check"></i>
+                        {% elif idx==cur %}<i class="fas fa-circle" style="font-size:8px"></i>
+                        {% else %}{{ idx+1 }}{% endif %}
+                    </div>
+                    <div class="lbl">{{ label }}</div>
+                    {% if ev %}<div class="who">{{ (ev.actor_email or '').split('@')[0] }}<br>{{ ev.created_at[:10] }} {{ ev.created_at[11:16] }}</div>{% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-5">
+            <!-- LEFT: History menu -->
+            <div class="lg:col-span-1 space-y-5">
+                <div class="card p-5">
+                    <h3 class="font-bold text-gray-700 mb-3"><i class="fas fa-route mr-2 text-gray-400"></i>History</h3>
+                    <ol class="border-l-2 border-gray-100 ml-2">
+                        {% for e in events %}
+                        <li class="ml-4 mb-4 relative">
+                            <span class="absolute -left-6 top-1 w-3 h-3 rounded-full bg-green-400"></span>
+                            <span class="pill st-{{ e.stage }}">{{ e.stage.replace('_',' ') }}</span>
+                            <div class="text-xs text-gray-500 mt-1">{{ (e.actor_email or '').split('@')[0] }}<br>{{ e.created_at[:10] }} {{ e.created_at[11:16] }}</div>
+                            {% if e.note %}<p class="text-xs text-gray-400 mt-1">{{ e.note }}</p>{% endif %}
+                        </li>
+                        {% endfor %}
+                        {% if not events %}<li class="text-xs text-gray-400 ml-2 list-none">No history yet.</li>{% endif %}
+                    </ol>
+                </div>
+            </div>
+
+            <!-- MIDDLE: details + thread -->
+            <div class="lg:col-span-2 space-y-5">
+                <div class="card p-6">
+                    <div class="flex items-start justify-between gap-3 mb-2">
+                        <h1 class="text-xl font-extrabold text-gray-800">{{ ticket.title }}</h1>
+                        <span class="pill st-{{ ticket.status }}">{{ ticket.status.replace('_',' ') }}</span>
+                    </div>
+                    <p class="text-xs text-gray-400 mb-2">
+                        Raised by {{ ticket.raised_by or (ticket.client.email if ticket.client) or '—' }}
+                        · {{ ticket.created_at[:10] }}
+                        {% if ticket.team %} · <span class="pill st-assigned">{{ roles.team_label(ticket.team) }}</span>{% endif %}
+                        · <span class="pill pr-{{ ticket.priority }}">{{ ticket.priority }}</span>
+                    </p>
+                    {% set alist = ticket.assignees or ([ticket.assigned_to] if ticket.assigned_to else []) %}
+                    {% if alist %}
+                    <div class="flex flex-wrap items-center gap-1 mb-3">
+                        <span class="text-xs text-gray-400 mr-1"><i class="fas fa-user-check mr-1"></i>Assigned to:</span>
+                        {% for em in alist %}<span class="achip">{{ name_map.get(em|lower, em.split('@')[0]) }}</span>{% endfor %}
+                    </div>
+                    {% endif %}
+                    {% if ticket.description %}<div class="text-gray-700 rich">{{ ticket.description|safe_html }}</div>{% endif %}
+                    {% if ticket.review_note %}<p class="text-xs text-purple-600 mt-2"><i class="fas fa-clipboard-check mr-1"></i>{{ ticket.review_note }}</p>{% endif %}
+                </div>
+
+                <!-- Thread -->
+                <div class="card p-6">
+                    <h3 class="font-bold text-gray-700 mb-3"><i class="fas fa-comments mr-2 text-gray-400"></i>Conversation</h3>
+                    <div class="thread mb-3" id="thread">
+                        {% if not messages %}
+                            <p class="text-center text-gray-300 text-sm py-6">No messages yet.</p>
+                        {% endif %}
+                        {% for m in messages %}
+                        {% set mine = (m.sender_email or '')|lower == (session_info.user_email or '')|lower %}
+                        <div class="flex mb-3">
+                            <div class="bubble {{ 'solution' if m.is_solution else ('mine' if mine else 'theirs') }}">
+                                {% if m.is_solution %}<div class="text-xs font-bold text-green-700 mb-1"><i class="fas fa-circle-check mr-1"></i>Solution</div>{% endif %}
+                                {% if m.body %}<div class="body rich">{{ m.body|safe_html }}</div>{% endif %}
+                                {% for a in m.attachments %}
+                                    <a href="{{ a.url }}" target="_blank" class="block text-xs text-blue-600 underline mt-1"><i class="fas fa-paperclip mr-1"></i>{{ a.name }}</a>
+                                {% endfor %}
+                                <div class="meta">{{ (m.sender_email or 'system').split('@')[0] }}
+                                    {% if m.sender_role %}· {{ m.sender_role }}{% endif %}
+                                    · {{ m.created_at[11:16] }}</div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% if not roles.is_readonly() %}
+                    <form method="POST" action="{{ url_for('ticket_message', ticket_id=ticket.id) }}" enctype="multipart/form-data" class="flex items-center gap-2 relative">
+                        <div id="mentionBox" class="mention-box" style="display:none"></div>
+                        <input type="hidden" name="mentions" id="mentions">
+                        <input name="body" id="replyBody" autocomplete="off" class="flex-1 border rounded-lg px-3 py-2" placeholder="Write a reply...  (type @ to tag someone)">
+                        <label class="cursor-pointer text-gray-400 hover:text-gray-700"><i class="fas fa-paperclip"></i><input type="file" name="attachments" multiple class="hidden"></label>
+                        <button class="px-4 py-2 rounded-lg font-bold" style="background:#C9F31D;color:#14181a"><i class="fas fa-paper-plane"></i></button>
+                    </form>
+                    <p class="text-xs text-gray-500 mt-1"><i class="fas fa-at mr-1"></i>Tag someone with <b>@</b> — they get added to this ticket &amp; notified.</p>
+                    {% endif %}
+                </div>
+
+            </div>
+
+            <!-- RIGHT: action panel -->
+            <div class="space-y-5">
+                <!-- Role-aware action panel -->
+                {% if roles.is_readonly() %}
+                    <div class="card p-5 text-center text-sm text-gray-400"><i class="fas fa-eye mr-1"></i>Supervisor view — read only</div>
+                {% else %}
+                  <!-- TRIAGE: review a raised ticket -->
+                  {% if ticket.status == 'raised' and roles.can_review() %}
+                  <div class="card p-5">
+                      <h3 class="font-bold text-gray-700 mb-3"><i class="fas fa-clipboard-check mr-2 text-purple-500"></i>Review</h3>
+                      <form method="POST" action="{{ url_for('ticket_review', ticket_id=ticket.id) }}">
+                          <label class="block text-xs font-semibold text-gray-500 mb-1">Route to team</label>
+                          <select name="team" class="w-full border rounded-lg px-3 py-2 mb-3">
+                              <option value="">— Choose later —</option>
+                              {% for key, label in roles.TEAMS %}<option value="{{ key }}" {{ 'selected' if ticket.team==key }}>{{ label }}</option>{% endfor %}
+                          </select>
+                          <input name="note" class="w-full border rounded-lg px-3 py-2 mb-3" placeholder="Note (optional)">
+                          <div class="flex gap-2">
+                              <button name="action" value="approve" class="flex-1 py-2 rounded-lg font-bold" style="background:#C9F31D;color:#14181a">Approve</button>
+                              <button name="action" value="reject" class="flex-1 py-2 rounded-lg text-white font-bold bg-red-500">Reject</button>
+                          </div>
+                      </form>
+                  </div>
+                  {% endif %}
+
+                  <!-- DISPATCH: assign to one OR MORE team members -->
+                  {% if ticket.status in ['reviewed','assigned'] and roles.can_assign() %}
+                  <div class="card p-5">
+                      <h3 class="font-bold text-gray-700 mb-3"><i class="fas fa-user-plus mr-2 text-orange-500"></i>{{ 'Add people' if ticket.status=='assigned' else 'Assign' }}</h3>
+                      <form method="POST" action="{{ url_for('ticket_assign', ticket_id=ticket.id) }}">
+                          <label class="block text-xs font-semibold text-gray-500 mb-1">Team</label>
+                          <select name="team" id="teamSel" class="w-full border rounded-lg px-3 py-2 mb-3" onchange="loadMembers(this.value)">
+                              {% for key, label in roles.TEAMS %}<option value="{{ key }}" {{ 'selected' if ticket.team==key }}>{{ label }}</option>{% endfor %}
+                          </select>
+                          <label class="block text-xs font-semibold text-gray-500 mb-1">Team members <span class="text-gray-400">(pick one or more)</span></label>
+                          <div id="memberList" class="member-list mb-3">
+                              {% for m in team_members %}
+                              <label class="mcheck"><input type="checkbox" name="assigned_to" value="{{ m.email }}" {{ 'checked' if m.email in (ticket.assignees or []) }}> {{ m.name or m.email }}</label>
+                              {% endfor %}
+                              {% if not team_members %}<span class="text-xs text-gray-500">No employees in this team yet.</span>{% endif %}
+                          </div>
+                          <button class="w-full py-2 rounded-lg font-bold" style="background:#C9F31D;color:#14181a">{{ 'Add to ticket' if ticket.status=='assigned' else 'Assign ticket' }}</button>
+                      </form>
+                  </div>
+                  {% endif %}
+
+                  <!-- EMPLOYEE: start work -->
+                  {% if ticket.status == 'assigned' and roles.can_work_ticket(ticket) %}
+                  <div class="card p-5">
+                      <h3 class="font-bold text-gray-700 mb-3"><i class="fas fa-play mr-2 text-blue-500"></i>Your task</h3>
+                      <form method="POST" action="{{ url_for('ticket_start', ticket_id=ticket.id) }}">
+                          <button class="w-full py-2 rounded-lg font-bold" style="background:#C9F31D;color:#14181a">Start work</button>
+                      </form>
+                  </div>
+                  {% endif %}
+
+                  <!-- EMPLOYEE: resolve -->
+                  {% if ticket.status == 'in_progress' and roles.can_work_ticket(ticket) %}
+                  <div class="card p-5">
+                      <h3 class="font-bold text-gray-700 mb-3"><i class="fas fa-circle-check mr-2 text-green-600"></i>Resolve</h3>
+                      <form method="POST" action="{{ url_for('ticket_resolve', ticket_id=ticket.id) }}" enctype="multipart/form-data">
+                          <textarea name="solution" rows="4" required class="w-full border rounded-lg px-3 py-2 mb-2" placeholder="Describe the solution (posted as Re: #{{ ticket.number }})"></textarea>
+                          <input type="file" name="attachments" id="proofInput" multiple class="hidden" onchange="showProofFiles(this)">
+                          <button type="button" onclick="document.getElementById('proofInput').click()" class="attach-btn mb-2">
+                              <i class="fas fa-paperclip"></i><span>Attach proof</span>
+                          </button>
+                          <div id="proofList" class="file-list mb-3"></div>
+                          <button class="w-full py-2 rounded-lg font-bold" style="background:#C9F31D;color:#14181a">Mark resolved</button>
+                      </form>
+                  </div>
+                  {% endif %}
+
+                  <!-- CLOSE / REOPEN -->
+                  {% if ticket.status == 'resolved' %}
+                  <div class="card p-5">
+                      <form method="POST" action="{{ url_for('ticket_close', ticket_id=ticket.id) }}" class="space-y-2">
+                          {% if roles.can_review() or roles.is_assignee(ticket) %}
+                          <button name="action" value="close" class="w-full py-2 rounded-lg font-bold" style="background:#C9F31D;color:#14181a">Close ticket</button>
+                          {% endif %}
+                          {% if roles.can_review() %}
+                          <button name="action" value="reopen" class="w-full py-2 rounded-lg font-bold border border-gray-300 text-gray-600">Reopen</button>
+                          {% endif %}
+                      </form>
+                  </div>
+                  {% endif %}
+
+                  {% if ticket.status == 'closed' and roles.can_review() %}
+                  <div class="card p-5">
+                      <form method="POST" action="{{ url_for('ticket_close', ticket_id=ticket.id) }}">
+                          <button name="action" value="reopen" class="w-full py-2 rounded-lg font-bold border border-gray-300 text-gray-600">Reopen ticket</button>
+                      </form>
+                  </div>
+                  {% endif %}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Dispatch: when the team changes, fetch that team's employees as checkboxes.
+        async function loadMembers(team) {
+            const box = document.getElementById('memberList');
+            if (!box) return;
+            box.innerHTML = '<span class="text-xs text-gray-500">Loading...</span>';
+            try {
+                const r = await fetch('/api/teams/' + team + '/members');
+                const data = await r.json();
+                box.innerHTML = '';
+                if (!data.members.length) {
+                    box.innerHTML = '<span class="text-xs text-gray-500">No employees in this team yet.</span>';
+                    return;
+                }
+                data.members.forEach(m => {
+                    const lab = document.createElement('label');
+                    lab.className = 'mcheck';
+                    lab.innerHTML = '<input type="checkbox" name="assigned_to" value="' + m.email + '"> ' + (m.name || m.email);
+                    box.appendChild(lab);
+                });
+            } catch (e) { box.innerHTML = '<span class="text-xs text-gray-500">Could not load.</span>'; }
+        }
+
+        // ----- @mention autocomplete on the reply box -----
+        // Founders (supervisors) are monitors, not workers — exclude them from
+        // the @mention list since tagging assigns the ticket to that person.
+        const STAFF = [
+            {% for s in all_staff if s.role != 'supervisor' %}{ email: "{{ s.email }}", name: "{{ (s.name or s.email)|e }}" },
+            {% endfor %}
+        ];
+        (function () {
+            const input = document.getElementById('replyBody');
+            const box = document.getElementById('mentionBox');
+            const hidden = document.getElementById('mentions');
+            if (!input || !box || !hidden) return;
+            const picked = new Set();
+            let sel = 0, matches = [];
+
+            function sync() { hidden.value = Array.from(picked).join(','); }
+            function token() {
+                const v = input.value.slice(0, input.selectionStart);
+                const m = v.match(/@([\w. ]*)$/);   // @ + letters/space up to cursor
+                return m ? m[1].toLowerCase() : null;
+            }
+            function close() { box.style.display = 'none'; matches = []; }
+            function render() {
+                if (!matches.length) { close(); return; }
+                box.innerHTML = matches.map((m, i) =>
+                    '<div class="mention-item ' + (i === sel ? 'sel' : '') + '" data-i="' + i + '">' +
+                    '<span>' + m.name + '</span><span class="e">' + m.email.split('@')[0] + '</span></div>').join('');
+                box.style.display = 'block';
+                box.querySelectorAll('.mention-item').forEach(el =>
+                    el.addEventListener('mousedown', e => { e.preventDefault(); choose(+el.dataset.i); }));
+            }
+            function choose(i) {
+                const m = matches[i]; if (!m) return;
+                picked.add(m.email); sync();
+                // replace the trailing @token with "@Name "
+                input.value = input.value.replace(/@([\w. ]*)$/, '@' + m.name + ' ');
+                close(); input.focus();
+            }
+            input.addEventListener('input', () => {
+                const t = token();
+                if (t === null) { close(); return; }
+                matches = STAFF.filter(s => s.name.toLowerCase().includes(t) || s.email.toLowerCase().includes(t)).slice(0, 50);
+                sel = 0; render();
+            });
+            input.addEventListener('keydown', e => {
+                if (box.style.display === 'none') return;
+                if (e.key === 'ArrowDown') { e.preventDefault(); sel = (sel + 1) % matches.length; render(); }
+                else if (e.key === 'ArrowUp') { e.preventDefault(); sel = (sel - 1 + matches.length) % matches.length; render(); }
+                else if (e.key === 'Enter') { e.preventDefault(); choose(sel); }
+                else if (e.key === 'Escape') { close(); }
+            });
+        })();
+        // Show chosen proof files as chips instead of the plain native text.
+        function showProofFiles(input) {
+            const list = document.getElementById('proofList');
+            list.innerHTML = '';
+            Array.from(input.files).forEach(f => {
+                const chip = document.createElement('span');
+                chip.className = 'file-chip';
+                chip.innerHTML = '<i class="fas fa-file"></i>' + f.name;
+                list.appendChild(chip);
+            });
+        }
+        // Auto-scroll the thread to the newest message.
+        const th = document.getElementById('thread'); if (th) th.scrollTop = th.scrollHeight;
+    </script>
+</body>
+</html>
