@@ -172,7 +172,12 @@ def init_routes(app):
         # PMO admin who signed in via email-OTP (so their dashboards still
         # load). Plain Google-authenticated users keep their own token.
         non_google = (session.get('auth_provider') or 'google') != 'google'
-        needs_agency = session.get('is_client') or (non_google and is_pmo_admin())
+        # ANY session without its own Google token borrows the agency token —
+        # that's every email-OTP login: clients, PMO admins, AND plain team
+        # members. Without this a team member's token-less session hit GA4 with
+        # a stale/empty access_token (401) and GSC with no refresh_token (the
+        # "credentials do not contain the necessary fields" error).
+        needs_agency = session.get('is_client') or non_google
         if not needs_agency:
             return
         agency_token = _agency_access_token()

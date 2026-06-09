@@ -19,10 +19,16 @@ _PROPS_CACHE = {}     # access_token -> (expires_at, (properties_list, error))
 _PROPS_TTL = 300.0    # seconds
 
 def get_ga4_properties(session):
+    # Callers unpack the result as `props, err = get_ga4_properties(...)`, so
+    # every return path MUST be a (list, error) tuple — a bare [] crashes them.
     if not is_authenticated() or not refresh_token_if_needed():
-        return []
+        return [], None
 
     access_token = session.get('access_token') or ''
+    if not access_token:
+        # No usable token (e.g. an email-OTP session before the agency token
+        # was swapped in). Skip the call instead of getting a 401 from Google.
+        return [], None
     now = time.time()
     cached = _PROPS_CACHE.get(access_token)
     if cached and cached[0] > now:

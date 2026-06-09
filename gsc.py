@@ -39,6 +39,11 @@ def get_gsc_sites(session):
         return []
 
     access_token = session.get('access_token') or ''
+    if not access_token:
+        # Token-less session (e.g. email-OTP before the agency token swap).
+        # Skip rather than build a Credentials() that can't refresh and throws
+        # the cryptic "credentials do not contain the necessary fields" error.
+        return []
     now = time.time()
     cached = _SITES_CACHE.get(access_token)
     if cached and cached[0] > now:
