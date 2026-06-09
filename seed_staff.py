@@ -48,8 +48,9 @@ STAFF = [
     ('pratyaksh.srivastava@digirockettechnologies.com', 'Pratyaksh Srivastava', 'employee', 'graphic'),
 
     # ---- Development ----
-    ('akib@digirockettechnologies.com',        'Akib Mirza',   'employee', 'developer'),
-    ('ritik.sharma@digirockettechnologies.com', 'Ritik Sharma', 'employee', 'developer'),
+    ('akib@digirockettechnologies.com',         'Akib Mirza',    'employee', 'developer'),
+    ('ritik.sharma@digirockettechnologies.com', 'Ritik Sharma',  'employee', 'developer'),
+    ('ritika.singh@digirockettechnologies.com', 'Ritika Singh',  'employee', 'developer'),  # Shopify developer
 ]
 
 if __name__ == '__main__':

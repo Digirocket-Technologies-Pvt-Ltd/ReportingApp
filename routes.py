@@ -1,5 +1,5 @@
 from flask import Flask, Response, render_template, redirect, url_for, request, jsonify, session, flash, send_file, g
-from auth import is_authenticated, refresh_token_if_needed, logout_user, get_user_info, get_session_info, is_pmo_admin, is_agency_account
+from auth import is_authenticated, refresh_token_if_needed, logout_user, get_user_info, get_session_info, is_pmo_admin, is_agency_account, agency_email
 import db
 import roles
 from ga4 import get_ga4_properties, get_ga4_data, get_property_name, get_ga4_overview, get_ga4_acquisition, get_ga4_extra, get_ga4_daily_overview
@@ -8,7 +8,7 @@ from gmb import get_gmb_data, gmb_debug
 from gmc import get_gmc_data
 from data_processing import validate_dates
 from google.oauth2.credentials import Credentials
-from config import CLIENT_ID, CLIENT_SECRET, REDIRECT_URI, SCOPES
+from config import CLIENT_ID, CLIENT_SECRET, REDIRECT_URI, SCOPES, AGENCY_LOGIN_PASSWORD
 import os
 import time
 import base64
@@ -372,6 +372,14 @@ def init_routes(app):
         Google, etc. The company runs on Outlook, so OTP is the default path."""
         if is_authenticated():
             return redirect(url_for('index'))
+        # "Use a different email" sends ?reset=1 — drop the pending code so we
+        # fall back to step 1 (the email-entry screen) instead of re-rendering
+        # the code-entry screen for the old email.
+        if request.args.get('reset'):
+            session.pop('_login_otp', None)
+            session.pop('_agency_gate_pending', None)
+            session.pop('_agency_gate_attempts', None)
+            return redirect(url_for('login'))
         pending = session.get('_login_otp') or {}
         return render_template('login.html', otp_email=pending.get('email'))
 
@@ -400,6 +408,12 @@ def init_routes(app):
         email = (request.form.get('email') or '').strip().lower()
         if not email or '@' not in email:
             flash('Please enter a valid email address.', 'warning')
+            return redirect(url_for('login'))
+        # The shared agency account must come through Google sign-in only (so we
+        # capture its refresh_token) AND pass the password gate. Never hand out
+        # an OTP for it — that would be a password-free side door.
+        if email == agency_email():
+            flash('This account must sign in with Google.', 'warning')
             return redirect(url_for('login'))
         known = None
         try:
@@ -500,6 +514,37 @@ def init_routes(app):
             response.raise_for_status()
 
             token_data = response.json()
+
+            # SECURITY GATE for the shared agency account. The whole company can
+            # sign into analytics@digirocketads.com via Google, so before we
+            # commit ANY session for that email, require the agency password.
+            # We peek at the email with the fresh access token WITHOUT writing
+            # the tokens to the session, stash them in a pending bucket, and
+            # bounce to the password screen. Only a correct password commits the
+            # login (see /login/agency-gate). Other emails are unaffected.
+            fresh_token = token_data['access_token']
+            try:
+                ui = requests.get('https://www.googleapis.com/oauth2/v2/userinfo',
+                                  headers={'Authorization': f'Bearer {fresh_token}'},
+                                  timeout=15).json()
+            except Exception as e:
+                print(f'[login] userinfo peek failed: {e}')
+                ui = {}
+            peek_email = (ui.get('email') or '').lower()
+
+            if peek_email == agency_email() and not session.get('_agency_gate_ok'):
+                session['_agency_gate_pending'] = {
+                    'access_token': fresh_token,
+                    'refresh_token': token_data.get('refresh_token'),
+                    'token_expiry': datetime.now().timestamp() + token_data['expires_in'],
+                    'login_time': datetime.now().timestamp(),
+                    'user_email': ui.get('email'),
+                    'user_name': ui.get('name'),
+                    'user_picture': ui.get('picture'),
+                }
+                session['_agency_gate_attempts'] = 0
+                return redirect(url_for('agency_gate'))
+
             session['access_token'] = token_data['access_token']
             session['refresh_token'] = token_data.get('refresh_token')
             session['token_expiry'] = datetime.now().timestamp() + token_data['expires_in']
@@ -533,6 +578,59 @@ def init_routes(app):
         except requests.exceptions.RequestException as e:
             flash(f'Login error: {str(e)}', 'error')
             return redirect(url_for('index'))
+
+    @app.route('/login/agency-gate', methods=['GET', 'POST'])
+    def agency_gate():
+        """Password screen for the shared agency Google account. Reached only
+        after a successful Google auth AS analytics@digirocketads.com (see
+        oauth2callback). The Google tokens sit in session['_agency_gate_pending']
+        and are NOT live until the correct agency password is entered here, so
+        an employee who knows the Google password but not THIS one never gets an
+        authenticated session."""
+        pending = session.get('_agency_gate_pending')
+        if not pending:
+            # Nothing to gate (direct hit / already consumed) -> normal login.
+            return redirect(url_for('login'))
+
+        if request.method == 'POST':
+            entered = request.form.get('password') or ''
+            attempts = session.get('_agency_gate_attempts', 0) + 1
+            if entered and entered == AGENCY_LOGIN_PASSWORD:
+                # Correct -> promote the pending tokens to a real session.
+                session.pop('_agency_gate_pending', None)
+                session.pop('_agency_gate_attempts', None)
+                session['_agency_gate_ok'] = True
+                session['access_token'] = pending['access_token']
+                session['refresh_token'] = pending.get('refresh_token')
+                session['token_expiry'] = pending['token_expiry']
+                session['login_time'] = pending['login_time']
+                session['user_email'] = pending.get('user_email')
+                session['user_name'] = pending.get('user_name')
+                session['user_picture'] = pending.get('user_picture')
+                session['auth_provider'] = 'google'
+                session['is_client'] = False
+                # Seed the shared agency refresh_token (same as oauth2callback).
+                try:
+                    if is_agency_account():
+                        rt = session.get('refresh_token')
+                        if rt and db.is_configured():
+                            db.save_service_credential('agency_refresh_token', rt)
+                except Exception as e:
+                    print(f'[agency-gate] agency setup failed (non-fatal): {e}')
+                flash('Signed in to the agency account.', 'success')
+                return redirect(url_for('dashboard'))
+
+            # Wrong password. After 5 tries, throw the pending login away so a
+            # walk-up attacker can't keep guessing on a captured Google session.
+            if attempts >= 5:
+                session.pop('_agency_gate_pending', None)
+                session.pop('_agency_gate_attempts', None)
+                flash('Too many incorrect attempts. Please sign in again.', 'error')
+                return redirect(url_for('login'))
+            session['_agency_gate_attempts'] = attempts
+            flash(f'Incorrect password. {5 - attempts} attempt(s) left.', 'error')
+
+        return render_template('agency_gate.html', email=pending.get('user_email'))
 
     @app.route('/dashboard')
     def dashboard():
