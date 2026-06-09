@@ -16,6 +16,12 @@
         input { width:100%; background:#222a30; color:#e6e8eb; border:1px solid #333b43; border-radius:10px; padding:11px 13px; }
         input::placeholder { color:#6b7682; }
         .btn-green { background:#C9F31D; color:#14181a; font-weight:800; border-radius:10px; padding:11px; width:100%; }
+        .pw-wrap { position:relative; }
+        .pw-wrap input { padding-right:44px; }
+        .pw-eye { position:absolute; right:6px; top:50%; transform:translateY(-50%);
+                  width:34px; height:34px; display:flex; align-items:center; justify-content:center;
+                  background:transparent; border:none; color:#8b96a0; cursor:pointer; border-radius:8px; }
+        .pw-eye:hover { color:#e6e8eb; }
     </style>
 </head>
 <body>
@@ -40,8 +46,14 @@
             Enter the agency access password to continue. This is shared only with the PMO team.</p>
 
         <form method="POST" action="{{ url_for('agency_gate') }}">
-            <input name="password" type="password" class="mb-3" placeholder="Agency access password"
-                   autocomplete="off" autofocus required>
+            <div class="pw-wrap mb-3">
+                <input id="pw" name="password" type="password" placeholder="Agency access password"
+                       autocomplete="off" autofocus required>
+                <button type="button" id="pw-toggle" class="pw-eye" aria-label="Show password"
+                        onclick="(function(b){var i=document.getElementById('pw');var on=i.type==='password';i.type=on?'text':'password';b.querySelector('i').className=on?'fas fa-eye-slash':'fas fa-eye';b.setAttribute('aria-label',on?'Hide password':'Show password');i.focus();})(this)">
+                    <i class="fas fa-eye"></i>
+                </button>
+            </div>
             <button class="btn-green"><i class="fas fa-unlock-alt mr-2"></i>Unlock &amp; continue</button>
         </form>
 
