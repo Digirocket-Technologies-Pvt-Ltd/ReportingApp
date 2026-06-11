@@ -26,6 +26,8 @@
         .bubble.theirs { background:#222a30; color:#e6e8eb; border:1px solid #333b43; border-bottom-left-radius:4px; }
         .bubble .body { font-size:14px; line-height:1.5; white-space:pre-wrap; word-break:break-word; }
         .bubble .meta { font-size:11px; margin-top:5px; opacity:.7; }
+        .msg-img { max-width:240px; max-height:260px; border-radius:10px; margin-top:6px;
+            display:block; object-fit:cover; cursor:pointer; }
         .bubble.mine .meta { color:#14181a; }
         .bubble.theirs .meta { color:#9aa3ad; }
         input[type=text] { background:#222a30; color:#e6e8eb; border:1px solid #333b43; border-radius:10px; padding:10px 13px; }
@@ -54,9 +56,43 @@
         .file-chip { display:inline-flex; align-items:center; gap:6px; background:#1a2025;
             border:1px solid #333b43; color:#cbd2d9; padding:4px 10px; border-radius:999px; font-size:12px; }
         .file-chip i { color:#C9F31D; }
+        /* modals */
+        .modal-bg { position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:50;
+            display:flex; align-items:center; justify-content:center; padding:20px; }
+        .modal-card { background:#1a2025; border:1px solid #262d33; border-radius:16px; width:100%; max-width:440px; padding:22px; }
+        .picker { max-height:300px; overflow-y:auto; background:#222a30; border:1px solid #333b43;
+            border-radius:10px; padding:8px; display:flex; flex-direction:column; gap:4px; }
+        .pick { display:flex; align-items:center; gap:8px; font-size:13px; color:#cbd2d9; cursor:pointer; padding:4px 6px; border-radius:6px; }
+        .pick:hover { background:#2a333a; }
+        .pick-sub { color:#7b848f; font-size:11px; margin-left:auto; }
+        /* group item with 3-dot */
+        .gitem { display:flex; align-items:center; gap:4px; }
+        .gitem-link { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:inherit; }
+        .gdots { background:transparent; border:0; color:#7b848f; cursor:pointer; padding:2px 6px; border-radius:6px; }
+        .gdots:hover { color:#fff; background:#2a333a; }
+        .gmenu-fixed { position:fixed; min-width:160px; z-index:80;
+            background:#1a2025; border:1px solid #333b43; border-radius:10px; overflow:hidden;
+            box-shadow:0 8px 24px rgba(0,0,0,.5); }
+        .gmenu-fixed button { display:block; width:100%; text-align:left; padding:10px 14px;
+            background:transparent; border:0; color:#e6e8eb; font-size:13px; cursor:pointer; }
+        .gmenu-fixed button:hover { background:#222a30; }
+        .gmenu-fixed .danger { color:#f87171; }
+        .gmenu-fixed form { margin:0; }
+        /* avatars */
+        .av { border-radius:50%; object-fit:cover; flex-shrink:0; }
+        .av-i { display:flex; align-items:center; justify-content:center; font-weight:700;
+            border-radius:50%; flex-shrink:0; background:#2c343b; color:#cbd2d9; }
+        .badge-admin { background:#222a30; border:1px solid #3a444d; color:#9aa3ad;
+            font-size:10px; padding:1px 8px; border-radius:999px; }
     </style>
 </head>
 <body class="h-screen flex flex-col">
+    {# avatar: profile photo if set, else a coloured initial circle #}
+    {% macro avatar(email, size=36) %}
+        {% set u = avatars.get((email or '')|lower) %}
+        {% if u %}<img src="{{ u }}" class="av" style="width:{{ size }}px;height:{{ size }}px">
+        {% else %}<div class="av-i" style="width:{{ size }}px;height:{{ size }}px;font-size:{{ (size*0.42)|int }}px">{{ (name_map.get((email or '')|lower, email or '?'))[0]|upper }}</div>{% endif %}
+    {% endmacro %}
     <div class="topbar text-white px-6 py-3 flex items-center justify-between flex-shrink-0">
         <div class="flex items-center gap-3">
             <a href="{{ url_for('tickets_board') }}" class="opacity-80 hover:opacity-100"><i class="fas fa-arrow-left"></i></a>
@@ -64,7 +100,10 @@
         </div>
         <div class="flex items-center gap-2 text-sm">
             <a href="{{ url_for('tickets_board') }}" class="px-3 py-1 rounded-lg hover:bg-white hover:bg-opacity-10">Board</a>
-            <span class="opacity-60">{{ name_map.get(me) }}</span>
+            <button type="button" onclick="document.getElementById('profileModal').style.display='flex'"
+                    class="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-white hover:bg-opacity-10" title="My profile photo">
+                {{ avatar(me, 28) }}<span class="opacity-80">{{ name_map.get(me) }}</span>
+            </button>
             <a href="{{ url_for('logout') }}" class="px-3 py-1 rounded-lg hover:bg-white hover:bg-opacity-10"><i class="fas fa-sign-out-alt"></i></a>
         </div>
     </div>
@@ -89,13 +128,38 @@
             <a href="{{ url_for('staff_messages', **{'with': em}) }}"
                class="contact {{ 'active' if partner and (partner.email or '')|lower == em }}"
                data-name="{{ (s.name or em)|lower }}">
-                <div class="flex items-center justify-between gap-2">
-                    <span class="nm">{{ s.name or em.split('@')[0] }}</span>
-                    {% if unread.get(em) %}<span class="badge">{{ unread.get(em) }}</span>{% endif %}
+                <div class="flex items-center gap-2">
+                    {{ avatar(em, 34) }}
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="nm truncate">{{ s.name or em.split('@')[0] }}</span>
+                            {% if unread.get(em) %}<span class="badge">{{ unread.get(em) }}</span>{% endif %}
+                        </div>
+                        <div class="sub">{{ roles.role_label(s.role) }}{% if s.team %} · {{ roles.team_label(s.team) }}{% endif %}</div>
+                    </div>
                 </div>
-                <div class="sub">{{ roles.role_label(s.role) }}{% if s.team %} · {{ roles.team_label(s.team) }}{% endif %}</div>
             </a>
             {% endmacro %}
+
+            <!-- GROUPS -->
+            <div class="grp">
+                <div class="flex items-center justify-between px-2">
+                    <div class="grp-h" style="margin:14px 0 6px"><i class="fas fa-users-rectangle mr-1"></i>Groups</div>
+                    <button type="button" onclick="document.getElementById('newGroupModal').style.display='flex'"
+                            class="text-xs font-bold" style="color:#C9F31D" title="New group">+ New</button>
+                </div>
+                {% for grp in my_groups %}
+                <div class="contact gitem {{ 'active' if group and group.id == grp.id }}" data-name="{{ grp.name|lower }}">
+                    <a href="{{ url_for('staff_messages', group=grp.id) }}" class="gitem-link nm">
+                        <i class="fas fa-user-group mr-1 text-gray-400"></i>{{ grp.name }}
+                        {% if grp.pinned %}<i class="fas fa-thumbtack ml-1" style="color:#C9F31D;font-size:11px"></i>{% endif %}
+                    </a>
+                    <button type="button" class="gdots" title="Group options"
+                            onclick="openGrpMenu(event,'{{ grp.id }}','{{ grp.name|e }}',{{ 'true' if grp.pinned else 'false' }})"><i class="fas fa-ellipsis-vertical"></i></button>
+                </div>
+                {% endfor %}
+                {% if not my_groups %}<p class="text-xs text-gray-500 px-2">No groups yet — click <b>+ New</b>.</p>{% endif %}
+            </div>
 
             <!-- People with new messages float to the top -->
             {% if unread_contacts %}
@@ -117,16 +181,62 @@
 
         <!-- RIGHT: conversation -->
         <main class="flex-1 card flex flex-col overflow-hidden">
-            {% if not partner %}
+            {% if group %}
+                <!-- GROUP CHAT -->
+                <div class="px-5 py-3 border-b border-gray-800 flex items-center justify-between gap-3 flex-shrink-0">
+                    <button type="button" onclick="document.getElementById('groupInfoModal').style.display='flex'" class="flex items-center gap-3 text-left" title="Group info">
+                        {% if group.avatar_url %}<img src="{{ group.avatar_url }}" class="av" style="width:38px;height:38px">
+                        {% else %}<div class="w-9 h-9 rounded-full flex items-center justify-center font-bold" style="background:#C9F31D;color:#14181a"><i class="fas fa-user-group"></i></div>{% endif %}
+                        <div>
+                            <div class="font-bold text-gray-100">{{ group.name }} <i class="fas fa-chevron-right text-xs text-gray-500 ml-1"></i></div>
+                            <div class="text-xs text-gray-400">{{ group_members|length }} members ·
+                                {% for em in group_members[:6] %}{{ name_map.get(em, em.split('@')[0]) }}{% if not loop.last %}, {% endif %}{% endfor %}{% if group_members|length > 6 %} +{{ group_members|length - 6 }}{% endif %}
+                            </div>
+                        </div>
+                    </button>
+                    <button type="button" onclick="document.getElementById('addMemberModal').style.display='flex'"
+                            class="text-xs font-bold px-3 py-1 rounded-lg" style="background:#222a30;color:#C9F31D"><i class="fas fa-user-plus mr-1"></i>Add</button>
+                </div>
+
+                <div class="thread m-4" id="thread">
+                    {% if not group_msgs %}<p class="text-center text-gray-500 text-sm py-6">No messages yet. Say hello 👋</p>{% endif %}
+                    {% for m in group_msgs %}
+                    {% set mine = (m.sender_email or '')|lower == me %}
+                    <div class="flex">
+                        <div class="bubble {{ 'mine' if mine else 'theirs' }}">
+                            {% if m.body %}<div class="body">{{ m.body }}</div>{% endif %}
+                            {% for a in m.attachments %}
+                                {% if a.type and a.type.startswith('image/') %}
+                                <a href="{{ a.url }}" target="_blank"><img src="{{ a.url }}" class="msg-img" alt="{{ a.name }}"></a>
+                                {% else %}
+                                <a href="{{ a.url }}" target="_blank" class="block text-xs underline mt-1"><i class="fas fa-paperclip mr-1"></i>{{ a.name }}</a>
+                                {% endif %}
+                            {% endfor %}
+                            <div class="meta">{{ name_map.get((m.sender_email or '')|lower, (m.sender_email or '').split('@')[0]) }}
+                                · {{ m.created_at[:10] }} {{ m.created_at[11:16] }}</div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div class="px-4 pb-4 flex-shrink-0">
+                    <div id="gChatFileList" class="file-list"></div>
+                    <form method="POST" action="{{ url_for('staff_group_message', group_id=group.id) }}" enctype="multipart/form-data" class="flex items-center gap-2">
+                        <input type="text" name="body" class="flex-1" placeholder="Message {{ group.name }}...">
+                        <label class="cursor-pointer text-gray-400 hover:text-white px-1" title="Send image"><i class="fas fa-image"></i><input type="file" name="attachments" accept="image/*" class="hidden" onchange="showGChatFiles(this)"></label>
+                        <label class="cursor-pointer text-gray-400 hover:text-white px-1" title="Attach file"><i class="fas fa-paperclip"></i><input type="file" name="attachments" multiple class="hidden" onchange="showGChatFiles(this)"></label>
+                        <button class="px-4 py-2 rounded-lg font-bold" style="background:#C9F31D;color:#14181a"><i class="fas fa-paper-plane"></i></button>
+                    </form>
+                </div>
+
+            {% elif not partner %}
                 <div class="flex-1 flex flex-col items-center justify-center text-gray-500">
                     <i class="fas fa-comments text-4xl mb-3" style="color:#2c343b"></i>
-                    <p>Select a person on the left to start chatting.</p>
+                    <p>Select a person or group on the left to start chatting.</p>
                 </div>
             {% else %}
                 <div class="px-5 py-3 border-b border-gray-800 flex items-center gap-3 flex-shrink-0">
-                    <div class="w-9 h-9 rounded-full bg-gray-700 flex items-center justify-center font-bold text-white">
-                        {{ (partner.name or partner.email)[0]|upper }}
-                    </div>
+                    {{ avatar(partner.email, 40) }}
                     <div>
                         <div class="font-bold text-gray-100">{{ partner.name or partner.email.split('@')[0] }}</div>
                         <div class="text-xs text-gray-400">{{ roles.role_label(partner.role) }}{% if partner.team %} · {{ roles.team_label(partner.team) }}{% endif %}</div>
@@ -147,7 +257,11 @@
                             {% endif %}
                             {% if m.body %}<div class="body">{{ m.body }}</div>{% endif %}
                             {% for a in m.attachments %}
+                                {% if a.type and a.type.startswith('image/') %}
+                                <a href="{{ a.url }}" target="_blank"><img src="{{ a.url }}" class="msg-img" alt="{{ a.name }}"></a>
+                                {% else %}
                                 <a href="{{ a.url }}" target="_blank" class="block text-xs underline mt-1"><i class="fas fa-paperclip mr-1"></i>{{ a.name }}</a>
+                                {% endif %}
                             {% endfor %}
                             <!-- sender name + date + time directly under the message -->
                             <div class="meta">
@@ -182,7 +296,8 @@
                         <input type="hidden" name="to" value="{{ partner.email }}">
                         <input type="hidden" name="reply_to_id" id="replyToId">
                         <input type="text" name="body" id="msgBody" class="flex-1" placeholder="Type a message to {{ partner.name or partner.email.split('@')[0] }}...">
-                        <label class="cursor-pointer text-gray-400 hover:text-white px-1"><i class="fas fa-paperclip"></i><input type="file" name="attachments" id="chatFiles" multiple class="hidden" onchange="showChatFiles(this)"></label>
+                        <label class="cursor-pointer text-gray-400 hover:text-white px-1" title="Send image"><i class="fas fa-image"></i><input type="file" name="attachments" accept="image/*" class="hidden" onchange="showChatFiles(this)"></label>
+                        <label class="cursor-pointer text-gray-400 hover:text-white px-1" title="Attach file"><i class="fas fa-paperclip"></i><input type="file" name="attachments" id="chatFiles" multiple class="hidden" onchange="showChatFiles(this)"></label>
                         <button class="px-4 py-2 rounded-lg font-bold" style="background:#C9F31D;color:#14181a"><i class="fas fa-paper-plane"></i></button>
                     </form>
                 </div>
@@ -190,8 +305,174 @@
         </main>
     </div>
 
+    <!-- Per-group action menu (rename / pin / delete) — shared, positioned by JS -->
+    <div id="grpMenu" class="gmenu-fixed" style="display:none">
+        <button type="button" onclick="grpRename()"><i class="fas fa-pen mr-2 text-gray-400"></i>Rename</button>
+        <form id="grpPinForm" method="POST">
+            <input type="hidden" name="pinned" id="grpPinVal">
+            <button type="submit"><i class="fas fa-thumbtack mr-2 text-gray-400"></i><span id="grpPinLabel">Pin to top</span></button>
+        </form>
+        <form id="grpDelForm" method="POST" onsubmit="return confirm('Delete this group for everyone? This cannot be undone.')">
+            <button type="submit" class="danger"><i class="fas fa-trash mr-2"></i>Delete group</button>
+        </form>
+    </div>
+
+    <!-- Rename group modal (shared) -->
+    <div id="renameModal" class="modal-bg" style="display:none">
+        <div class="modal-card">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="font-bold text-gray-100"><i class="fas fa-pen mr-2" style="color:#C9F31D"></i>Rename group</h3>
+                <button type="button" onclick="document.getElementById('renameModal').style.display='none'" class="text-gray-400 hover:text-white"><i class="fas fa-times"></i></button>
+            </div>
+            <form id="renameForm" method="POST">
+                <input id="renameInput" name="name" type="text" required class="w-full mb-3"
+                       style="background:#222a30;color:#e6e8eb;border:1px solid #333b43;border-radius:10px;padding:11px 13px">
+                <button class="w-full py-2 rounded-lg font-bold" style="background:#C9F31D;color:#14181a">Save</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- My profile photo modal -->
+    <div id="profileModal" class="modal-bg" style="display:none">
+        <div class="modal-card text-center">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="font-bold text-gray-100"><i class="fas fa-id-badge mr-2" style="color:#C9F31D"></i>My profile</h3>
+                <button type="button" onclick="document.getElementById('profileModal').style.display='none'" class="text-gray-400 hover:text-white"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="flex justify-center mb-3">{{ avatar(me, 96) }}</div>
+            <div class="font-bold text-gray-100 mb-1">{{ name_map.get(me) }}</div>
+            <div class="text-xs text-gray-400 mb-4">{{ me }}</div>
+            <form method="POST" action="{{ url_for('staff_profile_photo') }}" enctype="multipart/form-data">
+                <input type="hidden" name="next" value="{{ request.url }}">
+                <input type="file" name="photo" accept="image/*" required class="w-full mb-3"
+                       style="background:#222a30;color:#e6e8eb;border:1px solid #333b43;border-radius:10px;padding:9px 11px;font-size:13px">
+                <button class="w-full py-2 rounded-lg font-bold" style="background:#C9F31D;color:#14181a">Save photo</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- New group modal -->
+    <div id="newGroupModal" class="modal-bg" style="display:none">
+        <div class="modal-card">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="font-bold text-gray-100"><i class="fas fa-user-group mr-2" style="color:#C9F31D"></i>New group</h3>
+                <button type="button" onclick="document.getElementById('newGroupModal').style.display='none'" class="text-gray-400 hover:text-white"><i class="fas fa-times"></i></button>
+            </div>
+            <form method="POST" action="{{ url_for('staff_group_new') }}">
+                <input name="name" type="text" required class="w-full mb-3"
+                       style="background:#222a30;color:#e6e8eb;border:1px solid #333b43;border-radius:10px;padding:11px 13px"
+                       placeholder="Group name (e.g. SEO Project — Eyecandybrow)">
+                <div class="text-xs text-gray-400 mb-1">Add members</div>
+                <div class="picker">
+                    {% for s in contacts %}
+                    <label class="pick"><input type="checkbox" name="members" value="{{ s.email }}"> {{ s.name or s.email.split('@')[0] }} <span class="pick-sub">{{ roles.role_label(s.role) }}</span></label>
+                    {% endfor %}
+                </div>
+                <button class="w-full mt-3 py-2 rounded-lg font-bold" style="background:#C9F31D;color:#14181a">Create group</button>
+            </form>
+        </div>
+    </div>
+
+    {% if group %}
+    <!-- Group info panel (WhatsApp-style) -->
+    <div id="groupInfoModal" class="modal-bg" style="display:none">
+        <div class="modal-card">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="font-bold text-gray-100"><i class="fas fa-circle-info mr-2" style="color:#C9F31D"></i>Group info</h3>
+                <button type="button" onclick="document.getElementById('groupInfoModal').style.display='none'" class="text-gray-400 hover:text-white"><i class="fas fa-times"></i></button>
+            </div>
+            <!-- group photo + name -->
+            <div class="text-center mb-3">
+                <div class="flex justify-center mb-2">
+                    {% if group.avatar_url %}<img src="{{ group.avatar_url }}" class="av" style="width:90px;height:90px">
+                    {% else %}<div class="av-i" style="width:90px;height:90px;font-size:34px;background:#C9F31D;color:#14181a"><i class="fas fa-user-group"></i></div>{% endif %}
+                </div>
+                <div class="font-extrabold text-lg text-gray-100">{{ group.name }}</div>
+                <div class="text-xs text-gray-400 mb-2">{{ group_members|length }} members</div>
+                <form method="POST" action="{{ url_for('staff_group_photo', group_id=group.id) }}" enctype="multipart/form-data" class="inline-flex items-center gap-2">
+                    <label class="text-xs cursor-pointer" style="color:#C9F31D"><i class="fas fa-camera mr-1"></i>Change group photo<input type="file" name="photo" accept="image/*" class="hidden" onchange="this.form.submit()"></label>
+                </form>
+            </div>
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-xs text-gray-400 uppercase">Members</span>
+                <button type="button" onclick="document.getElementById('groupInfoModal').style.display='none';document.getElementById('addMemberModal').style.display='flex'"
+                        class="text-xs font-bold" style="color:#C9F31D"><i class="fas fa-user-plus mr-1"></i>Add</button>
+            </div>
+            <div style="max-height:340px;overflow-y:auto">
+                {% for em in group_members %}
+                <div class="flex items-center gap-3 py-2">
+                    {{ avatar(em, 40) }}
+                    <div class="flex-1 min-w-0">
+                        <div class="font-semibold text-gray-100 truncate">{{ name_map.get(em, em.split('@')[0]) }}{% if em == me %} <span class="text-gray-400">(You)</span>{% endif %}</div>
+                        <div class="text-xs text-gray-400">{{ roles.role_label(role_map.get(em)) }}</div>
+                    </div>
+                    {% if em in group_admins %}<span class="badge-admin">Group admin</span>{% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Add member modal -->
+    <div id="addMemberModal" class="modal-bg" style="display:none">
+        <div class="modal-card">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="font-bold text-gray-100"><i class="fas fa-user-plus mr-2" style="color:#C9F31D"></i>Add to {{ group.name }}</h3>
+                <button type="button" onclick="document.getElementById('addMemberModal').style.display='none'" class="text-gray-400 hover:text-white"><i class="fas fa-times"></i></button>
+            </div>
+            <form method="POST" action="{{ url_for('staff_group_add', group_id=group.id) }}">
+                <div class="picker">
+                    {% for s in contacts %}
+                    {% if s.email|lower not in group_members %}
+                    <label class="pick"><input type="checkbox" name="members" value="{{ s.email }}"> {{ s.name or s.email.split('@')[0] }} <span class="pick-sub">{{ roles.role_label(s.role) }}</span></label>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+                <button class="w-full mt-3 py-2 rounded-lg font-bold" style="background:#C9F31D;color:#14181a">Add selected</button>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
     <script>
         const th = document.getElementById('thread'); if (th) th.scrollTop = th.scrollHeight;
+        // Per-group 3-dot menu (rename / pin / delete), positioned at the click.
+        let curGrp = null;
+        function openGrpMenu(e, id, name, pinned) {
+            e.preventDefault(); e.stopPropagation();
+            curGrp = { id: id, name: name, pinned: pinned };
+            const m = document.getElementById('grpMenu');
+            const r = e.currentTarget.getBoundingClientRect();
+            m.style.display = 'block';
+            // place below-right of the dots; nudge left so it doesn't clip off-screen
+            let left = r.right - 150, top = r.bottom + 4;
+            if (top + m.offsetHeight > window.innerHeight) top = r.top - m.offsetHeight - 4;
+            m.style.left = Math.max(8, left) + 'px';
+            m.style.top = top + 'px';
+            document.getElementById('grpPinForm').action = '/staff/groups/' + id + '/pin';
+            document.getElementById('grpPinVal').value = pinned ? '0' : '1';
+            document.getElementById('grpPinLabel').textContent = pinned ? 'Unpin' : 'Pin to top';
+            document.getElementById('grpDelForm').action = '/staff/groups/' + id + '/delete';
+        }
+        function grpRename() {
+            if (!curGrp) return;
+            document.getElementById('renameForm').action = '/staff/groups/' + curGrp.id + '/rename';
+            document.getElementById('renameInput').value = curGrp.name;
+            document.getElementById('grpMenu').style.display = 'none';
+            document.getElementById('renameModal').style.display = 'flex';
+        }
+        document.addEventListener('click', () => {
+            const m = document.getElementById('grpMenu');
+            if (m) m.style.display = 'none';
+        });
+        function showGChatFiles(input) {
+            const list = document.getElementById('gChatFileList');
+            if (!list) return; list.innerHTML = '';
+            Array.from(input.files).forEach(f => {
+                const c = document.createElement('span'); c.className = 'file-chip';
+                c.innerHTML = '<i class="fas fa-file"></i>' + f.name; list.appendChild(c);
+            });
+        }
         // Search the People list (hides non-matching contacts + empty groups).
         function filterContacts() {
             const q = (document.getElementById('contactSearch').value || '').trim().toLowerCase();

@@ -160,6 +160,13 @@ def can_manage_staff():
     return role() in ('admin', 'supervisor', 'triage')
 
 
+def can_see_all_groups():
+    """Founders (supervisor), PMO (triage) and admin can see/open EVERY group
+    chat for oversight — even ones they weren't added to. Everyone else only
+    sees the groups they're a member of."""
+    return role() in ('admin', 'supervisor', 'triage')
+
+
 def can_create_ticket():
     """Raise a NEW ticket from the staff board. Only PMO/triage (and admin).
     Employees, dispatchers and supervisors never create tickets — those come

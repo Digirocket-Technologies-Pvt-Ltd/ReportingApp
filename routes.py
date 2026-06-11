@@ -3104,6 +3104,29 @@ def init_routes(app):
                                 f'Tagged & added: {who}')
         return redirect(url_for('ticket_detail', ticket_id=ticket_id))
 
+    @app.route('/api/translate', methods=['POST'])
+    def api_translate():
+        """Translate text to Hindi (for the 'translate' button on tickets).
+        Uses Google's free gtx endpoint server-side (no API key, avoids CORS)."""
+        if not is_authenticated():
+            return jsonify({'error': 'login required'}), 401
+        data = request.get_json(silent=True) or {}
+        text = (data.get('text') or '').strip()
+        if not text:
+            return jsonify({'translated': ''})
+        try:
+            resp = requests.get(
+                'https://translate.googleapis.com/translate_a/single',
+                params={'client': 'gtx', 'sl': 'auto', 'tl': 'hi', 'dt': 't', 'q': text},
+                timeout=15)
+            resp.raise_for_status()
+            arr = resp.json()
+            translated = ''.join(seg[0] for seg in arr[0] if seg and seg[0])
+            return jsonify({'translated': translated})
+        except Exception as e:
+            print(f'[translate] failed: {e}')
+            return jsonify({'error': 'Translation service unavailable.'}), 502
+
     @app.route('/api/teams/<team>/members')
     def api_team_members(team):
         """JSON: active employees of one team (powers the assign dropdown)."""
@@ -3208,21 +3231,205 @@ def init_routes(app):
                 key = roles.team_label(s.get('team')) if s.get('team') else 'Other'
             groups.setdefault(key, []).append(s)
         with_email = (request.args.get('with') or '').strip().lower() or None
+        group_id = (request.args.get('group') or '').strip() or None
         convo, partner = [], None
-        if with_email:
+        group, group_members, group_msgs = None, [], []
+
+        if group_id and (db.is_group_member(group_id, me) or roles.can_see_all_groups()):
+            group = db.get_staff_group(group_id)
+            group_members = db.list_group_members(group_id)
+            group_msgs = db.list_group_messages(group_id)
+        elif with_email:
             partner = db.get_staff_by_email(with_email)
             if partner:
                 convo = db.staff_conversation(me, with_email)
                 db.mark_staff_messages_read(me, with_email)
 
+        # Founders / PMO / admin see every group; everyone else only their own.
+        my_groups = db.list_all_groups(me) if roles.can_see_all_groups() \
+            else db.list_staff_groups_for(me)
+        group_pinned = next((g.get('pinned') for g in my_groups
+                             if group and g.get('id') == group.get('id')), False)
+
         name_map = {(s.get('email') or '').lower(): (s.get('name') or s.get('email')) for s in everyone}
         name_map[me] = (roles.current_staff() or {}).get('name') or me
+        avatars = {(s.get('email') or '').lower(): s.get('avatar_url') for s in everyone}
+        role_map = {(s.get('email') or '').lower(): s.get('role') for s in everyone}
+        # "Group admin" badge = founders/PMO + creator + PMO_ADMINS.
+        group_admins = set()
+        if group:
+            from auth import pmo_admins as _pa
+            for em in group_members:
+                if role_map.get(em) in ('supervisor', 'triage'):
+                    group_admins.add(em)
+            if group.get('created_by'):
+                group_admins.add((group['created_by'] or '').lower())
+            group_admins |= set(_pa())
         return render_template('staff_messages.html',
-                               me=me, groups=groups, unread=unread,
+                               me=me, groups=groups, unread=unread, avatars=avatars,
+                               role_map=role_map, group_admins=group_admins,
                                unread_contacts=unread_contacts,
+                               contacts=contacts, my_groups=my_groups,
+                               group=group, group_members=group_members,
+                               group_msgs=group_msgs, group_pinned=group_pinned,
                                convo=convo, partner=partner, name_map=name_map,
                                roles=roles, staff=roles.current_staff(),
                                session_info=get_session_info())
+
+    @app.route('/staff/groups/new', methods=['POST'])
+    def staff_group_new():
+        guard = _require_staff()
+        if guard:
+            return guard
+        me = roles.my_email()
+        name = (request.form.get('name') or '').strip()
+        members = [e.strip().lower() for e in request.form.getlist('members') if e.strip()]
+        if not name:
+            flash('Give the group a name.', 'warning')
+            return redirect(url_for('staff_messages'))
+        try:
+            # Admins (PMO_ADMINS) are auto-added too, alongside Founders + PMO.
+            from auth import pmo_admins
+            grp = db.create_staff_group(name, me, members, auto_emails=pmo_admins())
+            if not grp:
+                raise RuntimeError('group not created')
+            my_name = (roles.current_staff() or {}).get('name') or me
+            for em in members:
+                if em != me:
+                    _ticket_notify(None, f"{my_name} added you to group '{name}'",
+                                   link=url_for('staff_messages', group=grp['id']), email=em)
+            flash(f"Group '{name}' created.", 'success')
+            return redirect(url_for('staff_messages', group=grp['id']))
+        except Exception as e:
+            print(f'[group] create failed: {e}')
+            msg = str(e)
+            if 'staff_group' in msg and 'find the table' in msg:
+                flash('Groups are not set up yet — run staff_groups_schema.sql in Supabase first.', 'error')
+            else:
+                flash(f'Could not create group: {e}', 'error')
+            return redirect(url_for('staff_messages'))
+
+    @app.route('/staff/groups/<group_id>/message', methods=['POST'])
+    def staff_group_message(group_id):
+        guard = _require_staff()
+        if guard:
+            return guard
+        me = roles.my_email()
+        if not (db.is_group_member(group_id, me) or roles.can_see_all_groups()):
+            flash('You are not a member of that group.', 'warning')
+            return redirect(url_for('staff_messages'))
+        body = (request.form.get('body') or '').strip()
+        attachments = _process_uploads('staff-chat', request.files.getlist('attachments'))
+        if not body and not attachments:
+            flash('Type a message or attach a file.', 'warning')
+            return redirect(url_for('staff_messages', group=group_id))
+        try:
+            db.send_group_message(group_id, me, body, attachments)
+            grp = db.get_staff_group(group_id) or {}
+            my_name = (roles.current_staff() or {}).get('name') or me
+            # notify the other members
+            for em in db.list_group_members(group_id):
+                if em != me:
+                    _ticket_notify(None, f"{my_name} in '{grp.get('name','group')}'",
+                                   link=url_for('staff_messages', group=group_id), email=em)
+        except Exception as e:
+            print(f'[group] send failed: {e}')
+            flash(f'Could not send: {e}', 'error')
+        return redirect(url_for('staff_messages', group=group_id))
+
+    @app.route('/staff/groups/<group_id>/add', methods=['POST'])
+    def staff_group_add(group_id):
+        guard = _require_staff()
+        if guard:
+            return guard
+        me = roles.my_email()
+        if not (db.is_group_member(group_id, me) or roles.can_see_all_groups()):
+            flash('You are not a member of that group.', 'warning')
+            return redirect(url_for('staff_messages'))
+        added = 0
+        for em in request.form.getlist('members'):
+            em = em.strip().lower()
+            if em and db.get_staff_by_email(em):
+                db.add_group_member(group_id, em)
+                added += 1
+        flash(f'Added {added} member(s).' if added else 'No one selected.', 'success' if added else 'warning')
+        return redirect(url_for('staff_messages', group=group_id))
+
+    @app.route('/staff/groups/<group_id>/rename', methods=['POST'])
+    def staff_group_rename(group_id):
+        guard = _require_staff()
+        if guard:
+            return guard
+        if not db.is_group_member(group_id, roles.my_email()):
+            flash('You are not a member of that group.', 'warning')
+            return redirect(url_for('staff_messages'))
+        name = (request.form.get('name') or '').strip()
+        if name:
+            db.rename_staff_group(group_id, name)
+            flash('Group renamed.', 'success')
+        return redirect(url_for('staff_messages', group=group_id))
+
+    @app.route('/staff/groups/<group_id>/pin', methods=['POST'])
+    def staff_group_pin(group_id):
+        guard = _require_staff()
+        if guard:
+            return guard
+        me = roles.my_email()
+        if not (db.is_group_member(group_id, me) or roles.can_see_all_groups()):
+            flash('You are not a member of that group.', 'warning')
+            return redirect(url_for('staff_messages'))
+        db.set_group_pin(group_id, me, request.form.get('pinned') == '1')
+        return redirect(url_for('staff_messages', group=group_id))
+
+    @app.route('/staff/groups/<group_id>/delete', methods=['POST'])
+    def staff_group_delete(group_id):
+        guard = _require_staff()
+        if guard:
+            return guard
+        me = roles.my_email()
+        grp = db.get_staff_group(group_id)
+        if not grp:
+            return redirect(url_for('staff_messages'))
+        # Only the creator or an admin/PMO can delete (it removes it for everyone).
+        if not (roles.can_manage_staff() or (grp.get('created_by') or '').lower() == me):
+            flash('Only the group creator or an admin can delete a group.', 'warning')
+            return redirect(url_for('staff_messages', group=group_id))
+        db.delete_staff_group(group_id)
+        flash(f"Group '{grp.get('name','')}' deleted.", 'success')
+        return redirect(url_for('staff_messages'))
+
+    @app.route('/staff/profile/photo', methods=['POST'])
+    def staff_profile_photo():
+        """Any staff member sets/changes their own profile photo (DP)."""
+        guard = _require_staff()
+        if guard:
+            return guard
+        me = roles.my_email()
+        files = request.files.getlist('photo')
+        atts = _process_uploads('avatars', files)
+        if atts:
+            db.set_staff_avatar(me, atts[0]['url'])
+            flash('Profile photo updated.', 'success')
+        else:
+            flash('Could not upload the photo (pick an image under 10 MB).', 'warning')
+        back = request.form.get('next') or url_for('staff_messages')
+        return redirect(back)
+
+    @app.route('/staff/groups/<group_id>/photo', methods=['POST'])
+    def staff_group_photo(group_id):
+        """Set/change a group's photo (any member or leadership)."""
+        guard = _require_staff()
+        if guard:
+            return guard
+        me = roles.my_email()
+        if not (db.is_group_member(group_id, me) or roles.can_see_all_groups()):
+            flash('You are not a member of that group.', 'warning')
+            return redirect(url_for('staff_messages'))
+        atts = _process_uploads('avatars', request.files.getlist('photo'))
+        if atts:
+            db.set_group_avatar(group_id, atts[0]['url'])
+            flash('Group photo updated.', 'success')
+        return redirect(url_for('staff_messages', group=group_id))
 
     @app.route('/staff/messages/send', methods=['POST'])
     def staff_message_send():

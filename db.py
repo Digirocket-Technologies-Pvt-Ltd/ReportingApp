@@ -893,6 +893,34 @@ def delete_staff(staff_id):
     return True
 
 
+def set_staff_avatar(email, url):
+    """Set/replace a staff member's profile photo (DP) by email."""
+    if not is_configured() or not email:
+        return None
+    try:
+        r = requests.patch(_rest(f'staff?email=eq.{email.strip().lower()}'),
+                           headers=_headers({'Prefer': 'return=minimal'}),
+                           json={'avatar_url': url}, timeout=TIMEOUT)
+        return r.status_code in (200, 204)
+    except Exception as e:
+        print(f'[db] set_staff_avatar failed (non-fatal): {e}')
+        return None
+
+
+def set_group_avatar(group_id, url):
+    """Set/replace a group's photo."""
+    if not is_configured() or not group_id:
+        return None
+    try:
+        r = requests.patch(_rest(f'staff_groups?id=eq.{group_id}'),
+                           headers=_headers({'Prefer': 'return=minimal'}),
+                           json={'avatar_url': url}, timeout=TIMEOUT)
+        return r.status_code in (200, 204)
+    except Exception as e:
+        print(f'[db] set_group_avatar failed (non-fatal): {e}')
+        return None
+
+
 def upsert_staff(email, name=None, role=None, team=None):
     """Insert or update a staff member by email (used for bulk seeding)."""
     if not is_configured() or not email:
@@ -1276,3 +1304,253 @@ def staff_total_unread(me):
     except Exception as e:
         print(f'[db] staff_total_unread failed (non-fatal): {e}')
         return 0
+
+
+# ---------------- Group chat (Employee Query groups) ----------------
+def add_group_member(group_id, email):
+    """Add one person to a group (idempotent on group+email)."""
+    if not is_configured() or not group_id or not email:
+        return None
+    try:
+        r = requests.post(
+            _rest('staff_group_members?on_conflict=group_id,email'),
+            headers=_headers({'Prefer': 'resolution=merge-duplicates,return=representation'}),
+            json={'group_id': group_id, 'email': email.strip().lower()}, timeout=TIMEOUT)
+        _raise_with_supabase_detail(r)
+        return True
+    except Exception as e:
+        print(f'[db] add_group_member failed (non-fatal): {e}')
+        return None
+
+
+def remove_group_member(group_id, email):
+    if not is_configured() or not group_id or not email:
+        return None
+    try:
+        r = requests.delete(
+            _rest(f'staff_group_members?group_id=eq.{group_id}&email=eq.{email.strip().lower()}'),
+            headers=_headers(), timeout=TIMEOUT)
+        return r.status_code in (200, 204)
+    except Exception as e:
+        print(f'[db] remove_group_member failed (non-fatal): {e}')
+        return None
+
+
+def create_staff_group(name, created_by, member_emails=None, auto_emails=None):
+    """Create a group and add its members. The creator is always included, and
+    so are all Founders + PMO (supervisor/triage staff) plus any `auto_emails`
+    (admins) — so leadership is automatically in every group for oversight."""
+    if not is_configured() or not name:
+        return None
+    try:
+        r = requests.post(_rest('staff_groups'),
+                          headers=_headers({'Prefer': 'return=representation'}),
+                          json={'name': name, 'created_by': created_by}, timeout=TIMEOUT)
+        _raise_with_supabase_detail(r)
+        rows = r.json()
+        grp = rows[0] if rows else None
+    except Exception as e:
+        print(f'[db] create_staff_group failed: {e}')
+        return None
+    if not grp:
+        return None
+    emails = {e.strip().lower() for e in (member_emails or []) if e and e.strip()}
+    if created_by:
+        emails.add(created_by.strip().lower())
+    # Auto-add Founders + PMO so leadership is in every group.
+    try:
+        for s in list_staff(active_only=True):
+            if s.get('role') in ('supervisor', 'triage') and s.get('email'):
+                emails.add(s['email'].strip().lower())
+    except Exception as e:
+        print(f'[db] create_staff_group auto-add leadership failed (non-fatal): {e}')
+    for e in (auto_emails or []):
+        if e and e.strip():
+            emails.add(e.strip().lower())
+    for em in emails:
+        add_group_member(grp['id'], em)
+    return grp
+
+
+def get_staff_group(group_id):
+    if not is_configured() or not group_id:
+        return None
+    try:
+        r = requests.get(_rest(f'staff_groups?id=eq.{group_id}&select=*'),
+                         headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        rows = r.json()
+        return rows[0] if rows else None
+    except Exception as e:
+        print(f'[db] get_staff_group failed (non-fatal): {e}')
+        return None
+
+
+def list_group_members(group_id):
+    if not is_configured() or not group_id:
+        return []
+    try:
+        r = requests.get(
+            _rest(f'staff_group_members?group_id=eq.{group_id}&select=email&order=created_at.asc'),
+            headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        return [row['email'] for row in r.json() if row.get('email')]
+    except Exception as e:
+        print(f'[db] list_group_members failed (non-fatal): {e}')
+        return []
+
+
+def is_group_member(group_id, email):
+    if not is_configured() or not group_id or not email:
+        return False
+    try:
+        r = requests.get(
+            _rest(f'staff_group_members?group_id=eq.{group_id}&email=eq.{email.strip().lower()}&select=id'),
+            headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        return bool(r.json())
+    except Exception as e:
+        print(f'[db] is_group_member failed (non-fatal): {e}')
+        return False
+
+
+def list_staff_groups_for(email):
+    """Groups the given person is a member of. Pinned groups first, then
+    newest. Each group gets a `pinned` flag (this member's pin state)."""
+    if not is_configured() or not email:
+        return []
+    try:
+        em = email.strip().lower()
+        # Try with the `pinned` column; if that migration hasn't been run yet
+        # the request 400s, so fall back to selecting just group_id (pinned=False).
+        rows = None
+        for sel in ('group_id,pinned', 'group_id'):
+            r = requests.get(
+                _rest(f'staff_group_members?email=eq.{em}&select={sel}'),
+                headers=_headers(), timeout=TIMEOUT)
+            if r.status_code < 400:
+                rows = r.json()
+                break
+        if rows is None:
+            return []
+        pin_map = {row['group_id']: bool(row.get('pinned'))
+                   for row in rows if row.get('group_id')}
+        if not pin_map:
+            return []
+        r2 = requests.get(
+            _rest(f'staff_groups?id=in.({",".join(pin_map.keys())})&select=*&order=created_at.desc'),
+            headers=_headers(), timeout=TIMEOUT)
+        r2.raise_for_status()
+        groups = r2.json()
+        for g in groups:
+            g['pinned'] = pin_map.get(g['id'], False)
+        # Stable sort keeps the created-desc order within each pinned bucket.
+        groups.sort(key=lambda g: 0 if g.get('pinned') else 1)
+        return groups
+    except Exception as e:
+        print(f'[db] list_staff_groups_for failed (non-fatal): {e}')
+        return []
+
+
+def list_all_groups(email):
+    """Every group (for founders/PMO/admin oversight). `pinned` reflects the
+    given viewer's own pin state where available."""
+    if not is_configured():
+        return []
+    try:
+        r = requests.get(_rest('staff_groups?select=*&order=created_at.desc'),
+                         headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        groups = r.json()
+    except Exception as e:
+        print(f'[db] list_all_groups failed (non-fatal): {e}')
+        return []
+    pinned_ids = set()
+    if email:
+        em = email.strip().lower()
+        for sel in ('group_id,pinned', 'group_id'):
+            try:
+                rr = requests.get(
+                    _rest(f'staff_group_members?email=eq.{em}&select={sel}'),
+                    headers=_headers(), timeout=TIMEOUT)
+                if rr.status_code < 400:
+                    pinned_ids = {row['group_id'] for row in rr.json() if row.get('pinned')}
+                    break
+            except Exception:
+                continue
+    for g in groups:
+        g['pinned'] = g['id'] in pinned_ids
+    groups.sort(key=lambda g: 0 if g.get('pinned') else 1)
+    return groups
+
+
+def rename_staff_group(group_id, name):
+    if not is_configured() or not group_id or not name:
+        return None
+    try:
+        r = requests.patch(_rest(f'staff_groups?id=eq.{group_id}'),
+                           headers=_headers({'Prefer': 'return=minimal'}),
+                           json={'name': name}, timeout=TIMEOUT)
+        return r.status_code in (200, 204)
+    except Exception as e:
+        print(f'[db] rename_staff_group failed (non-fatal): {e}')
+        return None
+
+
+def delete_staff_group(group_id):
+    """Delete a group (members + messages cascade via FK on delete cascade)."""
+    if not is_configured() or not group_id:
+        return None
+    try:
+        r = requests.delete(_rest(f'staff_groups?id=eq.{group_id}'),
+                            headers=_headers(), timeout=TIMEOUT)
+        return r.status_code in (200, 204)
+    except Exception as e:
+        print(f'[db] delete_staff_group failed (non-fatal): {e}')
+        return None
+
+
+def set_group_pin(group_id, email, pinned):
+    """Pin/unpin a group for one member."""
+    if not is_configured() or not group_id or not email:
+        return None
+    try:
+        r = requests.patch(
+            _rest(f'staff_group_members?group_id=eq.{group_id}&email=eq.{email.strip().lower()}'),
+            headers=_headers({'Prefer': 'return=minimal'}),
+            json={'pinned': bool(pinned)}, timeout=TIMEOUT)
+        return r.status_code in (200, 204)
+    except Exception as e:
+        print(f'[db] set_group_pin failed (non-fatal): {e}')
+        return None
+
+
+def send_group_message(group_id, sender_email, body, attachments=None):
+    if not is_configured() or not group_id:
+        return None
+    data = {
+        'group_id': group_id,
+        'sender_email': (sender_email or '').strip().lower(),
+        'body': body or None,
+        'attachments': attachments or [],
+    }
+    r = requests.post(_rest('staff_group_messages'),
+                      headers=_headers({'Prefer': 'return=representation'}),
+                      json=data, timeout=TIMEOUT)
+    _raise_with_supabase_detail(r)
+    rows = r.json()
+    return rows[0] if rows else None
+
+
+def list_group_messages(group_id):
+    if not is_configured() or not group_id:
+        return []
+    try:
+        r = requests.get(
+            _rest(f'staff_group_messages?group_id=eq.{group_id}&select=*&order=created_at.asc'),
+            headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        print(f'[db] list_group_messages failed (non-fatal): {e}')
+        return []

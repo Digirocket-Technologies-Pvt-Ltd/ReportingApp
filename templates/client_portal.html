@@ -514,6 +514,7 @@
                 <div class="files-list"></div>
                 <div class="compose">
                     <input type="file" name="files" multiple hidden class="files-input">
+                    <button type="button" class="icon-btn img-btn" title="Send image"><i class="fas fa-image"></i></button>
                     <button type="button" class="icon-btn files-btn" title="Attach files"><i class="fas fa-plus"></i></button>
                     <textarea name="message" rows="1" placeholder="Type a message... (optional if you attach a file)" class="autosize"></textarea>
                     <button type="submit" class="icon-btn send-btn" title="Send"><i class="fas fa-paper-plane"></i></button>
@@ -682,7 +683,9 @@
             var input = form.querySelector('.files-input');
             var btn   = form.querySelector('.files-btn');
             var list  = form.querySelector('.files-list');
-            btn.addEventListener('click', function () { input.click(); });
+            btn.addEventListener('click', function () { input.accept = ''; input.click(); });
+            var imgBtn = form.querySelector('.img-btn');
+            if (imgBtn) imgBtn.addEventListener('click', function () { input.accept = 'image/*'; input.click(); });
             input.addEventListener('change', function () {
                 list.innerHTML = '';
                 Array.from(input.files).forEach(function (f) {

@@ -38,6 +38,12 @@
         .bubble.theirs { background:#fff; border:1px solid #e5e7eb; border-bottom-left-radius:4px; }
         .bubble.solution { background:#dcfce7; border:1px solid #86efac; }
         .bubble .body { font-size:14px; line-height:1.5; color:#1f2937; }
+        .msg-img { max-width:240px; max-height:260px; border-radius:10px; margin-top:6px; display:block; object-fit:cover; cursor:pointer; }
+        .tac-btn { font-size:12px; font-weight:700; padding:5px 12px; border-radius:8px;
+            background:#222a30; border:1px solid #333b43; color:#cbd2d9; cursor:pointer; transition:all .12s; }
+        .tac-btn:hover { border-color:#C9F31D; color:#fff; }
+        .tac-btn.on { background:#C9F31D; color:#14181a; border-color:#C9F31D; }
+        .hindi-box { background:#12181b; border:1px solid #262d33; border-radius:10px; padding:12px 14px; margin-top:10px; }
         .rich ul,.rich ol { margin:4px 0 4px 20px; } .rich li { list-style:disc; }
         .rich ol li { list-style:decimal; } .rich p { margin:0 0 6px; }
         .bubble .meta { font-size:10px; color:#6b7280; margin-top:4px; }
@@ -145,8 +151,13 @@
             <div class="lg:col-span-2 space-y-5">
                 <div class="card p-6">
                     <div class="flex items-start justify-between gap-3 mb-2">
-                        <h1 class="text-xl font-extrabold text-gray-800">{{ ticket.title }}</h1>
+                        <h1 id="ticketTitle" class="text-xl font-extrabold text-gray-800">{{ ticket.title }}</h1>
                         <span class="pill st-{{ ticket.status }}">{{ ticket.status.replace('_',' ') }}</span>
+                    </div>
+                    <!-- Translate (Hindi) + Listen (voice) -->
+                    <div class="flex items-center gap-2 mb-3">
+                        <button type="button" id="hindiBtn" onclick="translateHindi()" class="tac-btn"><i class="fas fa-language mr-1"></i>हिंदी में देखें</button>
+                        <button type="button" id="listenBtn" onclick="listenTicket()" class="tac-btn"><i class="fas fa-volume-high mr-1"></i>सुनें</button>
                     </div>
                     <p class="text-xs text-gray-400 mb-2">
                         Raised by {{ ticket.raised_by or (ticket.client.email if ticket.client) or '—' }}
@@ -161,7 +172,12 @@
                         {% for em in alist %}<span class="achip">{{ name_map.get(em|lower, em.split('@')[0]) }}</span>{% endfor %}
                     </div>
                     {% endif %}
-                    {% if ticket.description %}<div class="text-gray-700 rich">{{ ticket.description|safe_html }}</div>{% endif %}
+                    {% if ticket.description %}<div id="ticketDesc" class="text-gray-700 rich">{{ ticket.description|safe_html }}</div>{% endif %}
+                    <!-- Hindi translation output -->
+                    <div id="hindiBox" class="hindi-box" style="display:none">
+                        <div class="text-xs font-bold mb-1" style="color:#C9F31D"><i class="fas fa-language mr-1"></i>हिंदी अनुवाद</div>
+                        <div id="hindiText" class="text-gray-200" style="white-space:pre-wrap"></div>
+                    </div>
                     {% if ticket.review_note %}<p class="text-xs text-purple-600 mt-2"><i class="fas fa-clipboard-check mr-1"></i>{{ ticket.review_note }}</p>{% endif %}
                 </div>
 
@@ -179,7 +195,11 @@
                                 {% if m.is_solution %}<div class="text-xs font-bold text-green-700 mb-1"><i class="fas fa-circle-check mr-1"></i>Solution</div>{% endif %}
                                 {% if m.body %}<div class="body rich">{{ m.body|safe_html }}</div>{% endif %}
                                 {% for a in m.attachments %}
+                                    {% if a.type and a.type.startswith('image/') %}
+                                    <a href="{{ a.url }}" target="_blank"><img src="{{ a.url }}" class="msg-img" alt="{{ a.name }}"></a>
+                                    {% else %}
                                     <a href="{{ a.url }}" target="_blank" class="block text-xs text-blue-600 underline mt-1"><i class="fas fa-paperclip mr-1"></i>{{ a.name }}</a>
+                                    {% endif %}
                                 {% endfor %}
                                 <div class="meta">{{ (m.sender_email or 'system').split('@')[0] }}
                                     {% if m.sender_role %}· {{ m.sender_role }}{% endif %}
@@ -193,7 +213,8 @@
                         <div id="mentionBox" class="mention-box" style="display:none"></div>
                         <input type="hidden" name="mentions" id="mentions">
                         <input name="body" id="replyBody" autocomplete="off" class="flex-1 border rounded-lg px-3 py-2" placeholder="Write a reply...  (type @ to tag someone)">
-                        <label class="cursor-pointer text-gray-400 hover:text-gray-700"><i class="fas fa-paperclip"></i><input type="file" name="attachments" multiple class="hidden"></label>
+                        <label class="cursor-pointer text-gray-400 hover:text-gray-700" title="Send image"><i class="fas fa-image"></i><input type="file" name="attachments" accept="image/*" multiple class="hidden"></label>
+                        <label class="cursor-pointer text-gray-400 hover:text-gray-700" title="Attach file"><i class="fas fa-paperclip"></i><input type="file" name="attachments" multiple class="hidden"></label>
                         <button class="px-4 py-2 rounded-lg font-bold" style="background:#C9F31D;color:#14181a"><i class="fas fa-paper-plane"></i></button>
                     </form>
                     <p class="text-xs text-gray-500 mt-1"><i class="fas fa-at mr-1"></i>Tag someone with <b>@</b> — they get added to this ticket &amp; notified.</p>
@@ -388,6 +409,50 @@
         }
         // Auto-scroll the thread to the newest message.
         const th = document.getElementById('thread'); if (th) th.scrollTop = th.scrollHeight;
+
+        // ---- Translate the ticket to Hindi ----
+        let hindiLoaded = false;
+        async function translateHindi() {
+            const box = document.getElementById('hindiBox');
+            const btn = document.getElementById('hindiBtn');
+            if (box.style.display !== 'none') { box.style.display = 'none'; btn.classList.remove('on'); return; }
+            box.style.display = 'block'; btn.classList.add('on');
+            if (hindiLoaded) return;
+            const title = (document.getElementById('ticketTitle') || {}).innerText || '';
+            const desc = (document.getElementById('ticketDesc') || {}).innerText || '';
+            const text = (title + '\n\n' + desc).trim();
+            document.getElementById('hindiText').textContent = 'अनुवाद हो रहा है…';
+            try {
+                const r = await fetch('/api/translate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+                const d = await r.json();
+                document.getElementById('hindiText').textContent = d.translated || (d.error || 'अनुवाद विफल।');
+                hindiLoaded = !!d.translated;
+            } catch (e) {
+                document.getElementById('hindiText').textContent = 'अनुवाद विफल — दोबारा प्रयास करें।';
+            }
+        }
+
+        // ---- Read the ticket aloud (Hindi if translated, else English) ----
+        let speaking = false;
+        function listenTicket() {
+            const btn = document.getElementById('listenBtn');
+            if (speaking) { speechSynthesis.cancel(); speaking = false; btn.classList.remove('on'); return; }
+            const box = document.getElementById('hindiBox');
+            let text, lang;
+            if (box && box.style.display !== 'none' && hindiLoaded) {
+                text = document.getElementById('hindiText').textContent; lang = 'hi-IN';
+            } else {
+                const title = (document.getElementById('ticketTitle') || {}).innerText || '';
+                const desc = (document.getElementById('ticketDesc') || {}).innerText || '';
+                text = (title + '. ' + desc).trim(); lang = 'en-US';
+            }
+            if (!text) return;
+            speechSynthesis.cancel();
+            const u = new SpeechSynthesisUtterance(text);
+            u.lang = lang; u.rate = 1;
+            u.onend = function () { speaking = false; btn.classList.remove('on'); };
+            speaking = true; btn.classList.add('on'); speechSynthesis.speak(u);
+        }
     </script>
 </body>
 </html>
