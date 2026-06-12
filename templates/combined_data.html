@@ -839,6 +839,7 @@
                 },
                 { id: 'gmb-overview', type: 'div', name: '14-google-business-profile', title: 'Google Business Profile' },
                 { id: 'gmc-overview', type: 'div', name: '15-google-merchant-center', title: 'Google Merchant Center' },
+                { id: 'seo-overview', type: 'div', name: '16-seo-overview', title: 'SEO Overview' },
                 { id: 'ai-insights', type: 'div', name: '17-summary-and-conclusion', title: 'Summary & Conclusion' }
             ];
 
@@ -2772,6 +2773,60 @@
                 </div>
                 {% endfor %}
             </div>
+        </div>
+        {% endif %}
+
+        {% if seo_overview and not seo_overview.error %}
+        <div class="section-card rounded-2xl p-8 mb-8" id="seo-overview">
+            <h2 class="text-2xl font-bold text-gray-800 mb-6"><i class="fas fa-magnifying-glass-chart mr-2" style="color: #C9F31D;"></i>SEO Overview{% if seo_overview.target %} &mdash; {{ seo_overview.target }}{% endif %}</h2>
+            {% set seo_cards = [
+                (seo_overview.organic_traffic or 0, 'Est. Organic Traffic / mo'),
+                (seo_overview.organic_keywords or 0, 'Ranked Keywords'),
+                (seo_overview.pos_1 or 0, 'Keywords in Position 1'),
+                (seo_overview.pos_2_3 or 0, 'Position 2&ndash;3'),
+                (seo_overview.pos_4_10 or 0, 'Position 4&ndash;10') ] %}
+            {# Dot colours match the chart bars so each box denotes its bar. #}
+            {% set seo_colors = ['#5a9e1e','#2563eb','#7c3aed','#0ea5e9','#059669'] %}
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-5">
+                {% for val, lbl in seo_cards %}
+                <div style="border-radius:18px; padding:22px 20px; background:#14181a; border:1px solid #2a2f36; box-shadow:0 8px 24px rgba(0,0,0,0.25);">
+                    <div style="display:flex; align-items:center; gap:9px;">
+                        <span style="width:12px; height:12px; border-radius:50%; background:{{ seo_colors[loop.index0] }}; display:inline-block; flex-shrink:0; box-shadow:0 0 0 3px {{ seo_colors[loop.index0] }}33;"></span>
+                        <div style="font-size:30px; font-weight:800; color:#ffffff; line-height:1.1;">{{ '{:,}'.format(val) if val is number else val }}</div>
+                    </div>
+                    <div style="font-size:13px; font-weight:600; color:#9ca3af; margin-top:8px;">{{ lbl|safe }}</div>
+                </div>
+                {% endfor %}
+            </div>
+            <div style="height:260px; margin-top:28px;">
+                <canvas id="seoPosChart"></canvas>
+            </div>
+            <script>
+              (function () {
+                var el = document.getElementById('seoPosChart');
+                if (!el || typeof Chart === 'undefined') return;
+                new Chart(el, {
+                  type: 'bar',
+                  data: {
+                    labels: ['Position 1', 'Position 2–3', 'Position 4–10', 'Position 11–20', 'Position 21–30'],
+                    datasets: [{
+                      label: 'Ranked keywords',
+                      data: [{{ seo_overview.pos_1 or 0 }}, {{ seo_overview.pos_2_3 or 0 }}, {{ seo_overview.pos_4_10 or 0 }}, {{ seo_overview.pos_11_20 or 0 }}, {{ seo_overview.pos_21_30 or 0 }}],
+                      backgroundColor: ['#7c3aed', '#0ea5e9', '#059669', '#f59e0b', '#ef4444'],
+                      borderRadius: 10, maxBarThickness: 90
+                    }]
+                  },
+                  options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                      legend: { display: false },
+                      title: { display: true, text: 'Ranked keywords by Google position', font: { size: 15, weight: '700' }, color: '#374151' }
+                    },
+                    scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+                  }
+                });
+              })();
+            </script>
         </div>
         {% endif %}
 

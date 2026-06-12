@@ -480,7 +480,7 @@ def init_routes(app):
         session['is_client'] = bool(client and not staff)
         flash('Logged in successfully.', 'success')
         if session['is_client']:
-            return redirect(url_for('client_portal'))
+            return redirect(url_for('client_dashboard'))
         if staff and staff.get('role') == 'employee':
             return redirect(url_for('tickets_board'))
         return redirect(url_for('dashboard'))
@@ -571,9 +571,10 @@ def init_routes(app):
                 print(f'[login] role/agency setup failed (non-fatal): {e}')
 
             flash('Successfully logged in!', 'success')
-            # Recognised clients land on their portal; team/admins go to dashboard.
+            # Recognised clients land on their analytics dashboard (the hub);
+            # team/admins go to the full dashboard.
             if session.get('is_client'):
-                return redirect(url_for('client_portal'))
+                return redirect(url_for('client_dashboard'))
             return redirect(url_for('dashboard'))
         except requests.exceptions.RequestException as e:
             flash(f'Login error: {str(e)}', 'error')
@@ -879,6 +880,26 @@ def init_routes(app):
 
             want_gmb = (request.args.get('gmb') or '').lower() in ('1', 'true', 'on', 'yes')
             want_gmc = (request.args.get('gmc') or '').lower() in ('1', 'true', 'on', 'yes')
+            want_seo = (request.args.get('seo') or '').lower() in ('1', 'true', 'on', 'yes')
+
+            def _seo_for_domain(domain):
+                """DataForSEO overview for a domain, cached 7 days (avoids repeat cost)."""
+                import dataforseo
+                dom = dataforseo.clean_domain(domain)
+                if not dom:
+                    return {}
+                cached = db.get_seo_cache(dom)
+                if cached and cached.get('data') and cached.get('fetched_at'):
+                    try:
+                        ft = datetime.fromisoformat(str(cached['fetched_at']).replace('Z', '+00:00'))
+                        if (datetime.now(timezone.utc) - ft).days < 7:
+                            return cached['data']
+                    except Exception:
+                        pass
+                data = dataforseo.domain_overview(dom)
+                if not data.get('error'):
+                    db.save_seo_cache(dom, data)
+                return data
 
             access_token = session['access_token']
 
@@ -923,6 +944,14 @@ def init_routes(app):
                 except Exception as e:
                     print(f"GMC fetch error: {e}")
                     return {}
+            def _seo():
+                if not want_seo or not gsc_site_url:
+                    return {}
+                try:
+                    return _seo_for_domain(gsc_site_url)
+                except Exception as e:
+                    print(f"SEO (DataForSEO) fetch error: {e}")
+                    return {}
 
             with ThreadPoolExecutor(max_workers=10) as _ex:
                 _f_ga4 = _ex.submit(_ga4_main)
@@ -935,6 +964,7 @@ def init_routes(app):
                 _f_prev_gsc = _ex.submit(_prev_gsc)
                 _f_gmb = _ex.submit(_gmb)
                 _f_gmc = _ex.submit(_gmc)
+                _f_seo = _ex.submit(_seo)
 
                 ga4_data = _f_ga4.result()
                 gsc_data = _f_gsc.result()
@@ -946,6 +976,7 @@ def init_routes(app):
                 _prev_gsc_result = _f_prev_gsc.result() or {}
                 gmb_data = _f_gmb.result() or {}
                 gmc_data = _f_gmc.result() or {}
+                seo_overview = _f_seo.result() or {}
 
             if ga4_data is None and gsc_data is None:
                 if session.get('is_client'):
@@ -1228,6 +1259,7 @@ def init_routes(app):
                 ai_text=ai_text,
                 gmb_data=gmb_data,
                 gmc_data=gmc_data,
+                seo_overview=seo_overview,
                 session_info=session_info,
                 report_exists=report_exists,
                 report_pdf_url=report_pdf_url,
@@ -2150,7 +2182,7 @@ def init_routes(app):
                 # Synthesize rows so the dropdown still lists the IDs we have
                 # on file even if the agency token can't see them yet.
                 ga4_properties = [{'property_id': pid,
-                                   'display_name': f'Your GA4 Property ({pid})',
+                                   'display_name': 'Your GA4 Property',
                                    'account_name': '', 'property_type': 'GA4'}
                                   for pid in sorted(allowed_ga4_set)]
         else:
@@ -2166,6 +2198,24 @@ def init_routes(app):
         else:
             gsc_sites = []
 
+        # Show the SpyderSage promo once per login session (logout clears the
+        # session, so it shows again on the next login).
+        show_spydersage = not session.get('_spydersage_shown')
+        session['_spydersage_shown'] = True
+
+        # The client's reports (with files) for the header Reports dropdown —
+        # the dashboard is now the client's hub, so everything lives here.
+        client_reports = []
+        try:
+            client_reports = [r for r in db.client_reports(client['id'])
+                              if r.get('files') and len(r['files']) > 0]
+            for r in client_reports:
+                r['is_new'] = not r.get('viewed_at')
+            client_reports.sort(key=lambda r: r.get('sent_at') or '', reverse=True)
+            client_reports.sort(key=lambda r: 0 if r['is_new'] else 1)
+        except Exception as e:
+            print(f'[portal/dashboard] reports load failed (non-fatal): {e}')
+
         return render_template(
             'dashboard.html',
             ga4_properties=ga4_properties,
@@ -2174,6 +2224,8 @@ def init_routes(app):
             session_info=get_session_info(),
             is_admin=False,
             client_mode=True,
+            show_spydersage=show_spydersage,
+            reports=client_reports,
         )
 
     @app.route('/portal/settings')
@@ -2718,6 +2770,29 @@ def init_routes(app):
         reports = db.client_reports(client_id)
         return render_template('client_detail.html', client=client, reports=reports,
                                session_info=get_session_info())
+
+    @app.route('/pmo/client/<client_id>/seo/fetch', methods=['POST'])
+    def pmo_client_seo_fetch(client_id):
+        """Call DataForSEO for this client's website domain and cache the
+        overview on the client row. One paid API call (~$0.01)."""
+        if not is_pmo_admin():
+            return render_template('pmo_denied.html', email=session.get('user_email')), 403
+        client = db.get_client(client_id)
+        if not client:
+            flash('Client not found.', 'error')
+            return redirect(url_for('pmo_portal'))
+        import dataforseo
+        domain = client.get('target_seo_website') or client.get('gsc_property_id') or ''
+        if not dataforseo.clean_domain(domain):
+            flash("Set this client's 'Target SEO website' first so we know which domain to look up.", 'warning')
+            return redirect(url_for('pmo_client_detail', client_id=client_id))
+        data = dataforseo.domain_overview(domain)
+        db.save_client_seo(client_id, data)
+        if data.get('error'):
+            flash(f"DataForSEO: {data['error']}", 'error')
+        else:
+            flash(f"SEO data fetched for {data.get('target')} (cost ${data.get('cost', 0):.4f}).", 'success')
+        return redirect(url_for('pmo_client_detail', client_id=client_id))
 
     @app.route('/pmo/client/<client_id>/data')
     def pmo_client_data(client_id):

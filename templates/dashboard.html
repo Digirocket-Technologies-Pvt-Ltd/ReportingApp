@@ -406,6 +406,52 @@
                         <i class="fas fa-arrow-up-right-from-square text-xs text-gray-400"></i>
                     </a>
 
+                    {% if client_mode %}
+                    <!-- Client hub: chat, support tickets, reports -->
+                    <a href="{{ url_for('client_portal') }}" title="Chat with our team"
+                       class="relative p-2 text-gray-600 hover:text-teal-600 transition-colors"><i class="fas fa-comments text-xl"></i></a>
+                    <a href="{{ url_for('portal_tickets') }}" title="My support tickets"
+                       class="relative p-2 text-gray-600 hover:text-teal-600 transition-colors"><i class="fas fa-headset text-xl"></i></a>
+                    <div class="relative" id="reportsWrap">
+                        {% set new_count = (reports or [])|selectattr('is_new')|list|length %}
+                        <button type="button" onclick="toggleReports(event)" title="Your reports"
+                                class="relative p-2 text-gray-600 hover:text-teal-600 transition-colors">
+                            <i class="fas fa-file-lines text-xl"></i>
+                            {% if new_count %}<span class="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-yellow-400 text-gray-900 text-[11px] font-bold rounded-full flex items-center justify-center px-1">{{ new_count }}</span>{% endif %}
+                        </button>
+                        <div id="reportsDropdown" style="display:none; position:absolute; right:0; top:48px; width:340px; max-height:430px; overflow-y:auto; background:#ffffff; border-radius:14px; box-shadow:0 14px 44px rgba(0,0,0,.28); z-index:70; color:#1f2937;">
+                            <div style="padding:14px 16px; border-bottom:1px solid #eee; font-weight:700; font-size:14px;">
+                                <i class="fas fa-file-lines mr-1" style="color:#0d9488;"></i>Your Reports
+                                <span style="float:right; font-size:12px; color:#9ca3af; font-weight:500;">{{ (reports or [])|length }} total</span>
+                            </div>
+                            <div style="padding:6px;">
+                                {% for r in reports or [] %}
+                                    {% set primary = (r.files[0] if r.files and r.files|length > 0 else None) %}
+                                    <a href="{{ primary.url if primary else '#' }}" {% if primary %}target="_blank" rel="noopener" onclick="markReportViewed('{{ r.id }}', this)"{% endif %}
+                                       style="display:flex; gap:11px; align-items:center; padding:10px 12px; border-radius:10px; text-decoration:none; color:#1f2937;"
+                                       onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background='transparent'">
+                                        <i class="fas fa-file-pdf" style="color:#ef4444; font-size:20px;"></i>
+                                        <div style="flex:1; min-width:0;">
+                                            <div style="font-weight:600; font-size:13px;">{{ r.report_period or 'Analytics Report' }}</div>
+                                            <div style="font-size:11px; color:#6b7280;">{{ (r.sent_at or '')[:16]|replace('T',' ') }}{% if r.files and r.files|length > 1 %} · {{ r.files|length }} files{% endif %}</div>
+                                        </div>
+                                        {% if r.is_new %}<span style="background:#fef3c7; color:#92400e; font-size:10px; font-weight:700; padding:2px 7px; border-radius:999px;">NEW</span>{% endif %}
+                                    </a>
+                                {% else %}
+                                    <div style="padding:26px 16px; text-align:center; color:#9ca3af; font-size:13px;">
+                                        <i class="fas fa-folder-open text-2xl mb-2" style="color:#d1d5db;"></i><br>No reports yet. They'll appear here as soon as our team sends one.
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                    <script>
+                        function toggleReports(e){ e.stopPropagation(); var d=document.getElementById('reportsDropdown'); d.style.display = d.style.display==='none' ? 'block':'none'; }
+                        function markReportViewed(id, el){ try{ fetch('/portal/report/'+id+'/viewed', {method:'POST'}); }catch(e){} }
+                        document.addEventListener('click', function(e){ var w=document.getElementById('reportsWrap'), d=document.getElementById('reportsDropdown'); if(w&&d&&!w.contains(e.target)) d.style.display='none'; });
+                    </script>
+                    {% endif %}
+
                     <div class="relative" id="notifWrap">
                         <button id="notifBtn" type="button" onclick="toggleNotif(event)"
                                 class="relative p-2 text-gray-600 hover:text-teal-600 transition-colors">
@@ -745,6 +791,11 @@
                             <input type="checkbox" name="gmc" value="1">
                             <i class="fas fa-bag-shopping text-teal-600"></i>
                             Add Google Merchant Center
+                        </label>
+                        <label class="flex items-center gap-2 mt-3 text-sm font-medium text-gray-700 cursor-pointer">
+                            <input type="checkbox" name="seo" value="1">
+                            <i class="fas fa-magnifying-glass-chart text-teal-600"></i>
+                            Add SEO Keywords &amp; Traffic
                         </label>
                     </div>
 
@@ -1138,5 +1189,101 @@
     </script>
 
     {% include '_drok_widget.html' %}
+
+    {% if client_mode %}
+    <!-- SpyderSage promo (clients only) -->
+    <style>
+        #ssOverlay { position:fixed; inset:0; background:rgba(5,8,10,.72); -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px);
+            z-index:9998; display:none; align-items:center; justify-content:center; padding:20px; }
+        #ssCard { position:relative; background:linear-gradient(180deg,#171c1f,#101417); border:1px solid #2a3138;
+            border-radius:22px; width:100%; max-width:500px; color:#e6e8eb; overflow:hidden; max-height:92vh;
+            box-shadow:0 30px 80px rgba(0,0,0,.65), 0 0 0 1px rgba(201,243,29,.06);
+            animation:ssPop .42s cubic-bezier(.2,.9,.3,1.2); }
+        @keyframes ssPop { from { opacity:0; transform:translateY(18px) scale(.96); } to { opacity:1; transform:none; } }
+        #ssBody { padding:24px 26px 22px; max-height:92vh; overflow-y:auto; }
+        .ss-badge { width:46px;height:46px;border-radius:14px; flex-shrink:0; color:#14181a; font-size:21px;
+            background:radial-gradient(circle at 30% 30%, #d6ff3a, #9bcf1e);
+            display:flex;align-items:center;justify-content:center; box-shadow:0 0 26px rgba(201,243,29,.45); }
+        .ss-title { font-size:21px; font-weight:800; line-height:1.1; }
+        .ss-grad { background:linear-gradient(90deg,#C9F31D,#7CC92A); -webkit-background-clip:text; background-clip:text; color:transparent; }
+        .ss-tag { color:#C9F31D; font-weight:800; font-size:14px; margin-top:12px; }
+        .ss-flow { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin:10px 0 2px; }
+        .ss-flow span { font-size:11px; font-weight:700; color:#cbd2d9; background:#222a30; border:1px solid #333b43; padding:3px 9px; border-radius:999px; }
+        .ss-flow i { color:#5b636d; font-size:9px; }
+        .ss-steps { position:relative; margin-top:14px; }
+        .ss-steps:before { content:''; position:absolute; left:19px; top:24px; bottom:24px; width:2px; background:#2a3138; }
+        .ss-step { display:flex; gap:13px; align-items:flex-start; position:relative; padding:5px 0; }
+        .ss-ico { width:40px;height:40px;border-radius:11px; background:#1e2429; border:1px solid #333b43; color:#C9F31D;
+            display:flex;align-items:center;justify-content:center;flex-shrink:0; z-index:1; box-shadow:0 0 0 4px #131719; }
+        .ss-step b { color:#fff; font-size:14px; } .ss-step span { color:#9aa3ad; font-size:12.5px; display:block; margin-top:2px; line-height:1.45; }
+        .ss-sub { background:rgba(201,243,29,.06); border:1px solid rgba(201,243,29,.18); border-radius:12px;
+            padding:12px 14px; margin-top:16px; font-size:12.5px; color:#aeb6bf; line-height:1.5; }
+        .ss-cta { display:flex; align-items:center; justify-content:center; gap:9px; text-align:center;
+            background:linear-gradient(90deg,#C9F31D,#aef000); color:#14181a; font-weight:800; font-size:15px;
+            border-radius:13px; padding:14px; margin-top:18px; text-decoration:none;
+            transition:transform .15s, box-shadow .15s; box-shadow:0 10px 28px rgba(201,243,29,.28); }
+        .ss-cta:hover { transform:translateY(-2px); box-shadow:0 16px 38px rgba(201,243,29,.42); }
+        .ss-x { background:transparent;border:0;color:#7b848f;font-size:22px;cursor:pointer;line-height:1; }
+        .ss-x:hover { color:#fff; }
+        .ss-later { display:block;width:100%;background:transparent;border:0;color:#7b848f;font-size:13px;margin-top:10px;cursor:pointer; }
+        .ss-pill { position:fixed; left:18px; bottom:18px; z-index:9997; background:#14181a;
+            border:1px solid #C9F31D; color:#C9F31D; font-weight:700; font-size:13px;
+            padding:9px 14px; border-radius:999px; cursor:pointer; box-shadow:0 6px 20px rgba(0,0,0,.4); transition:transform .15s; }
+        .ss-pill:hover { transform:translateY(-2px); }
+    </style>
+    <div id="ssOverlay">
+        <div id="ssCard">
+            <div id="ssBody">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
+                    <div style="display:flex; gap:13px; align-items:center;">
+                        <div class="ss-badge"><i class="fas fa-spider"></i></div>
+                        <div>
+                            <div class="ss-title">Meet <span class="ss-grad">SpyderSage</span></div>
+                            <div style="font-size:11px;color:#7b848f;margin-top:3px;">by DigiRocket Technologies · spydersage.ai</div>
+                        </div>
+                    </div>
+                    <button onclick="ssClose()" class="ss-x">&times;</button>
+                </div>
+
+                <div class="ss-tag">Your Website's SEO. Fixed Automatically.</div>
+
+                <div class="ss-flow">
+                    <span>Connect</span><i class="fas fa-chevron-right"></i><span>Scan</span><i class="fas fa-chevron-right"></i><span>Fix</span><i class="fas fa-chevron-right"></i><span>Rank</span>
+                </div>
+
+                <p style="color:#ffffff; font-size:15px; font-weight:700; margin-top:12px; line-height:1.4;">
+                    Grow your website without becoming an SEO expert.
+                </p>
+                <p style="color:#cbd2d9; font-size:13.5px; margin-top:8px; line-height:1.55;">
+                    SpyderSage automatically scans your website, identifies SEO opportunities, tracks keyword
+                    performance, analyzes competitors, and helps improve your search visibility — all from one
+                    simple dashboard.
+                </p>
+
+                <div class="ss-steps">
+                    <div class="ss-step"><div class="ss-ico"><i class="fas fa-plug"></i></div><div><b>Connect</b><span>Connect your Shopify/WordPress store in one click — no API keys, no tokens.</span></div></div>
+                    <div class="ss-step"><div class="ss-ico"><i class="fas fa-magnifying-glass"></i></div><div><b>Scan</b><span>We crawl your entire site and find every SEO issue.</span></div></div>
+                    <div class="ss-step"><div class="ss-ico"><i class="fas fa-wand-magic-sparkles"></i></div><div><b>Fix</b><span>One-click auto-fix — titles, descriptions, H1s, schema and alt-text, all done automatically.</span></div></div>
+                    <div class="ss-step"><div class="ss-ico"><i class="fas fa-arrow-trend-up"></i></div><div><b>Rank</b><span>Track keywords &amp; rankings, view reports, and climb higher on Google.</span></div></div>
+                </div>
+
+                <div class="ss-sub"><i class="fas fa-layer-group mr-1" style="color:#C9F31D;"></i> All in one subscription — SEO audit + auto-fix, keywords &amp; rankings, AI blog writer, backlinks, competitor analysis &amp; automated reports. The work that used to need 5-6 tools or an agency.</div>
+
+                <a href="https://www.spydersage.ai" target="_blank" rel="noopener" class="ss-cta">
+                    <i class="fas fa-rocket"></i> Explore SpyderSage <i class="fas fa-arrow-right" style="font-size:13px;"></i>
+                </a>
+                <button onclick="ssClose()" class="ss-later">Maybe later</button>
+            </div>
+        </div>
+    </div>
+    <button class="ss-pill" onclick="ssOpen()"><i class="fas fa-sparkles mr-1"></i>✨ What's SpyderSage?</button>
+    <script>
+        function ssOpen(){ document.getElementById('ssOverlay').style.display='flex'; }
+        function ssClose(){ document.getElementById('ssOverlay').style.display='none'; }
+        document.getElementById('ssOverlay').addEventListener('click', function(e){ if(e.target===this) ssClose(); });
+        // Auto-show once per LOGIN (server decides; logout -> shows again next login).
+        {% if show_spydersage %}setTimeout(ssOpen, 700);{% endif %}
+    </script>
+    {% endif %}
 </body>
 </html>

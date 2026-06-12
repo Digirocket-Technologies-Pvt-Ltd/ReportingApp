@@ -121,6 +121,55 @@ def delete_client(client_id):
     return True
 
 
+def get_seo_cache(domain):
+    """Cached DataForSEO overview for a bare domain, or None."""
+    if not is_configured() or not domain:
+        return None
+    try:
+        r = requests.get(_rest(f'seo_cache?domain=eq.{domain.strip().lower()}&select=*'),
+                         headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+        rows = r.json()
+        return rows[0] if rows else None
+    except Exception as e:
+        print(f'[db] get_seo_cache failed (non-fatal): {e}')
+        return None
+
+
+def save_seo_cache(domain, data):
+    """Upsert a domain's DataForSEO overview (keyed by domain)."""
+    if not is_configured() or not domain:
+        return None
+    try:
+        r = requests.post(
+            _rest('seo_cache?on_conflict=domain'),
+            headers=_headers({'Prefer': 'resolution=merge-duplicates,return=minimal'}),
+            json={'domain': domain.strip().lower(), 'data': data,
+                  'fetched_at': datetime.now(timezone.utc).isoformat()},
+            timeout=TIMEOUT)
+        return r.status_code in (200, 201, 204)
+    except Exception as e:
+        print(f'[db] save_seo_cache failed (non-fatal): {e}')
+        return None
+
+
+def save_client_seo(client_id, data):
+    """Cache a client's DataForSEO overview on the client row."""
+    if not is_configured() or not client_id:
+        return None
+    try:
+        r = requests.patch(
+            _rest(f'clients?id=eq.{client_id}'),
+            headers=_headers({'Prefer': 'return=minimal'}),
+            json={'seo_data': data,
+                  'seo_fetched_at': datetime.now(timezone.utc).isoformat()},
+            timeout=TIMEOUT)
+        return r.status_code in (200, 204)
+    except Exception as e:
+        print(f'[db] save_client_seo failed (non-fatal): {e}')
+        return None
+
+
 # ---------------- Report logs ----------------
 def log_report(client_id, report_period, sent_to, subject, status='sent', files=None):
     """Record that a report email was sent. Optionally store the files (list of
